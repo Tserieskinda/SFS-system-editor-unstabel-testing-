@@ -1,6 +1,6 @@
 // ════════════════════════════════ LOAD FILES ════════════════════════════════
 // ════════════════════════════════ LOAD FILES ════════════════════════════════
-// ════════════════════════════════ ZIP READER ════════════════════════════════
+// ════════════════════════════════ ZIP READER ═══════════════════════════════
 // Parses a ZIP file (stored or deflated entries) and returns
 // { "path/in/zip": Uint8Array } for every file entry.
 function parseZip(buffer){
