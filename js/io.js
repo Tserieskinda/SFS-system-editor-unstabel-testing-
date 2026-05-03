@@ -329,12 +329,11 @@ async function loadZipFile(file){
 // raw.githubusercontent.com blocks cross-origin binary fetches, so we proxy
 // through corsproxy.io which adds the required CORS headers.
 // ─────────────────────────────────────────────────────────────────────────────
-const _PROXY = 'https://corsproxy.io/?';
 const _RAW_BASE = 'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/';
 const REMOTE_ASSETS_URLS = [
-  _PROXY + encodeURIComponent(_RAW_BASE + 'Custom and Terrain Files.zip'),
-  _PROXY + encodeURIComponent(_RAW_BASE + 'Vanilla Presets + textures.zip'),
-  _PROXY + encodeURIComponent(_RAW_BASE + 'Vanilla Textures 2.zip'),
+  'https://api.allorigins.win/raw?url=' + encodeURIComponent(_RAW_BASE + 'Custom and Terrain Files.zip'),
+  'https://api.allorigins.win/raw?url=' + encodeURIComponent(_RAW_BASE + 'Vanilla Presets + textures.zip'),
+  'https://api.allorigins.win/raw?url=' + encodeURIComponent(_RAW_BASE + 'Vanilla Textures 2.zip'),
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
