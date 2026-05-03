@@ -330,9 +330,9 @@ async function loadZipFile(file){
 // Set to null to disable remote loading (manual upload only).
 // Same-origin GitHub Pages URLs — no CORS proxy needed.
 const REMOTE_ASSETS_URLS = [
-  'https://github.com/Tserieskinda/SFS-system-editor-unstabel-testing-/blob/main/assets/Custom%20and%20Terrain%20Files.zip',
-  'https://github.com/Tserieskinda/SFS-system-editor-unstabel-testing-/blob/main/assets/Vanilla%20Presets%20%2B%20textures.zip',
-  'https://github.com/Tserieskinda/SFS-system-editor-unstabel-testing-/blob/main/assets/Vanilla%20Textures%202.zip',
+  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Custom%20and%20Terrain%20Files.zip',
+  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Vanilla%20Presets%20%2B%20textures.zip',
+  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Vanilla%20Textures%202.zip',
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
