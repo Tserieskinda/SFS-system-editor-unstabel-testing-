@@ -326,13 +326,15 @@ async function loadZipFile(file){
 // Maps folder names from the default texture ZIP to asset categories.
 
 // ── Remote assets URLs ────────────────────────────────────────────────────────
-// raw.githubusercontent.com serves binary files with Access-Control-Allow-Origin: *
-// so no CORS proxy is needed for these repo blob URLs.
+// raw.githubusercontent.com blocks cross-origin binary fetches, so we proxy
+// through corsproxy.io which adds the required CORS headers.
 // ─────────────────────────────────────────────────────────────────────────────
+const _PROXY = 'https://corsproxy.io/?';
+const _RAW_BASE = 'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/';
 const REMOTE_ASSETS_URLS = [
-  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Custom%20and%20Terrain%20Files.zip',
-  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Vanilla%20Presets%20%2B%20textures.zip',
-  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Vanilla%20Textures%202.zip',
+  _PROXY + encodeURIComponent(_RAW_BASE + 'Custom and Terrain Files.zip'),
+  _PROXY + encodeURIComponent(_RAW_BASE + 'Vanilla Presets + textures.zip'),
+  _PROXY + encodeURIComponent(_RAW_BASE + 'Vanilla Textures 2.zip'),
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
