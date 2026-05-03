@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>SFS System Editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<!-- ══════════════ START MENU ══════════════ -->
+<div class="screen" id="s-start">
+  <div class="logo-wrap">
+    <h1 class="logo-main">SFS <em>SYSTEM</em><br>EDITOR</h1>
+    <p class="logo-eyebrow">v5.8</p>
+  </div>
+  <nav class="menu-list">
+    <button class="menu-btn primary" id="btn-new-system" onclick="goNew()">
+      <span class="mico" id="btn-new-mico">✦</span><span id="btn-new-label">CREATE NEW SYSTEM</span>
+      <span class="arr">›</span>
+    </button>
+    <button class="menu-btn" onclick="goOpen()">
+      <span class="mico">◈</span>OPEN EXISTING SYSTEM
+      <span class="arr">›</span>
+    </button>
+    <button id="btn-load-assets" class="menu-btn" onclick="triggerFileInput('fi-sfs-assets')" title="Load one or more SFS asset zips — textures and presets are detected and loaded automatically">
+      <span class="mico">🗂️</span>LOAD SFS ASSETS
+      <span class="arr">›</span>
+    </button>
+    <button class="menu-btn" onclick="openAppSettings()" title="Settings">
+      <span class="mico">⚙</span>SETTINGS
+      <span class="arr">›</span>
+    </button>
+  </nav>
+  <input type="file" id="fi-sfs-assets" accept=".zip" multiple style="display:none" onchange="loadSFSAssetZips(this.files);this.value=''">
+  <p id="default-tex-status" style="font-size:.65rem;color:var(--jade);font-family:'JetBrains Mono',monospace;text-align:center;margin-top:8px;min-height:1.2em;opacity:.8"></p>
+</div>
+
+
+<!-- ══════════════ NEW SYSTEM ══════════════ -->
+<div class="screen hide" id="s-new">
+  <div class="topbar">
+    <button class="tb-back" onclick="goStart()">← BACK</button>
+    <span class="tb-title" id="tb-title">NEW SYSTEM · UNTITLED</span>
+    <div class="tb-actions">
+      <button class="tb-btn" id="undo-btn" onclick="undoAction()" disabled>↩ UNDO</button>
+      <button class="tb-btn danger" onclick="confirmClearAll()">⊘ CLEAR ALL</button>
+      <!-- ── Environment dropdown ── -->
+      <div id="env-dropdown-wrap" style="position:relative;display:inline-block">
+        <button class="tb-btn" id="btn-env" onclick="toggleEnvDropdown()" title="Environment render toggles"
+          style="border-color:rgba(64,200,255,.3);color:var(--sky2);font-size:.88rem;padding:7px 11px">🌐</button>
+      </div>
+      <div style="position:relative;display:inline-flex;align-items:stretch">
+        <button class="tb-btn env-off" id="env-btn-heightmaps" onclick="toggleEnvFlag('heightmaps')" title="Toggle terrain heightmap rendering"
+          style="border-color:rgba(180,140,255,.35);color:#b48cff;font-size:.78rem;letter-spacing:.06em;padding:7px 10px;border-right:none;border-radius:4px 0 0 4px">▲ TERRAIN</button>
+        <button id="btn-terrain-detail" onclick="toggleTerrainDetailDrop()" title="Terrain detail level"
+          style="border:1px solid rgba(180,140,255,.35);border-left:1px solid rgba(180,140,255,.15);color:#b48cff;background:rgba(180,140,255,.07);cursor:pointer;padding:0 7px;border-radius:0 4px 4px 0;font-family:'JetBrains Mono',monospace;font-size:.58rem;letter-spacing:.04em;display:flex;align-items:center;gap:4px;white-space:nowrap">
+          <span id="terrain-detail-label">30%</span><span style="font-size:.6rem;opacity:.6">&#9662;</span>
+        </button>
+      </div>
+      <button class="tb-btn" onclick="openBodySearch()" title="Search bodies in system" style="border-color:rgba(64,200,255,.3);color:var(--sky2);font-size:.85rem;padding:7px 10px">🔍</button>
+      <button class="tb-btn" id="btn-difficulty" onclick="cycleDifficulty()" title="Switch orbit display difficulty" style="border-color:rgba(255,200,64,.3);color:#ffd060;min-width:96px">⚖ NORMAL</button>
+      <button class="tb-btn" id="btn-add-body" onclick="addBodyPrompt()" title="Add a body to the system (requires a system center first)" style="border-color:rgba(100,220,120,.6);color:#7defa0;font-weight:700;background:rgba(100,220,120,.12);letter-spacing:.08em">＋ ADD BODY</button>
+      <!-- ── Tools dropdown ── -->
+      <div id="tools-dropdown-wrap" style="position:relative;display:inline-block">
+        <button class="tb-btn" id="btn-tools" onclick="toggleToolsDropdown()" title="Tools"
+          style="border-color:rgba(255,180,80,.35);color:#ffb850;font-size:.88rem;padding:7px 11px">🔧</button>
+      </div>
+      <button class="tb-btn" onclick="openAssets()">📁 ASSETS</button>
+      <button class="tb-btn" onclick="openSysSettings()">⚙ SYSTEM</button>
+      <button class="tb-btn save" onclick="exportSystem()">⬇ EXPORT ZIP</button>
+    </div>
+  </div>
+
+  <canvas id="viewport"></canvas>
+
+  <div id="empty-state">
+    <div class="es-orbit"></div>
+    <div class="es-orbit2"></div>
+    <div class="es-dot"></div>
+    <button id="add-center-btn" onclick="openPreset(true)">+ ADD SYSTEM CENTER</button>
+    <p class="es-hint">Every system begins with a gravitational anchor</p>
+  </div>
+
+  <div id="statusbar">
+    <span>BODIES <b id="sb-count">0</b></span>
+    <span class="sep">|</span>
+    <span>CENTER <b id="sb-center">NONE</b></span>
+    <span class="sep">|</span>
+    <span>SELECTED <b id="sb-sel">—</b></span>
+    <span class="sep">|</span>
+    <span>ZOOM <b id="sb-zoom">100%</b></span>
+  </div>
+</div>
+
+<!-- ══════════════ OPEN SYSTEM ══════════════ -->
+<div class="screen hide" id="s-open">
+  <div class="topbar">
+    <button class="tb-back" onclick="goStart()">← BACK</button>
+    <span class="tb-title">OPEN SYSTEM</span>
+  </div>
+  <div class="open-card">
+    <!-- Warning banner — shown only when a session is active -->
+    <div id="open-session-warn" style="display:none;margin-bottom:18px;padding:10px 14px;
+      background:rgba(255,140,40,.08);border:1px solid rgba(255,140,40,.35);border-radius:4px;
+      font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(255,175,70,.95);
+      letter-spacing:.04em;line-height:1.7">
+      ⚠ A session is already loaded.<br>
+      <span style="color:rgba(255,175,70,.6)">Loading a new system will clear all current bodies.</span>
+    </div>
+    <h2>LOAD SYSTEM</h2>
+    <p>Open a system <strong style="color:var(--sky2)">.zip</strong> exported from this editor or from SFS directly.</p>
+    <div class="drop-zone" id="zip-drop-zone"
+      ondragover="event.preventDefault();this.classList.add('drag-over')"
+      ondragleave="this.classList.remove('drag-over')"
+      ondrop="handleZipDrop(event)"
+      onclick="triggerFileInput('fi-zip')">
+      <span class="dico">🗜️</span>
+      <p>Drop a system <strong>.zip</strong> here, or click to browse</p>
+      <small style="color:var(--ink4);font-family:'JetBrains Mono',monospace;font-size:.65rem">
+        Must contain Planet Data/, Heightmap Data/, Texture Data/ folders
+      </small>
+    </div>
+    <button class="mf-btn ok" style="width:100%;margin-top:12px" onclick="goNewFromOpen()">START WITH EMPTY SYSTEM</button>
+  </div>
+</div>
+<input type="file" id="fi-zip" accept=".zip" style="display:none" onchange="loadZipFile(this.files[0]);this.value=''">
+
+<!-- ══════════════ PRESET MODAL ══════════════ -->
+
+<!-- ══════════════ BODY SEARCH MODAL ══════════════ -->
+<div id="modal-body-search">
+  <div class="mpanel" id="mpanel-body-search" style="max-width:480px;width:92vw;max-height:80vh;display:flex;flex-direction:column">
+    <h2 style="font-family:'Orbitron',sans-serif;font-size:.85rem;color:var(--sky2);letter-spacing:.15em;margin-bottom:10px">🔍 FIND BODY</h2>
+    <div style="position:relative;margin-bottom:10px">
+      <input id="bsearch-input" class="prs-search" placeholder="Search bodies…" autocomplete="off" oninput="bsearchRebuild()" style="width:100%;box-sizing:border-box">
+    </div>
+    <div id="bsearch-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:0;max-height:52vh"></div>
+    <div class="modal-footer" style="margin-top:12px">
+      <button class="mf-btn" onclick="closeBodySearch()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-preset">
+  <div class="mpanel" id="mpanel-preset" style="padding:28px 28px 22px;max-width:760px;width:90vw">
+    <h2 style="font-family:'Orbitron',sans-serif;font-size:.85rem;color:var(--sky2);letter-spacing:.15em;margin-bottom:6px">SELECT BODY PRESET</h2>
+    <p id="mp-desc" style="font-size:.7rem;color:var(--ink4);margin-bottom:16px">Choose a starting template — all properties are fully editable afterward</p>
+    <!-- Tab bar -->
+    <div class="prs-tabs">
+      <button class="prs-tab on" onclick="prsSetTab('all',this)">ALL</button>
+      <button class="prs-tab" onclick="prsSetTab('vanilla',this)">🌍 VANILLA</button>
+      <button class="prs-tab" onclick="prsSetTab('custom',this)">⭐ CUSTOM</button>
+    </div>
+    <!-- Search -->
+    <div class="prs-search-wrap">
+      <input class="prs-search" id="prs-search" placeholder="Search presets…" autocomplete="off" oninput="prsRebuild()">
+      <span class="prs-search-ico">⌕</span>
+    </div>
+    <!-- Grid -->
+    <div class="prs-grid" id="prs-grid"></div>
+    <div class="modal-footer" style="margin-top:16px">
+      <button class="mf-btn" onclick="closePreset()">CANCEL</button>
+      <label class="mf-btn" style="cursor:pointer;border-color:rgba(48,224,144,.45);color:rgba(48,224,144,.9);background:rgba(48,224,144,.07)" title="Import a body directly from a .txt file">
+        ⬆ UPLOAD TXT
+        <input type="file" accept=".txt" style="display:none" onchange="importBodyFromTxt(this)">
+      </label>
+      <button class="mf-btn ok" id="prs-confirm-btn" onclick="confirmPreset()">ADD BODY →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<div id="sidebar">
+  <div class="sb-head">
+    <div class="sb-identity">
+      <div class="sb-badge" id="sbb-icon">☀️</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px">
+          <input id="sbb-name-input"
+            class="sb-name-input"
+            type="text"
+            value="Sun"
+            spellcheck="false"
+            oninput="renameBody(this.value); _schedFinaliseRename(this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+            onblur="finaliseRename(this.value)"
+            title="">
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+          <div class="sb-type" id="sbb-type">Star · System Center</div>
+          <button class="namegen-dice" onclick="NameGen.roll()" title="Generate a random name">⚄</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
+      <button class="sb-close" onclick="closeSidebar()">✕</button>
+      <div style="display:flex;gap:5px">
+        <button onclick="if(selectedBody) zoomToBody(selectedBody)" title="Zoom viewport to this body" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(64,200,255,.5);border-radius:2px;background:rgba(64,200,255,.12);color:#60d8ff;cursor:pointer">⊕ ZOOM</button>
+        <button onclick="addBodyPrompt()" title="Add a body orbiting this one" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(100,220,120,.4);border-radius:2px;background:rgba(100,220,120,.07);color:#7defa0;cursor:pointer">+ ADD</button>
+        <button onclick="replaceBodyPrompt()" title="Replace this body with a different preset" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(255,200,64,.35);border-radius:2px;background:rgba(255,200,64,.07);color:#ffd060;cursor:pointer">⇄ REPLACE</button>
+        <button onclick="confirmDeleteBody()" title="Delete this body and all its satellites" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(255,64,96,.35);border-radius:2px;background:rgba(255,64,96,.07);color:var(--rose);cursor:pointer">✕ DELETE</button>
+      </div>
+    </div>
+    <div class="sb-tabs-wrap at-start" id="sb-tabs-wrap">
+    <div class="sb-tabs" id="sb-tabs">
+      <button class="sbt on"  onclick="switchTab('base',this)">BASE</button>
+      <button class="sbt"     onclick="switchTab('orbit',this)">ORBIT</button>
+      <button class="sbt"     onclick="switchTab('atmos',this)">ATMOS</button>
+      <button class="sbt"     onclick="switchTab('terrain',this)">TERRAIN</button>
+      <button class="sbt"     onclick="switchTab('heightmap',this)">HMAP</button>
+      <button class="sbt"     onclick="switchTab('rings',this)">RINGS</button>
+      <button class="sbt"     onclick="switchTab('water',this)">WATER</button>
+      <button class="sbt"     onclick="switchTab('post',this)">POST</button>
+      <button class="sbt"     onclick="switchTab('misc',this)">MISC</button>
+      <button class="sbt"     onclick="switchTab('json',this)">JSON</button>
+    </div>
+    </div>
+  </div>
+
+  <div class="sb-body">
+
+    <!-- ── BASE DATA ── -->
+    <div class="tab-panel on" id="tab-base">
+      <div class="fsec">
+        <div class="fsec-title">BASE DATA</div>
+        <div class="frow"><span class="flabel">Radius</span>
+          <input class="finput" id="b-radius" type="number" step="1000" oninput="onDistInput('b-radius','b-radius-unit','b-radius-hint','radius')">
+          <select class="funit-sel" id="b-radius-unit" onchange="onUnitChange('b-radius','b-radius-unit','b-radius-hint','radius')">
+            <option value="m">m</option><option value="km" selected>km</option><option value="Mm">Mm</option>
+            <option value="Gm">Gm</option><option value="ly">ly</option><option value="R_earth">R Earth</option><option value="R_sun">R Sun</option><option value="R_jupiter">R Jupiter</option>
+          </select></div>
+        <div id="b-radius-hint" class="funit-hint"></div>
+        <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Radius Difficulty Scale</div>
+        <div class="diff-grid">
+          <div><div class="diff-label">Normal</div><input class="finput" id="b-radius-n" type="number" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Hard</div><input class="finput" id="b-radius-h" type="number" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Realistic</div><input class="finput" id="b-radius-r" type="number" step="0.01" placeholder="1.0"></div>
+        </div>
+        <button type="button" class="default-scale-btn" onclick="setDefaultScale('b-radius-n','b-radius-h','b-radius-r')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
+        <div class="frow"><span class="flabel">Gravity</span>
+          <input class="finput" id="b-gravity" style="flex:1;min-width:60px" type="number" step="0.01" oninput="onGravUnitChange()"><select class="funit-sel" id="b-gravity-unit" style="width:62px" onchange="onGravUnitChange()"><option value="ms2">m/s²</option><option value="cms2">cm/s²</option><option value="kms2">km/s²</option></select></div>
+        <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Gravity Difficulty Scale</div>
+        <div class="diff-grid">
+          <div><div class="diff-label">Normal</div><input class="finput" id="b-grav-n" type="number" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Hard</div><input class="finput" id="b-grav-h" type="number" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Realistic</div><input class="finput" id="b-grav-r" type="number" step="0.01" placeholder="1.0"></div>
+        </div>
+        <button type="button" class="default-scale-btn" onclick="setDefaultScale('b-grav-n','b-grav-h','b-grav-r')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
+        <div class="frow"><span class="flabel">Timewarp Height</span>
+          <input class="finput" id="b-twh" type="number" step="100"></div>
+        <div class="frow"><span class="flabel">Vel. Arrows Ht.</span>
+          <input class="finput" id="b-vah" type="number" step="100"></div>
+        <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Map Color <span style="color:var(--ink4);font-size:.52rem">(shown on orbital map)</span></div>
+        <div class="cpick-wrap">
+          <span class="flabel">Color</span>
+          <input type="color" class="cpick-swatch" id="b-cpick" oninput="onCpick('b-cpick','b-chex','b-cr','b-cg','b-cb')">
+          <input type="text" class="cpick-hex" id="b-chex" maxlength="7" placeholder="#ffffff" oninput="onChex('b-chex','b-cpick','b-cr','b-cg','b-cb')">
+        </div>
+        <div class="cpick-alpha-row">
+          <span class="cpick-alpha-label">A</span>
+          <input type="range" class="cpick-alpha" id="b-ca-slider" min="0" max="1" step="0.01" value="1" oninput="document.getElementById('b-ca-val').textContent=parseFloat(this.value).toFixed(2);document.getElementById('b-ca').value=this.value">
+          <span class="cpick-alpha-val" id="b-ca-val">1.00</span>
+        </div>
+        <div class="cpick-hdr-row">
+          <span class="cpick-hdr-label">HDR ×</span>
+          <input type="number" class="cpick-hdr" id="b-hdr" step="0.1" min="0.1" max="4" value="1.0" oninput="liveSync()">
+        </div>
+        <!-- Hidden inputs carry the final 0–1 values into liveSync -->
+        <input type="hidden" id="b-cr"><input type="hidden" id="b-cg">
+        <input type="hidden" id="b-cb"><input type="hidden" id="b-ca">
+        <div class="ftoggle-row"><span class="flabel">Significant</span>
+          <div class="tog" id="b-sig" onclick="this.classList.toggle('on')"></div></div>
+        <div class="ftoggle-row"><span class="flabel">Rotate Camera</span>
+          <div class="tog" id="b-rc" onclick="this.classList.toggle('on')"></div></div>
+      </div>
+
+      <div class="fsec">
+        <div class="fsec-title">ACHIEVEMENTS</div>
+        <div class="ftoggle-row"><span class="flabel">Landed</span>
+          <div class="tog" id="a-landed" onclick="this.classList.toggle('on')"></div></div>
+        <div class="ftoggle-row"><span class="flabel">Takeoff</span>
+          <div class="tog" id="a-takeoff" onclick="this.classList.toggle('on')"></div></div>
+        <div class="ftoggle-row"><span class="flabel">Atmosphere</span>
+          <div class="tog" id="a-atmosphere" onclick="this.classList.toggle('on')"></div></div>
+        <div class="ftoggle-row"><span class="flabel">Orbit</span>
+          <div class="tog" id="a-orbit" onclick="this.classList.toggle('on')"></div></div>
+        <div class="ftoggle-row"><span class="flabel">Crash</span>
+          <div class="tog" id="a-crash" onclick="this.classList.toggle('on')"></div></div>
+      </div>
+    </div>
+
+    <!-- ── ATMOSPHERE ── -->
+    <div class="tab-panel" id="tab-atmos">
+      <div class="fsec">
+        <div class="fsec-title">PHYSICS <span class="badge">ATMO_PHYSICS_DATA</span></div>
+        <div class="ftoggle-row"><span class="flabel">Has Atmosphere Physics</span>
+          <div class="tog on" id="ap-has" onclick="this.classList.toggle('on');toggleAtmos()"></div></div>
+        <div class="ftoggle-row" style="opacity:0.75"><span class="flabel" style="color:var(--sky2)">Show Physical Atmo</span>
+          <div class="tog" id="env-btn-physAtmo" onclick="toggleEnvFlag('physAtmo')" style="cursor:pointer"></div></div>
+        <div id="atmos-fields">
+          <div class="frow"><span class="flabel">Height (m)</span>
+            <input class="finput" style="flex:1;min-width:60px" id="ap-height" type="number" step="1000"><select class="funit-sel" id="ap-height-unit" style="width:52px" onchange="onSimpleKmChange('ap-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow"><span class="flabel">Density</span>
+            <input class="finput" id="ap-density" type="number" step="0.0001"></div>
+          <div class="frow"><span class="flabel">Curve</span>
+            <input class="finput" id="ap-curve" type="number" step="0.5"></div>
+          <div class="frow"><span class="flabel">Parachute Mult.</span>
+            <input class="finput" id="ap-chute" type="number" step="0.1"></div>
+          <div class="frow"><span class="flabel">Upper Atmosphere</span>
+            <input class="finput" id="ap-upper" type="number" step="0.01"></div>
+          <div class="frow"><span class="flabel">Shockwave Intens.</span>
+            <input class="finput" id="ap-shock" type="number" step="0.05"></div>
+          <div class="frow"><span class="flabel">Min Heat Vel. Mult.</span>
+            <input class="finput" id="ap-mhvm" type="number" step="0.1"></div>
+        </div>
+      </div>
+      <div class="fsec">
+        <div class="fsec-title">GRADIENT <span class="badge">ATMO_VISUALS_DATA</span></div>
+        <div class="ftoggle-row"><span class="flabel">Has Atmosphere Visuals</span>
+          <div class="tog on" id="av-has" onclick="this.classList.toggle('on');toggleAtmoSection('av-fields','av-has')"></div></div>
+        <div id="av-fields">
+          <div class="frow"><span class="flabel">Position Z</span>
+            <input class="finput" id="av-pz" type="number" step="500"></div>
+          <div class="frow"><span class="flabel">Height (m)</span>
+            <input class="finput" style="flex:1;min-width:60px" id="av-height" type="number" step="10000"><select class="funit-sel" id="av-height-unit" style="width:52px" onchange="onSimpleKmChange('av-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow"><span class="flabel">Texture</span>
+            <div class="tpick-wrap" id="tpw-av-tex"><input class="tpick-input" id="av-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-av-tex">✕</button><div class="tpick-dropdown" id="tpd-av-tex"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="fsec">
+        <div class="fsec-title">CLOUDS</div>
+        <div class="ftoggle-row"><span class="flabel">Has Clouds</span>
+          <div class="tog on" id="cl-has" onclick="this.classList.toggle('on');toggleAtmoSection('cl-fields','cl-has')"></div></div>
+        <div id="cl-fields">
+          <div class="frow"><span class="flabel">Texture</span>
+            <div class="tpick-wrap" id="tpw-cl-tex"><input class="tpick-input" id="cl-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-cl-tex">✕</button><div class="tpick-dropdown" id="tpd-cl-tex"></div></div></div>
+          <div class="frow"><span class="flabel">Start Height</span>
+            <input class="finput" style="flex:1;min-width:60px" id="cl-sh" type="number" step="100" oninput="clWidthAutoSync();syncCloudVel()"><select class="funit-sel" id="cl-sh-unit" style="width:52px" onchange="onSimpleKmChange('cl-sh')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow"><span class="flabel">Width</span>
+            <input class="finput" style="flex:1;min-width:60px" id="cl-w" type="number" step="1000" oninput="clWidthAutoSync()"><select class="funit-sel" id="cl-w-unit" style="width:52px" onchange="onSimpleKmChange('cl-w')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <!-- Auto-generate width from circumference -->
+          <div style="background:var(--bg2);border-radius:5px;padding:6px 8px;margin-bottom:4px;border:1px solid var(--ink5)">
+            <div style="font-size:.58rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;margin-bottom:5px;letter-spacing:.05em">
+              AUTO WIDTH &nbsp;<span style="color:var(--ink5);font-weight:400">2π·(StartHeight+Radius) / N</span>
+            </div>
+            <div style="display:flex;gap:5px;align-items:center">
+              <span style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;white-space:nowrap">N =</span>
+              <input id="cl-w-n" class="finput" type="number" value="100" min="1" step="1"
+                style="width:70px" oninput="clWidthAutoSync()" title="Number of cloud repetitions">
+            </div>
+            <div id="cl-w-preview" style="font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;margin-top:4px;opacity:.85"></div>
+          </div>
+          <div class="frow"><span class="flabel">Height</span>
+            <input class="finput" style="flex:1;min-width:60px" id="cl-h" type="number" step="1000"><select class="funit-sel" id="cl-h-unit" style="width:52px" onchange="onSimpleKmChange('cl-h')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Cloud Alpha</span><span class="fval" id="cl-a-val">—</span><input class="finput" id="cl-a" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('cl-a',0,1)"></div>
+            <input class="fslider" id="cl-a-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('cl-a',0,1,2)">
+          </div>
+          <div class="frow" style="flex-wrap:wrap;gap:4px">
+            <span class="flabel" style="flex:0 0 100%">Cloud Velocity</span>
+            <select class="fselect" id="cl-v-mode" style="flex:0 0 auto;font-size:.62rem;padding:3px 5px" onchange="syncCloudVel()" title="Input mode">
+              <option value="ms">m/s</option>
+              <option value="rph">rot/hr</option>
+              <option value="rps">rot/s</option>
+            </select>
+            <input class="finput" id="cl-v-input" type="number" step="0.001" style="flex:1;min-width:60px" oninput="syncCloudVel()" title="Cloud velocity">
+            <input type="hidden" id="cl-v">
+            <span id="cl-v-hint" style="flex:0 0 100%;font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;opacity:.7;padding-left:2px"></span>
+          </div>
+        </div>
+      </div>
+      <div class="fsec">
+        <div class="fsec-title">FRONT CLOUDS <span class="badge">FRONT_CLOUDS_DATA</span></div>
+        <div class="ftoggle-row"><span class="flabel">Has Front Clouds</span>
+          <div class="tog" id="fc-has" onclick="this.classList.toggle('on');toggleAtmoSection('fc-fields','fc-has')"></div></div>
+        <div id="fc-fields">
+          <div class="frow"><span class="flabel">Clouds Texture</span>
+            <div class="tpick-wrap" id="tpw-fc-tex"><input class="tpick-input" id="fc-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-fc-tex">✕</button><div class="tpick-dropdown" id="tpd-fc-tex"></div></div></div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Cutout</span><span class="fval" id="fc-cut-val">—</span><input class="finput" id="fc-cut" type="number" step="0.01" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('fc-cut',-1,1)"></div>
+            <input class="fslider" id="fc-cut-sl" type="range" min="-1" max="1" step="0.01" oninput="syncFromSlider('fc-cut',-1,1,2)">
+          </div>
+          <div class="frow"><span class="flabel">Fade Zone Ht.</span>
+            <input class="finput" style="flex:1;min-width:60px" id="fc-fzh" type="number" step="1000"><select class="funit-sel" id="fc-fzh-unit" style="width:52px" onchange="onSimpleKmChange('fc-fzh')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow"><span class="flabel">Height</span>
+            <input class="finput" style="flex:1;min-width:60px" id="fc-h" type="number" step="1000"><select class="funit-sel" id="fc-h-unit" style="width:52px" onchange="onSimpleKmChange('fc-h')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow"><span class="flabel">Position Z</span>
+            <input class="finput" id="fc-pz" type="number" step="500"></div>
+          <div class="ftoggle-row"><span class="flabel">Sharpen Alpha</span>
+            <div class="tog" id="fc-sa" onclick="this.classList.toggle('on')"></div></div>
+        </div>
+      </div>
+      <div class="fsec">
+        <div class="fsec-title">FOG KEYS</div>
+        <div class="ftoggle-row"><span class="flabel">Has Fog</span>
+          <div class="tog" id="fog-has" onclick="this.classList.toggle('on');toggleAtmoSection('fog-fields','fog-has')"></div></div>
+        <div id="fog-fields">
+          <div id="fog-keys-list"></div>
+          <button class="add-btn" onclick="addFogKey()">+ ADD FOG KEY</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TERRAIN ── -->
+    <div class="tab-panel" id="tab-terrain">
+      <div class="fsec">
+        <div class="fsec-title">TERRAIN DATA</div>
+        <div class="ftoggle-row"><span class="flabel">Has Terrain Data</span>
+          <div class="tog" id="ter-has" onclick="this.classList.toggle('on');toggleTerrain()"></div></div>
+        <div id="terrain-fields">
+        <div class="fsec-title" style="margin-top:10px">TEXTURE DATA</div>
+        <div class="frow"><span class="flabel">Planet Texture</span>
+          <div class="tpick-wrap" id="tpw-tt-pt"><input class="tpick-input" id="tt-pt" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-pt">✕</button><div class="tpick-dropdown" id="tpd-tt-pt"></div></div></div>
+        <div class="frow-s">
+          <div class="frow-s-top"><span class="flabel">Tex Cutout</span><span class="fval" id="tt-cut-val">—</span><input class="finput" id="tt-cut" type="number" step="0.001" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-cut',-1,1)"></div>
+          <input class="fslider" id="tt-cut-sl" type="range" min="-1" max="1" step="0.001" oninput="syncFromSlider('tt-cut',-1,1,3)">
+        </div>
+        <div class="frow-s">
+          <div class="frow-s-top"><span class="flabel">Tex Rotation</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="tt-rot-val">—</span><input class="finput" id="tt-rot" type="number" step="0.1" min="-360" max="360" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-rot',-360,360)"></div>
+          <input class="fslider" id="tt-rot-sl" type="range" min="-360" max="360" step="0.1" oninput="syncFromSlider('tt-rot',-360,360,1)">
+        </div>
+        <div class="ftoggle-row"><span class="flabel">Lock Texture to Surface <span style="color:var(--ink4);font-size:.52rem">(DontDistort)</span></span>
+          <div class="tog" id="tt-nd" onclick="this.classList.toggle('on')"></div></div>
+        <div class="frow"><span class="flabel">Surface Tex A</span>
+          <div class="tpick-wrap" id="tpw-tt-sa"><input class="tpick-input" id="tt-sa" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sa">✕</button><div class="tpick-dropdown" id="tpd-tt-sa"></div></div></div>
+        <div class="frow"><span class="flabel">Surf Size A (x,y)</span>
+          <input class="finput" id="tt-sax" type="number" step="1" placeholder="x" style="flex:0 0 55px">
+          <input class="finput" id="tt-say" type="number" step="1" placeholder="y" style="flex:0 0 55px">
+        </div>
+        <div class="frow" title="Min screen radius (px) at which Tex A begins fading in. Leave blank for default (80px). Larger = appears only when closer."><span class="flabel">Tex A LOD dist</span>
+          <input class="finput" id="tt-lod-a" type="number" step="1" min="0" placeholder="px (def 80)">
+        </div>
+        <div class="frow"><span class="flabel">Surface Tex B</span>
+          <div class="tpick-wrap" id="tpw-tt-sb"><input class="tpick-input" id="tt-sb" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sb">✕</button><div class="tpick-dropdown" id="tpd-tt-sb"></div></div></div>
+        <div class="frow"><span class="flabel">Surf Size B (x,y)</span>
+          <input class="finput" id="tt-sbx" type="number" step="1" placeholder="x" style="flex:0 0 55px">
+          <input class="finput" id="tt-sby" type="number" step="1" placeholder="y" style="flex:0 0 55px">
+        </div>
+        <div class="frow" title="Min screen radius (px) at which Tex B begins fading in. Leave blank for default (80px)."><span class="flabel">Tex B LOD dist</span>
+          <input class="finput" id="tt-lod-b" type="number" step="1" min="0" placeholder="px (def 80)">
+        </div>
+        <div class="frow"><span class="flabel">Terrain Tex C</span>
+          <div class="tpick-wrap" id="tpw-tt-tc"><input class="tpick-input" id="tt-tc" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-tc">✕</button><div class="tpick-dropdown" id="tpd-tt-tc"></div></div></div>
+        <div class="frow"><span class="flabel">Terrain Size C</span>
+          <input class="finput" id="tt-tcx" type="number" step="1" placeholder="x" style="flex:0 0 55px">
+          <input class="finput" id="tt-tcy" type="number" step="1" placeholder="y" style="flex:0 0 55px">
+        </div>
+        <div class="frow" title="Min screen radius (px) at which Tex C begins fading in. Leave blank for default (80px)."><span class="flabel">Tex C LOD dist</span>
+          <input class="finput" id="tt-lod-c" type="number" step="1" min="0" placeholder="px (def 80)">
+        </div>
+        <div class="frow"><span class="flabel">Surface Layer Size</span>
+          <input class="finput" id="tt-sls" type="number" step="1"></div>
+        <div class="frow-s">
+          <div class="frow-s-top"><span class="flabel">Min Fade</span><span class="fval" id="tt-mif-val">—</span><input class="finput" id="tt-mif" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-mif',0,1)"></div>
+          <input class="fslider" id="tt-mif-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('tt-mif',0,1,2)">
+        </div>
+        <div class="frow-s">
+          <div class="frow-s-top"><span class="flabel">Max Fade</span><span class="fval" id="tt-maf-val">—</span><input class="finput" id="tt-maf" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-maf',0,1)"></div>
+          <input class="fslider" id="tt-maf-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('tt-maf',0,1,2)">
+        </div>
+        <div class="frow"><span class="flabel">Shadow Intensity</span>
+          <input class="finput" id="tt-si" type="number" step="0.5"></div>
+        <div class="frow"><span class="flabel">Shadow Height</span>
+          <input class="finput" id="tt-sh" type="number" step="1"></div>
+        </div><!-- end terrain-fields -->
+      </div>
+    </div>
+
+    <!-- ── HEIGHTMAP ── -->
+    <div class="tab-panel" id="tab-heightmap">
+      <div id="heightmap-no-terrain" style="display:none;padding:20px 0;text-align:center;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--ink4);line-height:1.7">
+        ⛔ This body has no Terrain Data.<br>Enable <strong style="color:var(--sky2)">Has Terrain Data</strong> in the TERRAIN tab first.
+      </div>
+      <div id="heightmap-fields">
+
+        <!-- ── HEIGHTMAPS ── -->
+        <div class="fsec">
+          <div class="fsec-title" style="display:flex;align-items:center;justify-content:space-between">
+            <span>MY HEIGHTMAPS</span>
+            <div style="display:flex;gap:4px;align-items:center">
+              <button onclick="hmToggleLibrary()" id="hm-collapse-btn" style="font-size:.6rem;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--ink3);border:1px solid var(--ink5);cursor:pointer;font-family:'JetBrains Mono',monospace">▾ HIDE</button>
+              <button onclick="hmUploadClick()" style="font-size:.6rem;padding:2px 8px;border-radius:4px;background:var(--sky2);color:#000;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.04em">+ ADD FILE</button>
+            </div>
+          </div>
+          <input type="file" id="hm-file-input" multiple accept=".png,.txt" style="display:none" onchange="hmFileAdded(this.files)">
+          <!-- loaded heightmap grid rendered here by JS -->
+          <div id="hm-library-wrap">
+            <div id="hm-loaded-list" style="margin-top:4px"></div>
+            <div id="hm-empty-hint" style="font-size:.62rem;color:var(--ink4);padding:10px 8px;line-height:1.8;background:var(--bg2);border-radius:6px;text-align:center">
+              <div style="font-size:1.4rem;margin-bottom:4px">🗺️</div>
+              <strong style="color:var(--ink2);font-size:.65rem">No heightmaps loaded yet</strong><br>
+              Heightmaps shape your planet's terrain.<br>
+              Click <strong style="color:var(--sky2)">+ ADD FILE</strong> to upload a<br>
+              <code style="color:var(--sky2)">.png</code> image or <code style="color:var(--sky2)">.txt</code> formula file.
+            </div>
+          </div>
+        </div>
+
+        <!-- ── FORMULA BUILDER ── -->
+        <div class="fsec">
+          <div class="fsec-title" style="display:flex;align-items:center;justify-content:space-between">
+            <span>TERRAIN FORMULA <span class="badge" id="hm-diff-badge">Normal</span></span>
+            <div style="display:flex;gap:4px">
+              <button onclick="hmSetDiff('Normal')"   id="hm-btn-n" style="font-size:.55rem;padding:2px 6px;border-radius:3px;border:1px solid var(--sky2);background:var(--sky2);color:#000;cursor:pointer;font-family:'JetBrains Mono',monospace">NRM</button>
+              <button onclick="hmSetDiff('Hard')"     id="hm-btn-h" style="font-size:.55rem;padding:2px 6px;border-radius:3px;border:1px solid var(--ink3);background:transparent;color:var(--ink3);cursor:pointer;font-family:'JetBrains Mono',monospace">HRD</button>
+              <button onclick="hmSetDiff('Realistic')" id="hm-btn-r" style="font-size:.55rem;padding:2px 6px;border-radius:3px;border:1px solid var(--ink3);background:transparent;color:var(--ink3);cursor:pointer;font-family:'JetBrains Mono',monospace">RLS</button>
+            </div>
+          </div>
+
+          <!-- quick-insert row — hidden, kept for JS compat -->
+          <div id="hm-insert-row" style="display:none;flex-wrap:wrap;gap:4px;margin-bottom:6px"></div>
+
+          <!-- visual formula lines list -->
+          <div id="hm-formula-list" style="margin-bottom:6px"></div>
+
+          <!-- add-line controls -->
+          <div style="background:var(--bg2);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;margin-bottom:2px">ADD LAYER</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <select id="hm-op" class="fselect" style="flex:1;min-width:120px">
+                <option value="OUTPUT = SetHeightMap">SetHeightMap — replace</option>
+                <option value="OUTPUT = AddHeightMap">AddHeightMap — add on top</option>
+                <option value="OUTPUT = MultiplyHeightMap">MultiplyHeightMap — scale</option>
+                <option value="OUTPUT = ClampHeightMap">ClampHeightMap — limit</option>
+              </select>
+              <select id="hm-map" class="fselect" style="flex:1;min-width:100px">
+                <option value="Perlin">Perlin (built-in)</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center">
+              <span style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;white-space:nowrap">Scale</span>
+              <input id="hm-scale" class="finput" type="number" value="100000" step="10000" style="width:90px">
+              <span style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;white-space:nowrap">Height (m)</span>
+              <input id="hm-height" class="finput" type="number" value="35" step="5" style="width:70px">
+            </div>
+            <button onclick="hmAddLine()" style="font-size:.62rem;padding:4px 0;border-radius:4px;background:var(--sky2);color:#000;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:700;width:100%">＋ ADD LAYER TO FORMULA</button>
+          </div>
+
+          <!-- raw formula — always live editable -->
+          <details open style="margin-top:8px;background:var(--bg2);border:1px solid var(--sky2);border-radius:6px;overflow:hidden">
+            <summary style="font-size:.65rem;font-weight:700;color:var(--sky2);font-family:'JetBrains Mono',monospace;cursor:pointer;user-select:none;padding:7px 10px;letter-spacing:.06em;list-style:none;display:flex;align-items:center;gap:6px">
+              <span id="hm-adv-arrow" style="font-size:.7rem">▾</span>
+              RAW DATA
+              <span style="font-size:.55rem;font-weight:400;background:var(--sky2);color:#000;border-radius:3px;padding:1px 5px;letter-spacing:.04em">LIVE</span>
+            </summary>
+            <div style="padding:8px 10px 10px;border-top:1px solid var(--sky2)">
+              <div style="font-size:.55rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;margin-bottom:5px;line-height:1.5">Edit directly — changes apply instantly as you type.</div>
+              <textarea id="tf-normal"    placeholder="OUTPUT = AddHeightMap(Perlin, 100000, 35)" style="display:none"></textarea>
+              <textarea id="tf-hard"      placeholder="Same as Normal if empty"                   style="display:none"></textarea>
+              <textarea id="tf-realistic" placeholder="Same as Normal if empty"                   style="display:none"></textarea>
+              <textarea id="hm-raw-view" style="font-size:.6rem;height:90px;resize:vertical;background:var(--bg1);color:var(--sky2);border:1px solid var(--sky2);border-radius:4px;padding:6px;font-family:'JetBrains Mono',monospace;width:100%;box-sizing:border-box;outline:none;caret-color:var(--ink1)" placeholder="(formula appears here — type to edit live)"></textarea>
+            </div>
+          </details>
+        </div>
+
+        <!-- ── TERRAIN SETTINGS ── -->
+        <div class="fsec">
+          <div class="fsec-title">TERRAIN SETTINGS</div>
+          <div class="frow"><span class="flabel">Vertice Size</span>
+            <input class="finput" id="ter-vs" type="number" step="0.5"></div>
+          <div class="ftoggle-row"><span class="flabel">Collider</span>
+            <div class="tog on" id="ter-col" onclick="this.classList.toggle('on')"></div></div>
+        </div>
+
+        <!-- ── ROCKS ── -->
+        <div class="fsec">
+          <div class="fsec-title">ROCKS</div>
+          <div class="frow"><span class="flabel">Rock Type</span>
+            <select class="fselect" id="rk-type">
+              <option>None</option><option selected>Rock Square</option><option>Rock Round</option>
+            </select></div>
+          <div class="frow"><span class="flabel">Density</span>
+            <input class="finput" id="rk-den" type="number" step="0.05" min="0" max="1"></div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Min Size</span><span class="fval" id="rk-min-val">—</span><input class="finput" id="rk-min" type="number" step="0.1" min="0" max="10" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-min',0,10)"></div>
+            <input class="fslider" id="rk-min-sl" type="range" min="0" max="10" step="0.1" oninput="syncFromSlider('rk-min',0,10,2)">
+          </div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Max Size</span><span class="fval" id="rk-max-val">—</span><input class="finput" id="rk-max" type="number" step="0.1" min="0" max="10" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-max',0,10)"></div>
+            <input class="fslider" id="rk-max-sl" type="range" min="0" max="10" step="0.1" oninput="syncFromSlider('rk-max',0,10,2)">
+          </div>
+          <div class="frow"><span class="flabel">Power Curve</span>
+            <input class="finput" id="rk-pc" type="number" step="0.1"></div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Max Angle</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="rk-ma-val">—</span><input class="finput" id="rk-ma" type="number" step="1" min="0" max="90" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-ma',0,90)"></div>
+            <input class="fslider" id="rk-ma-sl" type="range" min="0" max="90" step="1" oninput="syncFromSlider('rk-ma',0,90,0)">
+          </div>
+        </div>
+
+      </div><!-- end heightmap-fields -->
+    </div>
+
+    <!-- ── RINGS ── -->
+    <div class="tab-panel" id="tab-rings">
+      <div class="fsec">
+        <div class="fsec-title">RINGS DATA</div>
+        <div class="ftoggle-row"><span class="flabel">Has Rings</span>
+          <div class="tog" id="rng-has" onclick="this.classList.toggle('on');toggleRings()"></div></div>
+        <div id="rings-fields" style="opacity:.35;pointer-events:none">
+          <div class="frow"><span class="flabel">Rings Texture</span>
+            <div class="tpick-wrap" id="tpw-rng-tex"><input class="tpick-input" id="rng-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-rng-tex">✕</button><div class="tpick-dropdown" id="tpd-rng-tex"></div></div></div>
+          <div class="frow"><span class="flabel">Start Radius</span>
+            <input class="finput" id="rng-sr" type="number" step="50000" oninput="onDistInput('rng-sr','rng-sr-unit','rng-sr-hint','radius')">
+            <select class="funit-sel" id="rng-sr-unit" onchange="onUnitChange('rng-sr','rng-sr-unit','rng-sr-hint','radius')">
+              <option value="m">m</option><option value="km" selected>km</option><option value="Mm">Mm</option><option value="Gm">Gm</option><option value="ly">ly</option><option value="R_earth">R Earth</option><option value="R_sun">R Sun</option><option value="R_jupiter">R Jupiter</option>
+            </select></div>
+          <div id="rng-sr-hint" class="funit-hint"></div>
+          <div class="frow"><span class="flabel">End Radius</span>
+            <input class="finput" id="rng-er" type="number" step="50000" oninput="onDistInput('rng-er','rng-er-unit','rng-er-hint','radius')">
+            <select class="funit-sel" id="rng-er-unit" onchange="onUnitChange('rng-er','rng-er-unit','rng-er-hint','radius')">
+              <option value="m">m</option><option value="km" selected>km</option><option value="Mm">Mm</option><option value="Gm">Gm</option><option value="ly">ly</option><option value="R_earth">R Earth</option><option value="R_sun">R Sun</option><option value="R_jupiter">R Jupiter</option>
+            </select></div>
+          <div id="rng-er-hint" class="funit-hint"></div>
+          <div class="frow"><span class="flabel">Position Z</span>
+            <input class="finput" id="rng-pz" type="number" step="500"></div>
+          <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Map Color</div>
+          <div class="cpick-wrap"><span class="flabel">Map Color</span>
+            <input type="color" class="cpick-swatch" id="rng-map-pick" oninput="onCpick('rng-map-pick','rng-map-hex','rng-map-r','rng-map-g','rng-map-b')">
+            <input type="text" class="cpick-hex" id="rng-map-hex" maxlength="7" oninput="onChex('rng-map-hex','rng-map-pick','rng-map-r','rng-map-g','rng-map-b')">
+          </div>
+          <div class="cpick-alpha-row"><span class="cpick-alpha-label">A</span>
+            <input type="range" class="cpick-alpha" id="rng-map-a-s" min="0" max="1" step="0.01" oninput="document.getElementById('rng-map-a-v').textContent=parseFloat(this.value).toFixed(2);document.getElementById('rng-map-a').value=this.value">
+            <span class="cpick-alpha-val" id="rng-map-a-v">0.20</span>
+          </div>
+          <input type="hidden" id="rng-map-r"><input type="hidden" id="rng-map-g"><input type="hidden" id="rng-map-b"><input type="hidden" id="rng-map-a" value="0.2">
+        </div>
+      </div>
+    </div>
+
+    <!-- ── WATER ── -->
+    <div class="tab-panel" id="tab-water">
+      <div class="fsec">
+        <div class="fsec-title">WATER / OCEAN</div>
+        <div class="ftoggle-row"><span class="flabel">Has Ocean</span>
+          <div class="tog" id="wt-has" onclick="this.classList.toggle('on');toggleWater()"></div></div>
+        <div id="water-fields" style="opacity:.35;pointer-events:none">
+          <div class="frow"><span class="flabel">Ocean Mask Tex</span>
+            <div class="tpick-wrap" id="tpw-wt-tex"><input class="tpick-input" id="wt-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-wt-tex">✕</button><div class="tpick-dropdown" id="tpd-wt-tex"></div></div></div>
+          <div class="ftoggle-row"><span class="flabel">Lower Terrain</span>
+            <div class="tog on" id="wt-lt" onclick="this.classList.toggle('on')"></div></div>
+          <div class="frow"><span class="flabel">Ocean Depth</span>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-dep" type="number" step="100"><select class="funit-sel" id="wt-dep-unit" style="width:52px" onchange="onSimpleKmChange('wt-dep')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Surface Opacity</span><span class="fval" id="wt-so-val">—</span><input class="finput" id="wt-so" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-so',0,1)"></div>
+            <input class="fslider" id="wt-so-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('wt-so',0,1,2)">
+          </div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Far Opacity</span><span class="fval" id="wt-fo-val">—</span><input class="finput" id="wt-fo" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-fo',0,1)"></div>
+            <input class="fslider" id="wt-fo-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('wt-fo',0,1,2)">
+          </div>
+          <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Water Colors</div>
+          <div class="cpick-wrap"><span class="flabel">Sand</span>
+            <input type="color" class="cpick-swatch" id="wt-sand-pick" oninput="onCpick('wt-sand-pick','wt-sand-hex','wt-sand-r','wt-sand-g','wt-sand-b')">
+            <input type="text" class="cpick-hex" id="wt-sand-hex" maxlength="7" oninput="onChex('wt-sand-hex','wt-sand-pick','wt-sand-r','wt-sand-g','wt-sand-b')">
+          </div>
+          <div class="cpick-alpha-row"><span class="cpick-alpha-label">A</span>
+            <input type="range" class="cpick-alpha" id="wt-sand-a-s" min="0" max="1" step="0.01" oninput="document.getElementById('wt-sand-a-v').textContent=parseFloat(this.value).toFixed(2);document.getElementById('wt-sand-a').value=this.value">
+            <span class="cpick-alpha-val" id="wt-sand-a-v">1.00</span>
+          </div>
+          <div class="cpick-wrap"><span class="flabel">Shallow</span>
+            <input type="color" class="cpick-swatch" id="wt-shal-pick" oninput="onCpick('wt-shal-pick','wt-shal-hex','wt-shal-r','wt-shal-g','wt-shal-b')">
+            <input type="text" class="cpick-hex" id="wt-shal-hex" maxlength="7" oninput="onChex('wt-shal-hex','wt-shal-pick','wt-shal-r','wt-shal-g','wt-shal-b')">
+          </div>
+          <div class="cpick-alpha-row"><span class="cpick-alpha-label">A</span>
+            <input type="range" class="cpick-alpha" id="wt-shal-a-s" min="0" max="1" step="0.01" oninput="document.getElementById('wt-shal-a-v').textContent=parseFloat(this.value).toFixed(2);document.getElementById('wt-shal-a').value=this.value">
+            <span class="cpick-alpha-val" id="wt-shal-a-v">0.40</span>
+          </div>
+          <div class="cpick-wrap"><span class="flabel">Deep</span>
+            <input type="color" class="cpick-swatch" id="wt-deep-pick" oninput="onCpick('wt-deep-pick','wt-deep-hex','wt-deep-r','wt-deep-g','wt-deep-b')">
+            <input type="text" class="cpick-hex" id="wt-deep-hex" maxlength="7" oninput="onChex('wt-deep-hex','wt-deep-pick','wt-deep-r','wt-deep-g','wt-deep-b')">
+          </div>
+          <div class="cpick-alpha-row"><span class="cpick-alpha-label">A</span>
+            <input type="range" class="cpick-alpha" id="wt-deep-a-s" min="0" max="1" step="0.01" oninput="document.getElementById('wt-deep-a-v').textContent=parseFloat(this.value).toFixed(2);document.getElementById('wt-deep-a').value=this.value">
+            <span class="cpick-alpha-val" id="wt-deep-a-v">1.00</span>
+          </div>
+          <div class="cpick-wrap"><span class="flabel">Floor</span>
+            <input type="color" class="cpick-swatch" id="wt-floor-pick" oninput="onCpick('wt-floor-pick','wt-floor-hex','wt-floor-r','wt-floor-g','wt-floor-b')">
+            <input type="text" class="cpick-hex" id="wt-floor-hex" maxlength="7" oninput="onChex('wt-floor-hex','wt-floor-pick','wt-floor-r','wt-floor-g','wt-floor-b')">
+          </div>
+          <div class="cpick-alpha-row"><span class="cpick-alpha-label">A</span>
+            <input type="range" class="cpick-alpha" id="wt-floor-a-s" min="0" max="1" step="0.01" oninput="document.getElementById('wt-floor-a-v').textContent=parseFloat(this.value).toFixed(2);document.getElementById('wt-floor-a').value=this.value">
+            <span class="cpick-alpha-val" id="wt-floor-a-v">1.00</span>
+          </div>
+          <!-- hidden float carriers -->
+          <input type="hidden" id="wt-sand-r"><input type="hidden" id="wt-sand-g"><input type="hidden" id="wt-sand-b"><input type="hidden" id="wt-sand-a" value="1">
+          <input type="hidden" id="wt-shal-r"><input type="hidden" id="wt-shal-g"><input type="hidden" id="wt-shal-b"><input type="hidden" id="wt-shal-a" value="0.4">
+          <input type="hidden" id="wt-deep-r"><input type="hidden" id="wt-deep-g"><input type="hidden" id="wt-deep-b"><input type="hidden" id="wt-deep-a" value="1">
+          <input type="hidden" id="wt-floor-r"><input type="hidden" id="wt-floor-g"><input type="hidden" id="wt-floor-b"><input type="hidden" id="wt-floor-a" value="1">
+
+          <!-- ── ADVANCED (collapsible) ── -->
+          <button onclick="(function(btn){var c=document.getElementById('wt-advanced');var open=c.style.display!=='none';c.style.display=open?'none':'block';btn.querySelector('.wt-adv-arrow').textContent=open?'▸':'▾';})(this)"
+            style="width:100%;margin-top:10px;background:var(--ac08);border:1px solid var(--ac18);
+                   color:var(--ink4);font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.12em;
+                   padding:7px 10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:7px;
+                   transition:background .15s,color .15s">
+            <span class="wt-adv-arrow" style="font-size:.7rem;line-height:1;color:var(--sky2)">▸</span>
+            ADVANCED
+          </button>
+          <div id="wt-advanced" style="display:none;margin-top:2px;padding:8px 0 0 0">
+
+          <div class="fsec-title" style="font-size:.55rem;margin-top:4px">Map Color <span style="color:var(--ink4);font-size:.52rem">(orbital map)</span></div>
+          <div class="cpick-wrap"><span class="flabel">Map Color</span>
+            <input type="color" class="cpick-swatch" id="wt-map-pick" oninput="onCpick('wt-map-pick','wt-map-hex','wt-map-r','wt-map-g','wt-map-b')">
+            <input type="text" class="cpick-hex" id="wt-map-hex" maxlength="7" oninput="onChex('wt-map-hex','wt-map-pick','wt-map-r','wt-map-g','wt-map-b')">
+          </div>
+          <div class="cpick-alpha-row"><span class="cpick-alpha-label">A</span>
+            <input type="range" class="cpick-alpha" id="wt-map-a-s" min="0" max="1" step="0.01" oninput="document.getElementById('wt-map-a-v').textContent=parseFloat(this.value).toFixed(2);document.getElementById('wt-map-a').value=this.value">
+            <span class="cpick-alpha-val" id="wt-map-a-v">0.40</span>
+          </div>
+          <input type="hidden" id="wt-map-r"><input type="hidden" id="wt-map-g"><input type="hidden" id="wt-map-b"><input type="hidden" id="wt-map-a" value="0.4">
+
+          <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Opacity</div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Full Darkness</span><span class="fval" id="wt-fd-val">—</span><input class="finput" id="wt-fd" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-fd',0,1)"></div>
+            <input class="fslider" id="wt-fd-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('wt-fd',0,1,2)">
+          </div>
+
+          <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Visibility Distances</div>
+          <div class="frow"><span class="flabel">Surface Vis. Dist.</span>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-svd" type="number" step="10"><select class="funit-sel" id="wt-svd-unit" style="width:52px" onchange="onSimpleKmChange('wt-svd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow"><span class="flabel">Full Dark. Depth</span>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-fdd" type="number" step="10"><select class="funit-sel" id="wt-fdd-unit" style="width:52px" onchange="onSimpleKmChange('wt-fdd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <div class="frow"><span class="flabel">Full Dark. Vis. Dist.</span>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-fdvd" type="number" step="10"><select class="funit-sel" id="wt-fdvd-unit" style="width:52px" onchange="onSimpleKmChange('wt-fdvd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+
+          <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Mask Gradient — Water</div>
+          <div class="frow"><span class="flabel">Must</span>
+            <input class="finput" id="wt-mgw-must" type="number" step="10"></div>
+          <div class="frow"><span class="flabel">Cannot</span>
+            <input class="finput" id="wt-mgw-can" type="number" step="10"></div>
+          <div class="frow"><span class="flabel">Global</span>
+            <input class="finput" id="wt-mgw-glob" type="number" step="10"></div>
+          <div class="frow"><span class="flabel">Water Grad. Width ×</span>
+            <input class="finput" id="wt-wgwm" type="number" step="0.1"></div>
+
+          <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Mask Gradient — Terrain</div>
+          <div class="frow"><span class="flabel">Must</span>
+            <input class="finput" id="wt-mgt-must" type="number" step="1"></div>
+          <div class="frow"><span class="flabel">Cannot</span>
+            <input class="finput" id="wt-mgt-can" type="number" step="1"></div>
+          <div class="frow"><span class="flabel">Global</span>
+            <input class="finput" id="wt-mgt-glob" type="number" step="1"></div>
+          <div class="frow"><span class="flabel">Sand Grad. Width ×</span>
+            <input class="finput" id="wt-sgwm" type="number" step="0.1"></div>
+          <div class="frow"><span class="flabel">Floor Grad. Width ×</span>
+            <input class="finput" id="wt-fgwm" type="number" step="0.1"></div>
+
+          <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Noise &amp; Waves</div>
+          <div class="frow"><span class="flabel">Shore Noise X</span>
+            <input class="finput" id="wt-snx" type="number" step="100"></div>
+          <div class="frow"><span class="flabel">Shore Noise Y</span>
+            <input class="finput" id="wt-sny" type="number" step="100"></div>
+          <div class="frow"><span class="flabel">Sand Noise X</span>
+            <input class="finput" id="wt-dnx" type="number" step="10"></div>
+          <div class="frow"><span class="flabel">Sand Noise Y</span>
+            <input class="finput" id="wt-dny" type="number" step="10"></div>
+          <div class="frow"><span class="flabel">Waves Size X</span>
+            <input class="finput" id="wt-wvx" type="number" step="1"></div>
+          <div class="frow"><span class="flabel">Waves Size Y</span>
+            <input class="finput" id="wt-wvy" type="number" step="0.01"></div>
+
+          </div><!-- end wt-advanced -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ORBIT ── -->
+    <div class="tab-panel" id="tab-orbit">
+      <div class="fsec">
+        <div class="fsec-title">ORBIT DATA</div>
+        <div class="ftoggle-row" id="or-has-row"><span class="flabel">Has Orbit</span>
+          <div class="tog" id="or-has" onclick="toggleOrbitHas()"></div></div>
+        <div id="or-locked-hint" style="display:none;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--amber);padding:4px 0 6px;opacity:.8">⚠ Orbit is required for non-center bodies</div>
+        <div id="orbit-fields" style="opacity:.35;pointer-events:none">
+          <div class="frow"><span class="flabel">Parent Body</span>
+            <input class="finput" id="or-par" type="text" placeholder="Sun"></div>
+          <div class="frow"><span class="flabel">Semi-major Axis</span>
+            <input class="finput" id="or-sma" type="number" step="100000" oninput="onDistInput('or-sma','or-sma-unit','or-sma-hint','sma')">
+            <select class="funit-sel" id="or-sma-unit" onchange="onUnitChange('or-sma','or-sma-unit','or-sma-hint','sma')">
+              <option value="m">m</option><option value="km">km</option><option value="Mm">Mm</option>
+              <option value="Gm">Gm</option><option value="AU" selected>AU</option><option value="ly">ly</option>
+            </select></div>
+          <div id="or-sma-hint" class="funit-hint"></div>
+          <div class="fsec-title" style="font-size:.55rem;margin-top:6px">SMA Difficulty Scale</div>
+          <div class="diff-grid">
+            <div><div class="diff-label">Normal</div><input class="finput" id="or-sn" type="number" step="0.01"></div>
+            <div><div class="diff-label">Hard</div><input class="finput" id="or-sh" type="number" step="0.01"></div>
+            <div><div class="diff-label">Realistic</div><input class="finput" id="or-sr" type="number" step="0.01"></div>
+          </div>
+        <button type="button" class="default-scale-btn" onclick="setDefaultScale('or-sn','or-sh','or-sr')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Eccentricity</span><span class="fval" id="or-ecc-val">—</span><input class="finput" id="or-ecc" type="number" step="0.001" min="0" max="0.999" style="flex:0 0 72px;width:72px" oninput="syncSlider('or-ecc',0,0.999)"></div>
+            <input class="fslider" id="or-ecc-sl" type="range" min="0" max="0.999" step="0.001" oninput="syncFromSlider('or-ecc',0,0.999,3)">
+          </div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Arg. of Periapsis</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="or-aop-val">—</span><input class="finput" id="or-aop" type="number" step="0.1" min="-360" max="360" style="flex:0 0 56px;width:56px;min-width:0" oninput="syncSlider('or-aop',-360,360)"></div>
+            <input class="fslider" id="or-aop-sl" type="range" min="-360" max="360" step="0.1" oninput="syncFromSlider('or-aop',-360,360,1)">
+          </div>
+          <div class="frow"><span class="flabel">Direction</span>
+            <select class="fselect" id="or-dir">
+              <option value="1">1 — Prograde</option>
+              <option value="-1">-1 — Retrograde</option>
+              <option value="0">0 — Stationary</option>
+            </select></div>
+          <div class="frow"><span class="flabel">SOI Multiplier</span>
+            <input class="finput" id="or-soi" type="number" step="0.1" oninput="updateSOIDisplay()">
+            <span id="or-soi-radius" style="font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;white-space:nowrap;margin-left:4px;opacity:.85"></span></div>
+          <div class="fsec-title" style="font-size:.55rem;margin-top:6px">SOI Difficulty Scale</div>
+          <div class="diff-grid">
+            <div><div class="diff-label">Normal</div><input class="finput" id="or-soin" type="number" step="0.01"></div>
+            <div><div class="diff-label">Hard</div><input class="finput" id="or-soih" type="number" step="0.01"></div>
+            <div><div class="diff-label">Realistic</div><input class="finput" id="or-soir" type="number" step="0.01"></div>
+          </div>
+        <button type="button" class="default-scale-btn" onclick="setDefaultScale('or-soin','or-soih','or-soir')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── POST PROCESSING ── -->
+    <div class="tab-panel" id="tab-post">
+      <div class="fsec">
+        <div class="fsec-title">POST PROCESSING KEYS</div>
+        <div id="pp-keys-list"></div>
+        <button class="add-btn" onclick="addPPKey()">+ ADD KEY</button>
+      </div>
+    </div>
+
+    <!-- ── MISC ── -->
+    <div class="tab-panel" id="tab-misc">
+      <div class="fsec">
+        <div class="fsec-title" style="display:flex;align-items:center;justify-content:space-between">
+          LANDMARKS
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--ink3);font-weight:normal;letter-spacing:.04em">
+            <input type="checkbox" id="lm-show" onchange="drawViewport()" style="accent-color:var(--sky);width:12px;height:12px">
+            SHOW ON PLANET
+          </label>
+        </div>
+        <div id="lm-list"></div>
+        <button class="add-btn" onclick="addLandmark()">+ ADD LANDMARK</button>
+      </div>
+      <div class="fsec">
+        <div class="fsec-title">TEXTURE FORMULA <span class="badge">textureFormula</span></div>
+        <div class="frow-full">
+          <span class="flabel" style="font-size:.65rem;color:var(--ink4);display:block;margin-bottom:4px">One formula per line (controls surface colour blending):</span>
+          <textarea id="tf-texture" placeholder="OUTPUT = AddHeightMap(Perlin, 6793, 1, Curve8)"></textarea>
+        </div>
+      </div>
+      <div class="fsec">
+        <div class="fsec-title" style="display:flex;align-items:center;justify-content:space-between">
+          FLAT ZONES
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--ink3);font-weight:normal;letter-spacing:.04em">
+            <input type="checkbox" id="fz-show" onchange="drawViewport()" style="accent-color:var(--sky);width:12px;height:12px">
+            SHOW ON PLANET
+          </label>
+        </div>
+        <div id="flatzone-list"></div>
+        <button class="add-btn" onclick="addFlatZone()">+ ADD FLAT ZONE</button>
+      </div>
+    </div>
+
+    <!-- ── JSON ── -->
+    <div class="tab-panel" id="tab-json">
+      <div class="fsec">
+        <div class="fsec-title" style="display:flex;align-items:center;justify-content:space-between">
+          RAW JSON
+          <div style="display:flex;gap:6px">
+            <button class="add-btn" style="margin:0;padding:5px 10px;font-size:.58rem;width:auto;border-color:rgba(255,64,96,.3);color:var(--rose)" onclick="refreshJsonView()">↺ REFRESH</button>
+          </div>
+        </div>
+        <div id="json-error" style="display:none;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--rose);padding:6px 0;margin-bottom:4px"></div>
+        <textarea id="json-editor"
+          spellcheck="false"
+          autocorrect="off"
+          autocapitalize="off"
+          style="
+            width:100%; min-height:200px; resize:vertical;
+            background:var(--ov5); border:1px solid var(--ac15);
+            color:#90d8a0; font-family:'JetBrains Mono',monospace; font-size:.68rem;
+            line-height:1.55; padding:10px; outline:none;
+            border-radius:2px; tab-size:2;
+          "
+          oninput="validateJsonEdit(this.value);_jsonAutoApply(this.value)"
+        ></textarea>
+        <div style="font-size:.62rem;color:var(--ink4);margin-top:6px;font-family:'JetBrains Mono',monospace;line-height:1.5">
+          Edit raw JSON directly — changes apply automatically when valid.<br>
+          Changes in other tabs are reflected here on refresh.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════ ASSETS MODAL ══════════════ -->
+<div id="modal-assets">
+  <div class="mpanel" style="width:760px;max-width:97vw">
+    <h2>CUSTOM ASSETS</h2>
+    <p>Upload textures and heightmaps — they appear in all search pickers instantly</p>
+
+    <div class="asset-tabs" style="flex-wrap:wrap;gap:4px">
+      <button class="atab on"  onclick="switchAssetTab('textures',this)">TEXTURES</button>
+      <button class="atab"     onclick="switchAssetTab('heightmaps',this)">HEIGHTMAPS</button>
+      <button class="atab"     onclick="switchAssetTab('other',this)">OTHER</button>
+    </div>
+
+    <!-- TEXTURES — single flat panel with search -->
+    <div class="asset-panel on" id="apanel-textures">
+      <div class="asset-drop" ondragover="event.preventDefault()" ondrop="handleDrop(event,'textures')" onclick="document.getElementById('fi-textures').click()">
+        <span>🖼️</span><p>Drop texture images here or click to browse</p>
+        <small>PNG / JPG / WEBP — appears in all texture search pickers immediately</small>
+      </div>
+      <input type="file" id="fi-textures" multiple accept=".png,.jpg,.jpeg,.webp" style="display:none" onchange="handleFiles(this.files,'textures')">
+      <div style="margin:8px 0 4px;position:relative">
+        <input type="text" id="asset-tex-search" placeholder="Filter textures…"
+          style="width:100%;background:var(--dp3);border:1px solid var(--ac20);color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:.68rem;padding:6px 10px;outline:none"
+          oninput="filterAssetGrid()">
+      </div>
+      <div class="asset-grid" id="agrid-textures" style="max-height:320px;overflow-y:auto"></div>
+      <p id="asset-tex-empty" style="display:none;font-size:.65rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;text-align:center;padding:16px">No textures loaded yet</p>
+    </div>
+
+    <!-- HEIGHTMAPS -->
+    <div class="asset-panel" id="apanel-heightmaps">
+      <div class="asset-drop" ondragover="event.preventDefault()" ondrop="handleDrop(event,'heightmaps')" onclick="document.getElementById('fi-heightmaps').click()">
+        <span>📊</span><p>Drop heightmap .txt or .png files here or click to browse</p>
+        <small>Terrain heightmap data files used in terrain formula expressions</small>
+      </div>
+      <input type="file" id="fi-heightmaps" multiple accept=".txt,.png,.jpg,.jpeg" style="display:none" onchange="handleFiles(this.files,'heightmaps')">
+      <div style="margin:8px 0 4px;position:relative">
+        <input type="text" id="asset-hm-search" placeholder="Filter heightmaps…"
+          style="width:100%;background:var(--dp3);border:1px solid var(--ac20);color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:.68rem;padding:6px 10px;outline:none;box-sizing:border-box"
+          oninput="filterAssetHmList()">
+      </div>
+      <div class="asset-list" id="alist-heightmaps" style="max-height:320px;overflow-y:auto"></div>
+      <p id="asset-hm-empty" style="display:none;font-size:.65rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;text-align:center;padding:16px">No heightmaps loaded yet</p>
+    </div>
+
+    <!-- OTHER -->
+    <div class="asset-panel" id="apanel-other">
+      <div class="asset-drop" ondragover="event.preventDefault()" ondrop="handleDrop(event,'other')" onclick="document.getElementById('fi-other').click()">
+        <span>📎</span><p>Drop any other system files here</p>
+        <small>Space Center data, version files, import settings…</small>
+      </div>
+      <input type="file" id="fi-other" multiple style="display:none" onchange="handleFiles(this.files,'other')">
+      <div class="asset-list" id="alist-other"></div>
+    </div>
+
+    <div class="modal-footer" style="margin-top:16px">
+      <button class="mf-btn ok" onclick="closeAssets()">DONE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SYSTEM SETTINGS<!-- ══════════════ SYSTEM SETTINGS MODAL ══════════════ -->
+<div id="modal-syssettings">
+  <div class="mpanel" style="width:520px">
+    <h2>SYSTEM SETTINGS</h2>
+
+    <!-- Tab bar -->
+    <div style="display:flex;gap:0;margin:10px 0 18px;border-bottom:1px solid var(--ac18)">
+      <button id="stab-general" onclick="switchSettingsTab('general')" style="flex:1;padding:7px 0;background:var(--ac13);border:1px solid var(--ac28);border-bottom:none;color:var(--sky2);font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.08em;cursor:pointer;border-radius:4px 4px 0 0;margin-right:2px">GENERAL</button>
+      <button id="stab-credits" onclick="switchSettingsTab('credits')" style="flex:1;padding:7px 0;background:transparent;border:1px solid transparent;border-bottom:none;color:var(--ink4);font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.08em;cursor:pointer;border-radius:4px 4px 0 0">CREDITS</button>
+    </div>
+
+    <!-- GENERAL tab -->
+    <div id="stab-general-content">
+    <p style="margin-top:-6px;margin-bottom:14px">Global settings exported alongside planet files</p>
+
+    <div class="fsec" style="margin-top:16px">
+      <div class="fsec-title">SYSTEM FOLDER <span class="badge">ZIP / in-game name</span></div>
+      <div class="frow"><span class="flabel">Folder Name</span>
+        <input class="finput" id="sys-foldername" type="text" placeholder="(uses center body name)" spellcheck="false"></div>
+      <p style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;margin-top:4px;line-height:1.5">
+        Overrides the default folder name (center body name).<br>This is what shows in-game as <span style="color:var(--sky2)">Custom System "Name"</span>.
+      </p>
+    </div>
+
+    <div class="fsec" style="margin-top:16px">
+      <div class="fsec-title">IMPORT SETTINGS <span class="badge">Import_Settings.txt</span></div>
+      <div class="ftoggle-row"><span class="flabel">Include Default Planets</span>
+        <div class="tog" id="is-defplanets" onclick="this.classList.toggle('on')"></div></div>
+      <div class="ftoggle-row"><span class="flabel">Include Default Heightmaps</span>
+        <div class="tog on" id="is-defheight" onclick="this.classList.toggle('on')"></div></div>
+      <div class="ftoggle-row"><span class="flabel">Include Default Textures</span>
+        <div class="tog on" id="is-deftex" onclick="this.classList.toggle('on')"></div></div>
+      <div class="ftoggle-row"><span class="flabel">Hide Stars In Atmosphere</span>
+        <div class="tog on" id="is-hidestars" onclick="this.classList.toggle('on')"></div></div>
+      <div class="frow"><span class="flabel">Author Name</span>
+        <input class="finput" id="is-author" type="text" value="n/a"></div>
+      <div class="frow"><span class="flabel">Version</span>
+        <input class="finput" id="is-version" type="text" value="n/a"></div>
+      <div class="frow-full">
+        <span class="flabel" style="display:block;margin-bottom:4px;font-size:.7rem;color:var(--ink4)">Description</span>
+        <textarea id="is-desc" style="width:100%;background:var(--dp3);border:1px solid var(--ac13);color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:.68rem;padding:6px 8px;outline:none;resize:vertical;min-height:52px">n/a</textarea>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <div class="fsec-title">SPACE CENTER <span class="badge">Space_Center_Data.txt</span></div>
+      <div class="frow"><span class="flabel">Address (body name)</span>
+        <input class="finput" id="sc-address" type="text" value="Earth"></div>
+      <div class="frow"><span class="flabel">Angle (°)</span>
+        <input class="finput" id="sc-angle" type="number" step="1" value="90"></div>
+      <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Launch Pad Position</div>
+      <div class="frow"><span class="flabel">Horizontal Pos.</span>
+        <input class="finput" id="sc-hpos" type="number" step="1" value="365"></div>
+      <div class="frow"><span class="flabel">Height</span>
+        <input class="finput" id="sc-height" type="number" step="0.1" value="56.2"></div>
+    </div>
+
+    </div><!-- end stab-general-content -->
+
+    <!-- CREDITS tab -->
+    <div id="stab-credits-content" style="display:none">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.66rem;line-height:2;color:var(--ink2)">
+
+        <div style="margin-bottom:14px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">ASSETS · ZIP PRESETS</div>
+          <div>Astray Galaxy</div>
+          <div>Neverger</div>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">INITIAL BETA TESTERS · FEATURE SUGGESTIONS</div>
+          <div>Krameter.Jr</div>
+          <div>Astray Galaxy</div>
+          <div>Cyn</div>
+          <div>Mistiy</div>
+          <div>Reoreyboi</div>
+          <div>Cresign</div>
+          <div>Akselajin</div>
+          <div>and everyone on SFS forums!</div>
+        </div>
+
+        <div style="margin-bottom:18px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">BROUGHT TOGETHER BY</div>
+          <div style="color:var(--sky2)">Tserieskinda</div>
+        </div>
+
+        <div style="border-top:1px solid var(--ac13);padding-top:14px;display:flex;flex-direction:column;gap:8px">
+          <a href="https://github.com/Tserieskinda/Sfs-System-Editor/blob/main/README.md" target="_blank" style="color:var(--sky2);text-decoration:none;font-size:.62rem;display:flex;align-items:center;gap:8px">
+            <span style="opacity:.5">⬡</span> GitHub Page
+          </a>
+          <a href="https://sfsforum.com/index.php?threads/sfs-system-editor-beta.18444/" target="_blank" style="color:var(--sky2);text-decoration:none;font-size:.62rem;display:flex;align-items:center;gap:8px">
+            <span style="opacity:.5">⬡</span> SFS Forums Page
+          </a>
+          <div style="color:var(--ink4);font-size:.62rem;display:flex;align-items:center;gap:8px">
+            <span style="opacity:.5">⬡</span> Discord: <span style="color:var(--ink2)">@tserieskinda.</span>
+          </div>
+        </div>
+      </div>
+    </div><!-- end stab-credits-content -->
+
+    <div class="modal-footer">
+      <button class="mf-btn ok" onclick="closeSysSettings()">DONE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ APP SETTINGS MODAL (start menu: Theme + Credits) ══════════════ -->
+<div id="modal-appsettings">
+  <div class="mpanel" style="width:380px;max-height:90vh;overflow-y:auto">
+    <h2>SETTINGS</h2>
+
+    <!-- Tab bar -->
+    <div style="display:flex;gap:0;margin:10px 0 18px;border-bottom:1px solid var(--ac18)">
+      <button id="apptab-theme" onclick="switchAppTab('theme')" style="flex:1;padding:7px 0;background:var(--ac13);border:1px solid var(--ac28);border-bottom:none;color:var(--sky2);font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.08em;cursor:pointer;border-radius:4px 4px 0 0;margin-right:2px">THEME</button>
+      <button id="apptab-appcredits" onclick="switchAppTab('appcredits')" style="flex:1;padding:7px 0;background:transparent;border:1px solid transparent;border-bottom:none;color:var(--ink4);font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.08em;cursor:pointer;border-radius:4px 4px 0 0">CREDITS</button>
+    </div>
+
+    <!-- THEME tab -->
+    <div id="apptab-theme-content">
+      <p style="margin-top:-6px;margin-bottom:14px;font-size:.68rem;color:var(--ink4);font-family:'JetBrains Mono',monospace">Choose your start menu atmosphere</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        <button class="theme-btn" data-theme="stars" onclick="setBgTheme('stars')"
+          style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--ac20);
+                 background:var(--dp3);color:var(--ink2);font-family:'Orbitron',sans-serif;font-size:.65rem;
+                 letter-spacing:.1em;cursor:pointer;transition:all .18s;text-align:left;width:100%">
+          <span style="font-size:1.4rem">✨</span>
+          <span>
+            <span style="display:block;font-size:.68rem;color:var(--ink3)">TWINKLING STARS</span>
+            <span style="display:block;font-size:.58rem;color:var(--ink4);margin-top:2px;font-family:'JetBrains Mono',monospace">Classic deep space starfield</span>
+          </span>
+        </button>
+        <button class="theme-btn" data-theme="nebula" onclick="setBgTheme('nebula')"
+          style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--ac20);
+                 background:var(--dp3);color:var(--ink2);font-family:'Orbitron',sans-serif;font-size:.65rem;
+                 letter-spacing:.1em;cursor:pointer;transition:all .18s;text-align:left;width:100%">
+          <span style="font-size:1.4rem">🌌</span>
+          <span>
+            <span style="display:block;font-size:.68rem;color:var(--ink3)">NEBULA DRIFT</span>
+            <span style="display:block;font-size:.58rem;color:var(--ink4);margin-top:2px;font-family:'JetBrains Mono',monospace">Glowing cosmic clouds in motion</span>
+          </span>
+        </button>
+        <button class="theme-btn" data-theme="matrix" onclick="setBgTheme('matrix')"
+          style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--ac20);
+                 background:var(--dp3);color:var(--ink2);font-family:'Orbitron',sans-serif;font-size:.65rem;
+                 letter-spacing:.1em;cursor:pointer;transition:all .18s;text-align:left;width:100%">
+          <span style="font-size:1.4rem">🌌</span>
+          <span>
+            <span style="display:block;font-size:.68rem;color:var(--ink3)">AURORA BOREALIS</span>
+            <span style="display:block;font-size:.58rem;color:var(--ink4);margin-top:2px;font-family:'JetBrains Mono',monospace">Green & teal light curtains in space</span>
+          </span>
+        </button>
+        <!-- Custom image -->
+        <div style="border-top:1px solid var(--ac10);margin-top:4px;padding-top:10px;display:flex;flex-direction:column;gap:6px">
+          <button class="theme-btn" data-theme="custom" onclick="triggerFileInput('bg-custom-upload')"
+            style="display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--ac20);
+                   background:var(--dp3);color:var(--ink2);font-family:'Orbitron',sans-serif;font-size:.65rem;
+                   letter-spacing:.1em;cursor:pointer;transition:all .18s;text-align:left;width:100%">
+            <span style="font-size:1.4rem">🖼</span>
+            <span>
+              <span style="display:block;font-size:.68rem;color:var(--ink3)">CUSTOM IMAGE</span>
+              <span id="custom-bg-label" style="display:block;font-size:.58rem;color:var(--ink4);margin-top:2px;font-family:'JetBrains Mono',monospace">Upload any image as background</span>
+            </span>
+          </button>
+          <button id="clear-custom-bg-btn" onclick="clearCustomBg()" style="display:none;align-items:center;justify-content:center;gap:8px;
+            padding:7px 14px;border:1px solid rgba(255,80,80,.25);background:rgba(255,50,50,.07);
+            color:rgba(255,120,120,.8);font-family:'JetBrains Mono',monospace;font-size:.6rem;
+            letter-spacing:.08em;cursor:pointer;width:100%;transition:all .18s">
+            ✕ REMOVE CUSTOM IMAGE
+          </button>
+        </div>
+        <input type="file" id="bg-custom-upload" accept="image/*" style="display:none" onchange="loadCustomBgImage(this)">
+      </div>
+      <!-- UI Accent Color -->
+      <div style="border-top:1px solid var(--ac13);padding-top:14px">
+        <div style="font-family:'Orbitron',sans-serif;font-size:.6rem;letter-spacing:.14em;color:var(--sky2);margin-bottom:10px">UI ACCENT COLOR</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <label for="ui-hue-picker" style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--ink4);cursor:pointer;flex:1">
+            Pick any color — hue applied to menus, panels &amp; borders
+          </label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="color" id="ui-hue-picker"
+              style="width:40px;height:32px;border:1px solid var(--ac30);background:var(--dp3);cursor:pointer;padding:2px;border-radius:3px"
+              oninput="onUiHuePick(this.value)" onchange="onUiHuePick(this.value)">
+            <button onclick="resetUiHue()"
+              style="padding:5px 9px;background:transparent;border:1px solid var(--ac22);color:var(--ink4);font-family:'JetBrains Mono',monospace;font-size:.58rem;cursor:pointer;letter-spacing:.06em"
+              onmouseover="this.style.color='var(--ink2)'" onmouseout="this.style.color='var(--ink4)'">RESET</button>
+          </div>
+        </div>
+        <div id="ui-hue-swatches" style="margin-top:10px;height:12px;border-radius:2px;overflow:hidden"></div>
+      </div>
+    </div><!-- end apptab-theme-content -->
+
+    <!-- CREDITS tab -->
+    <div id="apptab-appcredits-content" style="display:none">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.66rem;line-height:2;color:var(--ink2)">
+        <div style="margin-bottom:14px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">ASSETS · ZIP PRESETS</div>
+          <div>Astray Galaxy</div>
+          <div>Neverger</div>
+        </div>
+        <div style="margin-bottom:14px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">INITIAL BETA TESTERS · FEATURE SUGGESTIONS</div>
+          <div>Krameter.Jr</div><div>Astray Galaxy</div><div>Cyn</div><div>Mistiy</div><div>Reoreyboi</div><div>Cresign</div><div>Akselajin</div><div>and everyone on SFS forums!</div>
+        </div>
+        <div style="margin-bottom:18px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">BROUGHT TOGETHER BY</div>
+          <div style="color:var(--sky2)">Tserieskinda</div>
+        </div>
+        <div style="border-top:1px solid var(--ac13);padding-top:14px;display:flex;flex-direction:column;gap:8px">
+          <a href="https://github.com/Tserieskinda/Sfs-System-Editor/blob/main/README.md" target="_blank" style="color:var(--sky2);text-decoration:none;font-size:.62rem;display:flex;align-items:center;gap:8px"><span style="opacity:.5">⬡</span> GitHub Page</a>
+          <a href="https://sfsforum.com/index.php?threads/sfs-system-editor-beta.18444/" target="_blank" style="color:var(--sky2);text-decoration:none;font-size:.62rem;display:flex;align-items:center;gap:8px"><span style="opacity:.5">⬡</span> SFS Forums Page</a>
+          <div style="color:var(--ink4);font-size:.62rem;display:flex;align-items:center;gap:8px"><span style="opacity:.5">⬡</span> Discord: <span style="color:var(--ink2)">@tserieskinda.</span></div>
+        </div>
+      </div>
+    </div><!-- end apptab-appcredits-content -->
+
+    <div class="modal-footer" style="justify-content:center">
+      <button class="mf-btn ok" onclick="closeAppSettings()" ontouchend="event.stopPropagation();closeAppSettings()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CLEAR ALL MODAL ══════════════ -->
+<div id="modal-clear">
+  <div class="mpanel" style="width:400px;text-align:center">
+    <div style="font-size:2.2rem;margin-bottom:12px">⚠️</div>
+    <h2 style="margin-bottom:8px">CLEAR ALL BODIES?</h2>
+    <p style="margin-bottom:24px;line-height:1.7">This will remove every body from the system.<br>This action <strong style="color:var(--rose)">cannot be undone</strong>.</p>
+    <div class="modal-footer" style="justify-content:center;gap:12px">
+      <button class="mf-btn" style="min-width:100px" onclick="closeClearAll()">CANCEL</button>
+      <button class="mf-btn" style="min-width:100px;border-color:rgba(255,64,96,.5);color:var(--rose);background:rgba(255,64,96,.08)" onclick="clearAll()">CLEAR ALL</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ DELETE BODY MODAL ══════════════ -->
+<div id="modal-delete">
+  <div class="mpanel" style="width:440px;text-align:center">
+    <div style="font-size:2.2rem;margin-bottom:12px">🗑️</div>
+    <h2 style="margin-bottom:8px">DELETE <span id="del-name" style="color:var(--rose)">BODY</span>?</h2>
+    <p style="margin-bottom:8px;line-height:1.7" id="del-desc">This body and all its satellites will be permanently removed.</p>
+    <p style="margin-bottom:24px;font-size:.75rem;color:var(--ink4)" id="del-satellites"></p>
+    <div class="modal-footer" style="justify-content:center;gap:12px">
+      <button class="mf-btn" style="min-width:100px" onclick="document.getElementById('modal-delete').classList.remove('open')">CANCEL</button>
+      <button class="mf-btn" style="min-width:100px;border-color:rgba(255,64,96,.5);color:var(--rose);background:rgba(255,64,96,.08)" onclick="executeDeleteBody()">DELETE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ REPLACE BODY MODAL ══════════════ -->
+<div id="modal-replace">
+  <div class="mpanel" style="width:520px">
+    <h2 style="margin-bottom:4px">REPLACE <span id="rep-name" style="color:#ffd060"></span></h2>
+    <p style="margin-bottom:16px;font-size:.75rem;color:var(--ink4)">Choose a preset. Orbit, name, and satellites are preserved.</p>
+    <div id="replace-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px"></div>
+    <div class="modal-footer" style="justify-content:flex-end;gap:12px">
+      <button class="mf-btn" onclick="document.getElementById('modal-replace').classList.remove('open')">CANCEL</button>
+      <button class="mf-btn ok" onclick="executeReplaceBody()">REPLACE →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ LOADING OVERLAY ══════════════ -->
+<div id="loading-overlay">
+  <div class="loading-inner">
+    <div class="loading-spinner"></div>
+    <div class="loading-title" id="loading-title">LOADING SYSTEM</div>
+    <div class="loading-sub" id="loading-msg">Reading zip…</div>
+    <div class="loading-bars" id="loading-bars" style="display:none">
+      <div class="loading-bar-row">
+        <div class="loading-bar-label">
+          <span id="bar1-label">DECOMPRESSING</span>
+          <span id="bar1-pct">0%</span>
+        </div>
+        <div class="loading-bar-track"><div class="loading-bar-fill" id="bar1-fill"></div></div>
+      </div>
+      <div class="loading-bar-row">
+        <div class="loading-bar-label">
+          <span id="bar2-label">LOADING TEXTURES</span>
+          <span id="bar2-pct">—</span>
+        </div>
+        <div class="loading-bar-track"><div class="loading-bar-fill" id="bar2-fill"></div></div>
+      </div>
+    </div>
+    <button id="btn-cancel-remote" onclick="cancelRemoteAssets()"
+      style="display:none;margin-top:18px;background:none;border:1px solid rgba(255,100,60,.45);
+             color:rgba(255,140,80,.85);font-family:'Exo 2',sans-serif;font-size:.72rem;
+             letter-spacing:.08em;padding:6px 18px;cursor:pointer;
+             clip-path:polygon(4px 0,100% 0,100% 100%,0 100%,0 4px);
+             transition:border-color .15s,color .15s;">
+      CANCEL &amp; LOAD MANUALLY
+    </button>
+  </div>
+</div>
+
+<script src="js/background.js"></script>
+<script src="js/ui-hue.js"></script>
+<script src="js/nav-state.js"></script>
+<script src="js/presets.js"></script>
+<script src="js/state.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/preset-modal.js"></script>
+<script src="js/viewport.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/units.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/export.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/io.js"></script>
+<script src="js/body-search.js"></script>
+<script src="js/namegen.js"></script>
+<!-- ══ TERRAIN DETAIL DROPDOWN (body-level to escape topbar stacking context) ══ -->
+<div id="terrain-detail-dropdown" style="display:none;position:fixed;
+  min-width:200px;background:rgba(6,10,22,.97);border:1px solid rgba(180,140,255,.25);
+  border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,.7);z-index:99999;overflow:hidden">
+  <div style="padding:5px 10px 4px;font-family:'Orbitron',sans-serif;font-size:.5rem;
+    color:rgba(180,140,255,.5);letter-spacing:.12em;border-bottom:1px solid rgba(180,140,255,.1)">TERRAIN DETAIL</div>
+  <div style="padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(180,140,255,.85);letter-spacing:.05em">VERTEX DENSITY</span>
+      <span id="terrain-detail-val" style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(150,200,255,.9);min-width:36px;text-align:right">30%</span>
+    </div>
+    <input type="range" id="terrain-detail-slider" min="0" max="100" step="5" value="30"
+      style="width:100%;accent-color:rgba(180,140,255,.85);cursor:pointer"
+      oninput="setTerrainDetail(parseInt(this.value))">
+    <div style="display:flex;justify-content:space-between">
+      <span style="font-size:.5rem;color:rgba(150,150,180,.5);letter-spacing:.04em">Low (fast)</span>
+      <span style="font-size:.5rem;color:rgba(150,150,180,.5);letter-spacing:.04em">Full (slow)</span>
+    </div>
+    <div id="terrain-detail-warn" style="display:none;padding:5px 8px;background:rgba(255,160,40,.1);border:1px solid rgba(255,160,40,.35);border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(255,180,60,.9);letter-spacing:.03em;line-height:1.5">
+      ⚠ High detail may lag<br><span style="color:rgba(255,180,60,.6)">Recommended: keep below 70%</span>
+    </div>
+    <span style="font-size:.5rem;color:rgba(150,150,180,.45);letter-spacing:.03em;line-height:1.4">Scales vertices per frame.<br>Lower = smoother performance.</span>
+  </div>
+</div>
+
+<!-- ══ ENV DROPDOWN (body-level to escape topbar stacking context) ══ -->
+<div id="env-dropdown" style="display:none;position:fixed;
+  min-width:210px;background:rgba(6,10,22,.97);border:1px solid rgba(64,200,255,.22);
+  border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,.7);z-index:99999;overflow:hidden">
+  <div style="padding:5px 10px 4px;font-family:'Orbitron',sans-serif;font-size:.5rem;
+    color:rgba(64,200,255,.5);letter-spacing:.12em;border-bottom:1px solid rgba(64,200,255,.1)">ENVIRONMENT</div>
+  <button id="env-btn-soi"      onclick="toggleEnvFlag('soi')"     class="env-row">◎ <span>SOI circles</span></button>
+  <button id="env-btn-atmo"     onclick="toggleEnvFlag('atmo')"    class="env-row">🌫 <span>Atmosphere</span></button>
+  <button id="env-btn-clouds"   onclick="toggleEnvFlag('clouds')"  class="env-row">☁ <span>Cloud band</span></button>
+  <button id="env-btn-fclouds"  onclick="toggleEnvFlag('fclouds')" class="env-row">🌥 <span>Front clouds</span></button>
+  <button id="env-btn-fog"      onclick="toggleEnvFlag('fog')"     class="env-row">🌁 <span>Fog</span></button>
+  <button id="env-btn-water"    onclick="toggleEnvFlag('water')"   class="env-row">🌊 <span>Water</span></button>
+  <button id="env-btn-surface"  onclick="toggleEnvFlag('surface')" class="env-row">🗺 <span>Surface texture</span></button>
+  <button id="env-btn-postProc" onclick="toggleEnvFlag('postProc')" class="env-row">🎨 <span>Post processing</span></button>
+</div>
+
+<!-- ══ TOOLS DROPDOWN (body-level to escape topbar stacking context) ══ -->
+<div id="tools-dropdown" style="display:none;position:fixed;
+  min-width:190px;background:rgba(6,10,22,.97);border:1px solid rgba(255,180,80,.22);
+  border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,.7);z-index:99999;overflow:hidden">
+  <div style="padding:5px 10px 4px;font-family:'Orbitron',sans-serif;font-size:.5rem;
+    color:rgba(255,180,80,.5);letter-spacing:.12em;border-bottom:1px solid rgba(255,180,80,.1)">TOOLS</div>
+  <button onclick="enterDragOrbitMode()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='rgba(255,180,80,.1)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">🪐</span>
+    <span><span style="display:block;color:rgba(255,180,80,.9)">DRAG ORBIT</span>
+    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Drag bodies to adjust orbit</span></span>
+  </button>
+  <div style="height:1px;background:rgba(255,180,80,.1);margin:0 10px"></div>
+  <div style="padding:9px 14px 10px;display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(255,180,80,.9);letter-spacing:.05em">⌨ WASD SPEED</span>
+      <span id="wasd-sens-val" style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(150,200,255,.8);min-width:24px;text-align:right">6</span>
+    </div>
+    <input type="range" id="wasd-sensitivity" min="1" max="20" step="0.5" value="6"
+      style="width:100%;accent-color:rgba(255,180,80,.8);cursor:pointer"
+      oninput="document.getElementById('wasd-sens-val').textContent=parseFloat(this.value).toFixed(1)">
+    <span style="font-size:.5rem;color:rgba(150,150,180,.5);letter-spacing:.04em">Camera pan speed (W / A / S / D keys)</span>
+  </div>
+  <div style="height:1px;background:rgba(255,180,80,.1);margin:0 10px"></div>
+  <div style="padding:9px 14px 10px;display:flex;flex-direction:column;gap:5px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(255,180,80,.9);letter-spacing:.05em">⊙ ICON SIZE</span>
+      <span id="icon-scale-val" style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(150,200,255,.8);min-width:32px;text-align:right">75%</span>
+    </div>
+    <input type="range" id="icon-scale-slider" min="0.3" max="1.5" step="0.05" value="0.75"
+      style="width:100%;accent-color:rgba(255,180,80,.8);cursor:pointer"
+      oninput="setIconScale(parseFloat(this.value))">
+    <span style="font-size:.5rem;color:rgba(150,150,180,.5);letter-spacing:.04em">Planet icon display size</span>
+  </div>
+  <div style="height:1px;background:rgba(255,180,80,.1);margin:0 10px"></div>
+  <button onclick="toggleHighResSurface()" id="btn-hires" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='rgba(255,180,80,.1)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">🔬</span>
+    <span>
+      <span style="display:block;color:rgba(255,180,80,.9)">HIGH RES SURFACE</span>
+      <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Double texture resolution</span>
+    </span>
+    <span id="hires-badge" style="margin-left:auto;font-size:.48rem;padding:2px 5px;border-radius:3px;
+      background:rgba(255,180,80,.12);color:rgba(255,180,80,.4);border:1px solid rgba(255,180,80,.2);
+      letter-spacing:.08em;flex-shrink:0">OFF</span>
+  </button>
+  <div style="height:1px;background:rgba(255,180,80,.1);margin:0 10px"></div>
+  <button onclick="openPlanetComparison()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='rgba(255,180,80,.1)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">⚖️</span>
+    <span>
+      <span style="display:block;color:rgba(255,180,80,.9)">SIZE COMPARISON</span>
+      <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Compare planet sizes visually</span>
+    </span>
+  </button>
+</div>
+
+<!-- ══════════════ PLANET SIZE COMPARISON MODAL ══════════════ -->
+<div id="psc-modal" style="display:none;position:fixed;inset:0;z-index:200000;
+  background:rgba(2,5,14,.88);backdrop-filter:blur(4px);
+  flex-direction:column;align-items:center;justify-content:flex-start;
+  overflow-y:auto;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,8px);
+  box-sizing:border-box">
+
+  <!-- Header bar -->
+  <div style="width:min(96vw,960px);display:flex;align-items:center;gap:8px;
+    padding:10px 12px;background:rgba(6,10,22,.97);border:1px solid rgba(255,180,80,.22);
+    border-bottom:none;border-radius:6px 6px 0 0;flex-shrink:0;margin-top:auto;flex-wrap:wrap;min-width:0">
+    <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;color:rgba(255,180,80,.9);
+      letter-spacing:.14em;flex:1">⚖️ PLANET SIZE COMPARISON</span>
+
+    <!-- Mode toggle -->
+    <div style="display:flex;gap:4px">
+      <button id="psc-btn-all" onclick="_pscSetMode('all')"
+        style="font-family:'JetBrains Mono',monospace;font-size:.55rem;padding:4px 10px;
+        border-radius:3px;cursor:pointer;letter-spacing:.06em;
+        border:1px solid rgba(255,180,80,.5);background:rgba(255,180,80,.18);color:#ffb850">
+        ALL BODIES
+      </button>
+      <button id="psc-btn-two" onclick="_pscSetMode('two')"
+        style="font-family:'JetBrains Mono',monospace;font-size:.55rem;padding:4px 10px;
+        border-radius:3px;cursor:pointer;letter-spacing:.06em;
+        border:1px solid rgba(255,180,80,.2);background:none;color:rgba(255,180,80,.45)">
+        COMPARE TWO
+      </button>
+    </div>
+
+    <button onclick="closePlanetComparison()"
+      style="background:none;border:1px solid rgba(255,80,80,.3);border-radius:3px;
+      color:rgba(255,100,100,.7);font-size:.75rem;padding:3px 8px;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Two-body selectors (hidden in 'all' mode) -->
+  <div id="psc-two-row" style="display:none;width:min(96vw,960px);gap:8px;
+    padding:8px 12px;background:rgba(6,10,22,.97);border-left:1px solid rgba(255,180,80,.22);
+    border-right:1px solid rgba(255,180,80,.22);align-items:center;flex-shrink:0;flex-wrap:wrap">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(255,180,80,.6);letter-spacing:.07em">BODY A</span>
+    <select id="psc-sel-a" onchange="_pscOnSelChange()"
+      style="flex:1;min-width:120px;font-family:'JetBrains Mono',monospace;font-size:.6rem;
+      background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
+      border-radius:3px;padding:4px 8px;cursor:pointer"></select>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(255,180,80,.6);letter-spacing:.07em">BODY B</span>
+    <select id="psc-sel-b" onchange="_pscOnSelChange()"
+      style="flex:1;min-width:120px;font-family:'JetBrains Mono',monospace;font-size:.6rem;
+      background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
+      border-radius:3px;padding:4px 8px;cursor:pointer"></select>
+  </div>
+
+  <!-- Canvas area -->
+  <div style="width:min(96vw,960px);height:min(52vh,520px);
+    background:rgba(4,8,18,.98);border:1px solid rgba(255,180,80,.22);
+    border-top:none;border-radius:0 0 6px 6px;overflow:hidden;position:relative;cursor:grab;touch-action:none"
+    id="psc-canvas-wrap">
+    <canvas id="psc-canvas" style="display:block;width:100%;height:100%"></canvas>
+  </div>
+
+  <!-- Legend / hints -->
+  <div style="width:min(96vw,960px);padding:6px 12px;display:flex;gap:12px;flex-wrap:wrap;
+    font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(150,160,200,.5);letter-spacing:.05em;margin-bottom:auto">
+    <span>🌍 Terrain renders if radius &lt; 15 000 m</span>
+    <span>🌫 Atmosphere &amp; clouds shown</span>
+    <span>💨 Fog tint shown</span>
+    <span>💍 Rings not shown</span>
+    <span style="margin-left:auto">Pinch/scroll to zoom · Drag to scroll</span>
+  </div>
+</div>
+
+<script>
+// ── Bootstrap the comparison modal once DOM is ready ───────────────────────
+(function waitPSC(){
+  if(typeof _pscInitCanvasEvents === 'function'){
+    const cv = document.getElementById('psc-canvas');
+    const wrap = document.getElementById('psc-canvas-wrap');
+    cv.width  = wrap.offsetWidth  || 860;
+    cv.height = wrap.offsetHeight || 500;
+    _pscInitCanvasEvents();
+  } else {
+    setTimeout(waitPSC, 80);
+  }
+})();
+
+function _pscSetMode(m){
+  _PSC.mode = m;
+  document.getElementById('psc-two-row').style.display = m === 'two' ? 'flex' : 'none';
+  // Toggle button styles
+  const bAll = document.getElementById('psc-btn-all');
+  const bTwo = document.getElementById('psc-btn-two');
+  if(m === 'all'){
+    bAll.style.background='rgba(255,180,80,.18)'; bAll.style.color='#ffb850'; bAll.style.borderColor='rgba(255,180,80,.5)';
+    bTwo.style.background='none'; bTwo.style.color='rgba(255,180,80,.45)'; bTwo.style.borderColor='rgba(255,180,80,.2)';
+  } else {
+    bTwo.style.background='rgba(255,180,80,.18)'; bTwo.style.color='#ffb850'; bTwo.style.borderColor='rgba(255,180,80,.5)';
+    bAll.style.background='none'; bAll.style.color='rgba(255,180,80,.45)'; bAll.style.borderColor='rgba(255,180,80,.2)';
+  }
+  _PSC.zoom=1; _PSC.panX=0; _PSC.panY=0;
+  if(m === 'two') _pscPopulateSelects();
+  _pscScheduleDraw();
+}
+
+// Close on backdrop click
+document.getElementById('psc-modal').addEventListener('mousedown', function(e){
+  if(e.target === this) closePlanetComparison();
+});
+// Close on Escape
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape' && _PSC.open) closePlanetComparison();
+});
+</script>
+
+</body>
+</html>
