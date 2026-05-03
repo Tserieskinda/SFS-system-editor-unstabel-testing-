@@ -1,5 +1,5 @@
 // ════════════════════════════════ LOAD FILES ════════════════════════════════
-// ════════════════════════════════ LOAD FILES ═══════════════════════════════
+// ════════════════════════════════ LOAD FILES ════════════════════════════════
 // ════════════════════════════════ ZIP READER ════════════════════════════════
 // Parses a ZIP file (stored or deflated entries) and returns
 // { "path/in/zip": Uint8Array } for every file entry.
@@ -328,13 +328,18 @@ async function loadZipFile(file){
 // ── Remote assets URLs ────────────────────────────────────────────────────────
 // raw.githubusercontent.com blocks cross-origin binary fetches, so we proxy
 // through corsproxy.io which adds the required CORS headers.
-const _RAW_BASE = 'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/';
-const REMOTE_ASSETS_URLS = [
-  'https://api.allorigins.win/raw?url=' + encodeURIComponent(_RAW_BASE + 'Custom and Terrain Files.zip'),
-  'https://api.allorigins.win/raw?url=' + encodeURIComponent(_RAW_BASE + 'Vanilla Presets + textures.zip'),
-  'https://api.allorigins.win/raw?url=' + encodeURIComponent(_RAW_BASE + 'Vanilla Textures 2.zip'),
-];
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Remote assets URLs ────────────────────────────────────────────────────────
+// jsdelivr CDN mirrors GitHub repo files with proper CORS + Content-Length headers.
+// Format: https://cdn.jsdelivr.net/gh/{user}/{repo}@{branch}/{path}
+// ─────────────────────────────────────────────────────────────────────────────
+const _CDN_BASE = 'https://cdn.jsdelivr.net/gh/Tserieskinda/SFS-system-editor-unstabel-testing-@main/assets/';
+const REMOTE_ASSETS_URLS = [
+  { url: _CDN_BASE + 'Custom%20and%20Terrain%20Files.zip',   name: 'Custom and Terrain Files.zip' },
+  { url: _CDN_BASE + 'Vanilla%20Presets%20%2B%20textures.zip', name: 'Vanilla Presets + textures.zip' },
+  { url: _CDN_BASE + 'Vanilla%20Textures%202.zip',            name: 'Vanilla Textures 2.zip' },
+];
+
 // Auto-fetch remote asset zip on startup (online users only).
 // Falls back gracefully if offline or URL is null.
 let _remoteAbortCtrl = null;
@@ -358,8 +363,7 @@ async function autoLoadRemoteAssets(){
 
   for(let i = 0; i < REMOTE_ASSETS_URLS.length; i++){
     if(signal.aborted){ cancelled = true; break; }
-    const url = REMOTE_ASSETS_URLS[i];
-    const fname = decodeURIComponent(url.split('/').pop()).split('/').pop();
+    const { url, name: fname } = REMOTE_ASSETS_URLS[i];
     setLoadingMsg(`(${i+1}/${REMOTE_ASSETS_URLS.length}) ${fname}`);
     setBar1(0, 'DOWNLOADING');
     setBar2(null, 'LOADING TEXTURES');
