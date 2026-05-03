@@ -20,6 +20,14 @@ let viewDiffKey = 'Normal'; // Title-case version used for smaDifficultyScale / 
 let dragging = false, dragSX, dragSY;
 const BODY_PX = { star:28, planet:16, gasgiant:22, ringedgiant:22, marslike:14, mercurylike:12, moon:11, asteroid:7, blackhole:18, barycentre:5 };
 
+// Draw a high-sided polygon approximating a circle — avoids the per-frame bezier
+// tessellation cost of ctx.arc() when the radius is large on screen.
+function polygonCircle(ctx, cx, cy, r, sides){
+  const step = (Math.PI * 2) / sides;
+  ctx.moveTo(cx + r, cy);
+  for(let i = 1; i <= sides; i++) ctx.lineTo(cx + r * Math.cos(step * i), cy + r * Math.sin(step * i));
+}
+
 // SMA scale: map the largest SMA to ~38% of the viewport half-width in pixels
 const SMA_SCALE_TARGET = 0.38;
 let _cachedSMAScale = null; // invalidated at start of _drawViewportNow each frame
@@ -628,7 +636,7 @@ function _drawViewportNow(){
       ctx2.beginPath(); ctx2.moveTo(sp.x,sp.y-6); ctx2.lineTo(sp.x,sp.y+6); ctx2.stroke();
       ctx2.beginPath(); ctx2.arc(sp.x,sp.y,4,0,Math.PI*2);
       ctx2.strokeStyle='rgba(180,180,255,0.35)'; ctx2.stroke();
-      if(selectedBody===name){ ctx2.beginPath(); ctx2.arc(sp.x,sp.y,10,0,Math.PI*2); ctx2.strokeStyle='rgba(80,180,255,0.75)'; ctx2.lineWidth=1.5; ctx2.setLineDash([3,3]); ctx2.stroke(); ctx2.setLineDash([]); }
+      if(selectedBody===name){ ctx2.beginPath(); polygonCircle(ctx2,sp.x,sp.y,10,64); ctx2.closePath(); ctx2.strokeStyle='rgba(80,180,255,0.75)'; ctx2.lineWidth=1.5; ctx2.setLineDash([3,3]); ctx2.stroke(); ctx2.setLineDash([]); }
       ctx2.fillStyle='rgba(150,200,240,0.7)'; ctx2.font='9px "JetBrains Mono",monospace'; ctx2.textAlign='center';
       ctx2.fillText(name, sp.x, sp.y+18);
       ctx2.restore(); // must restore before early return
@@ -1909,7 +1917,19 @@ function _drawViewportNow(){
 
     // ── Selection ring ──
     if(selectedBody === name){
-      ctx2.beginPath(); ctx2.arc(sp.x, sp.y, r+6, 0, Math.PI*2);
+      // When terrain is on, expand ring to cover the tallest peak
+      let ringR = r + 6;
+      if(envFlags.heightmaps && b.data.TERRAIN_DATA && physR_px > terrainDrawThreshold){
+        const _tSampRing = _getTerrainSamples(name, b, bodyRadius_m * radiusMult, 360, null);
+        if(_tSampRing && _tSampRing.heights){
+          let maxH = 0;
+          for(let _i = 0; _i < _tSampRing.heights.length; _i++)
+            if(_tSampRing.heights[_i] > maxH) maxH = _tSampRing.heights[_i];
+          const maxR_px = maxH * (physR_px / (bodyRadius_m * radiusMult));
+          ringR = Math.max(ringR, maxR_px + 6);
+        }
+      }
+      ctx2.beginPath(); polygonCircle(ctx2, sp.x, sp.y, ringR, 128); ctx2.closePath();
       ctx2.strokeStyle='rgba(80,180,255,0.75)'; ctx2.lineWidth=1.5;
       ctx2.setLineDash([4,4]); ctx2.stroke(); ctx2.setLineDash([]);
     }
