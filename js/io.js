@@ -334,9 +334,9 @@ async function loadZipFile(file){
 // Format: https://cdn.jsdelivr.net/gh/{user}/{repo}@{branch}/{path}
 // ─────────────────────────────────────────────────────────────────────────────
 const REMOTE_ASSETS_URLS = [
-  'assets/Vanilla Presets + textures.zip',
-  'assets/Vanilla Textures 2.zip',
-  'assets/Custom and Terrain Files.zip',
+  { url: 'assets/Vanilla Presets + textures.zip',  name: 'Vanilla Presets + textures.zip' },
+  { url: 'assets/Vanilla Textures 2.zip',           name: 'Vanilla Textures 2.zip' },
+  { url: 'assets/Custom and Terrain Files.zip',     name: 'Custom and Terrain Files.zip' },
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
