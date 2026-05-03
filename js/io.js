@@ -325,16 +325,14 @@ async function loadZipFile(file){
 // ── Default texture zip loader ──
 // Maps folder names from the default texture ZIP to asset categories.
 
-// ── Remote assets URL ─────────────────────────────────────────────────────────
-// Set this to your hosted zip URL. Online users get assets automatically.
-// Set to null to disable remote loading (manual upload only).
-// Same-origin GitHub Pages URLs — no CORS proxy needed.
-// ── Remote assets URL ─────────────────────────────────────────────────────────
-// GitHub release download — proxied through corsproxy.io to handle the
-// github.com → objects.githubusercontent.com redirect chain cross-origin.
-const _RAW_ASSET_URL = 'https://github.com/Tserieskinda/SFS-system-editor-unstabel-testing-/releases/download/5.5/SFS.tex+presets.2.zip';
+// ── Remote assets URLs ────────────────────────────────────────────────────────
+// raw.githubusercontent.com serves binary files with Access-Control-Allow-Origin: *
+// so no CORS proxy is needed for these repo blob URLs.
+// ─────────────────────────────────────────────────────────────────────────────
 const REMOTE_ASSETS_URLS = [
-  'https://corsproxy.io/?' + encodeURIComponent(_RAW_ASSET_URL),
+  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Custom%20and%20Terrain%20Files.zip',
+  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Vanilla%20Presets%20%2B%20textures.zip',
+  'https://raw.githubusercontent.com/Tserieskinda/SFS-system-editor-unstabel-testing-/main/assets/Vanilla%20Textures%202.zip',
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
