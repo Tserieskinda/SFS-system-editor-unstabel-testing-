@@ -333,11 +333,10 @@ async function loadZipFile(file){
 // jsdelivr CDN mirrors GitHub repo files with proper CORS + Content-Length headers.
 // Format: https://cdn.jsdelivr.net/gh/{user}/{repo}@{branch}/{path}
 // ─────────────────────────────────────────────────────────────────────────────
-const _CDN_BASE = 'https://cdn.jsdelivr.net/gh/Tserieskinda/SFS-system-editor-unstabel-testing-@main/assets/';
 const REMOTE_ASSETS_URLS = [
-  { url: _CDN_BASE + 'Custom%20and%20Terrain%20Files.zip',   name: 'Custom and Terrain Files.zip' },
-  { url: _CDN_BASE + 'Vanilla%20Presets%20%2B%20textures.zip', name: 'Vanilla Presets + textures.zip' },
-  { url: _CDN_BASE + 'Vanilla%20Textures%202.zip',            name: 'Vanilla Textures 2.zip' },
+  'assets/Vanilla Presets + textures.zip',
+  'assets/Vanilla Textures 2.zip',
+  'assets/Custom and Terrain Files.zip',
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
