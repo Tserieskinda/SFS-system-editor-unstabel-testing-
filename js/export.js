@@ -225,7 +225,7 @@ function exportSystem(){
   if(rawDesc === '' || rawDesc === 'n/a'){
     importSettingsOut.description = CREDIT_TAG;
   } else if(!rawDesc.includes(CREDIT_TAG)){
-    importSettingsOut.description = rawDesc + '\n' + CREDIT_TAG;
+    importSettingsOut.description = rawDesc + ' | ' + CREDIT_TAG;
   }
   zipFiles[`${sysName}/Import_Settings.txt`]   = enc(JSON.stringify(importSettingsOut, null, 2));
   zipFiles[`${sysName}/Space_Center_Data.txt`] = enc(JSON.stringify(systemSettings.spaceCenterData, null, 2));
