@@ -1,6 +1,6 @@
 // ════════════════════════════════ LOAD FILES ════════════════════════════════
 // ════════════════════════════════ LOAD FILES ════════════════════════════════
-// ════════════════════════════════ ZIP READER ═══════════════════════════════
+// ════════════════════════════════ ZIP READER ════════════════════════════════
 // Parses a ZIP file (stored or deflated entries) and returns
 // { "path/in/zip": Uint8Array } for every file entry.
 function parseZip(buffer){
@@ -329,8 +329,12 @@ async function loadZipFile(file){
 // Set this to your hosted zip URL. Online users get assets automatically.
 // Set to null to disable remote loading (manual upload only).
 // Same-origin GitHub Pages URLs — no CORS proxy needed.
+// ── Remote assets URL ─────────────────────────────────────────────────────────
+// GitHub release download — proxied through corsproxy.io to handle the
+// github.com → objects.githubusercontent.com redirect chain cross-origin.
+const _RAW_ASSET_URL = 'https://github.com/Tserieskinda/SFS-system-editor-unstabel-testing-/releases/download/5.5/SFS.tex+presets.2.zip';
 const REMOTE_ASSETS_URLS = [
-  'https://github.com/Tserieskinda/SFS-system-editor-unstabel-testing-/releases/download/5.5/SFS.tex+presets.2.zip',
+  'https://corsproxy.io/?' + encodeURIComponent(_RAW_ASSET_URL),
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
@@ -357,7 +361,7 @@ async function autoLoadRemoteAssets(){
   for(let i = 0; i < REMOTE_ASSETS_URLS.length; i++){
     if(signal.aborted){ cancelled = true; break; }
     const url = REMOTE_ASSETS_URLS[i];
-    const fname = url.split('/').pop();
+    const fname = decodeURIComponent(url.split('/').pop()).split('/').pop();
     setLoadingMsg(`(${i+1}/${REMOTE_ASSETS_URLS.length}) ${fname}`);
     setBar1(0, 'DOWNLOADING');
     setBar2(null, 'LOADING TEXTURES');
