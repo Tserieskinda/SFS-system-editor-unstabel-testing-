@@ -1,6 +1,6 @@
 // ════════════════════════════════ PRESET MODAL ════════════════════════════════
 // Preset modal state
-let _prsTab = 'all';       // 'all' | 'vanilla' | 'custom'
+let _prsTab = 'all';       // 'all' | 'vanilla' | 'custom' | 'system'
 let _prsSearch = '';
 
 function prsSetTab(tab, btn){
@@ -8,6 +8,37 @@ function prsSetTab(tab, btn){
   document.querySelectorAll('.prs-tab').forEach(t => t.classList.remove('on'));
   btn.classList.add('on');
   prsRebuild();
+}
+
+// Show/hide the SYSTEM tab and update its label based on loaded system
+function prsRefreshNamedTabs(){
+  const tabBar = document.querySelector('.prs-tabs');
+  if(!tabBar) return;
+  // Remove any previously injected named tabs
+  tabBar.querySelectorAll('.prs-tab-named').forEach(t => t.remove());
+  if(typeof dynamicPresetSources === 'undefined') return;
+  Object.keys(dynamicPresetSources).forEach(label => {
+    const btn = document.createElement('button');
+    btn.className = 'prs-tab prs-tab-named';
+    btn.textContent = '🚀 ' + label;
+    btn.onclick = function(){ prsSetTab(label, this); };
+    // Insert before the system tab
+    const sysTab = document.getElementById('prs-tab-system');
+    tabBar.insertBefore(btn, sysTab);
+  });
+}
+
+function prsRefreshSystemTab(){
+  const btn = document.getElementById('prs-tab-system');
+  if(!btn) return;
+  const hasSystem = Object.keys(systemPresets).length > 0;
+  btn.style.display = hasSystem ? '' : 'none';
+  btn.textContent = hasSystem ? `🚀 ${systemPresetsName || 'SYSTEM'}` : '';
+  // If currently on system tab but system was cleared, fall back to all
+  if(!hasSystem && _prsTab === 'system'){
+    _prsTab = 'all';
+    document.querySelectorAll('.prs-tab').forEach((t,i) => t.classList.toggle('on', i===0));
+  }
 }
 
 function prsRebuild(){
@@ -37,6 +68,7 @@ function prsRebuild(){
   if(_prsTab === 'all'){
     const vanillaItems = filtered.filter(p => p.category === 'vanilla');
     const customItems  = filtered.filter(p => p.category === 'custom');
+    const systemItems  = filtered.filter(p => p.category === 'system');
     if(vanillaItems.length){
       const hdr = document.createElement('div');
       hdr.className = 'prs-group-hdr';
@@ -50,6 +82,25 @@ function prsRebuild(){
       hdr.textContent = '⭐ Custom Presets';
       grid.appendChild(hdr);
       customItems.forEach(p => grid.appendChild(makePrsCard(p)));
+    }
+    if(systemItems.length){
+      const hdr = document.createElement('div');
+      hdr.className = 'prs-group-hdr';
+      hdr.textContent = `🚀 ${systemPresetsName || 'Loaded System'}`;
+      grid.appendChild(hdr);
+      systemItems.forEach(p => grid.appendChild(makePrsCard(p)));
+    }
+    // Named import buckets (BGH etc.)
+    if(typeof dynamicPresetSources !== 'undefined'){
+      Object.keys(dynamicPresetSources).forEach(label => {
+        const namedItems = filtered.filter(p => p.category === label);
+        if(!namedItems.length) return;
+        const hdr = document.createElement('div');
+        hdr.className = 'prs-group-hdr';
+        hdr.textContent = '🚀 ' + label;
+        grid.appendChild(hdr);
+        namedItems.forEach(p => grid.appendChild(makePrsCard(p)));
+      });
     }
   } else {
     filtered.forEach(p => grid.appendChild(makePrsCard(p)));
@@ -104,8 +155,8 @@ function makePrsCard(p){
   card.innerHTML =
     `<span class="prs-card-name">${p.name}</span>` +
     (sub ? `<span class="prs-card-sub">${sub}</span>` : '') +
-    `<span class="prs-card-badge${p.category==='custom'?' custom':''}">` +
-    `${p.category==='custom'?'CUSTOM':'SFS'}</span>`;
+    `<span class="prs-card-badge${p.category==='custom'?' custom':p.category==='system'?' system':''}">` +
+    `${p.category==='custom'?'CUSTOM':p.category==='system'?'SYS':'SFS'}</span>`;
   card.insertBefore(ic, card.firstChild);
 
   card.onclick = () => {
@@ -123,7 +174,8 @@ function openPreset(forCenter){
   _prsTab = 'all';
   _prsSearch = '';
 
-  // Reset tab UI
+  // Inject named import tabs, then reset all tabs so ALL is active
+  try { prsRefreshNamedTabs(); } catch(_){}
   document.querySelectorAll('.prs-tab').forEach((t,i)=>t.classList.toggle('on', i===0));
   const searchEl = document.getElementById('prs-search');
   if(searchEl) searchEl.value = '';
@@ -139,8 +191,13 @@ function openPreset(forCenter){
   document.getElementById('mp-desc').innerHTML = desc;
   document.getElementById('prs-confirm-btn').textContent = forCenter ? 'ADD CENTER →' : 'ADD BODY →';
 
-  prsRebuild();
+  // Open the modal first so it's visible even if prsRebuild is slow
   document.getElementById('modal-preset').classList.add('open');
+  try { prsRebuild(); } catch(e){
+    console.error('[SFS] prsRebuild:', e);
+    const grid = document.getElementById('prs-grid');
+    if(grid) grid.innerHTML = '<div class="prs-empty">Error loading presets — check console.</div>';
+  }
 }
 
 function closePreset(){

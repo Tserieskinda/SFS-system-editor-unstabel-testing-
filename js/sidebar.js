@@ -117,6 +117,7 @@ function replaceBodyPrompt(){
   // Reset tabs and search
   _prsTab = 'all';
   _prsSearch = '';
+  try { prsRefreshNamedTabs(); } catch(_){}
   document.querySelectorAll('.prs-tab').forEach((t,i)=>t.classList.toggle('on', i===0));
   const searchEl = document.getElementById('prs-search');
   if(searchEl) searchEl.value = '';

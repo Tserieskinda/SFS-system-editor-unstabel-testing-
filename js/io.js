@@ -315,6 +315,18 @@ async function loadZipFile(file){
     refreshTexPickerLists();
     updateAssetEmptyState();
     console.log(`[SFS|LOAD] done — ${planetCount} bodies, textureCache keys: [${Object.keys(textureCache).join(',')}]`);
+
+    // ── Populate system presets from loaded bodies ─────────────────────
+    // Clear previous system presets and repopulate from the newly loaded bodies.
+    Object.keys(systemPresets).forEach(k => delete systemPresets[k]);
+    const systemName = file.name.replace(/\.zip$/i, '');
+    systemPresetsName = systemName;
+    Object.entries(bodies).forEach(([name, b]) => {
+      systemPresets[name] = JSON.parse(JSON.stringify(b.data));
+    });
+    // Show/hide the SYSTEM tab in the preset modal based on whether bodies loaded
+    prsRefreshSystemTab();
+
     setTimeout(() => { hideLoading(); hideLoadingBars(); setLoadingTitle('LOADING SYSTEM'); goNew(); setTimeout(() => { console.log('[SFS|LOAD] delayed redraw, textureCache:', Object.keys(textureCache)); drawViewport(); }, 500); }, 350);
 
   } catch(err){
@@ -324,6 +336,75 @@ async function loadZipFile(file){
   }
 }
 
+
+// ── Import a featured zip — loads assets only, does NOT open/switch the system ──
+async function importFeatured(url, displayName){
+  // Wait for startup autoload to finish so we don't clobber dynamicPresets mid-flight
+  if(_autoLoadPromise){ try{ await _autoLoadPromise; } catch(_){} }
+
+  showLoading(); showLoadingBars();
+  setLoadingTitle('IMPORTING ASSETS');
+  setLoadingMsg('Downloading ' + displayName + '…');
+  try {
+    setBar1(0, 'DOWNLOADING');
+    const resp = await fetch(url);
+    if(!resp.ok) throw new Error(`HTTP ${resp.status} — could not fetch ${displayName}`);
+
+    const contentLength = resp.headers.get('Content-Length');
+    let buffer;
+    if(contentLength){
+      const total = parseInt(contentLength, 10);
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while(true){
+        const {done, value} = await reader.read();
+        if(done) break;
+        chunks.push(value);
+        received += value.length;
+        setBar1(received / total * 100);
+      }
+      const full = new Uint8Array(received);
+      let off = 0;
+      for(const c of chunks){ full.set(c, off); off += c.length; }
+      buffer = full.buffer;
+    } else {
+      setBar1(50, 'DOWNLOADING…');
+      buffer = await resp.arrayBuffer();
+      setBar1(100);
+    }
+
+    setBar1(100, 'DECOMPRESSING');
+    // Derive a short label from the zip name (e.g. "BGH Full Release-1.2.1.zip" → "BGH Full Release")
+    const _namedCat = displayName.replace(/\.zip$/i,'').replace(/-?\d+(\.\d+)*$/, '').trim();
+    const res = await _loadSFSAssetBuffer(
+      buffer, displayName,
+      pct => setBar1(pct, 'DECOMPRESSING'),
+      pct => setBar2(pct),
+      _namedCat
+    );
+
+    // Show completion state on the overlay, then auto-dismiss
+    hideLoadingBars();
+    const spinner = document.querySelector('#loading-overlay .loading-spinner');
+    if(spinner){ spinner.style.display = 'none'; }
+    setLoadingTitle('IMPORT COMPLETE');
+    const errNote = res.errors ? `  ·  ${res.errors} error(s)` : '';
+    setLoadingMsg(`${res.totalTextures} texture(s)  ·  ${res.totalPresets} preset(s)${errNote}`);
+    await new Promise(r => setTimeout(r, 2000));
+    hideLoading();
+    if(spinner){ spinner.style.display = ''; }
+    setLoadingTitle('LOADING SYSTEM');
+    setLoadingMsg('Reading zip…');
+    // Refresh preset modal tabs and grid if open
+    if(typeof prsRefreshNamedTabs === 'function') prsRefreshNamedTabs();
+    if(typeof prsRebuild === 'function') prsRebuild();
+  } catch(err){
+    hideLoading(); hideLoadingBars();
+    console.error('Featured import error:', err);
+    alert('Failed to import "' + displayName + '":\n' + err.message);
+  }
+}
 
 // ── Load a system zip directly from a URL (used by Featured Systems cards) ──
 // GitHub raw URLs are CORS-blocked, so we mirror through jsDelivr CDN.
@@ -397,12 +478,12 @@ const REMOTE_ASSETS_URLS = [
   { url: 'assets/Vanilla Presets + textures.zip',  name: 'Vanilla Presets + textures.zip' },
   { url: 'assets/Vanilla Textures 2.zip',           name: 'Vanilla Textures 2.zip' },
   { url: 'assets/Custom and Terrain Files.zip',     name: 'Custom and Terrain Files.zip' },
-  { url: 'assets/Custom and Terrain Files.zip',     name: 'SFS tex+presets 2.zip' },
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).
 // Falls back gracefully if offline or URL is null.
 let _remoteAbortCtrl = null;
+let _autoLoadPromise = null;   // resolves when startup autoload finishes (or fails)
 function cancelRemoteAssets(){ if(_remoteAbortCtrl) _remoteAbortCtrl.abort(); }
 
 async function autoLoadRemoteAssets(){
@@ -503,8 +584,11 @@ async function autoLoadRemoteAssets(){
 }
 
 // ── Dynamic preset store — populated when asset zips are loaded ──────────────
-// Overrides FILE_PRESETS when populated. Each key is a preset name, value is data.
+// vanilla/custom are the two built-in categories from the autoload zips.
+// namedSources holds presets from named imports (e.g. BGH), keyed by a short
+// display label derived from the zip filename.
 const dynamicPresets = { vanilla: {}, custom: {} };
+const dynamicPresetSources = {}; // { label: { presets:{}, zipName:'' } }
 
 // Returns true if a zip path belongs to a heightmap folder (skip everything there)
 function _isHeightmapPath(pathLower){
@@ -540,7 +624,7 @@ function _parsePresetTxt(raw, filename){
 // Accepts one or more zips containing any combination of:\n//   */Planet Data/*.txt       → preset files (vanilla or custom)\n//   */Texture Data/*.(img)    → textures\n//   */Heightmap Data/*.txt    → heightmaps (JSON points)\n//   */Heightmap Data/*.(img)  → heightmaps (PNG/JPG alpha-encoded)\n//   (legacy) flat image files  → textures (backwards compat with old texture-only zips)
 
 // Core single-zip processor — used by both manual upload and remote auto-load.
-async function _loadSFSAssetBuffer(buffer, zipName, onDecompProgress, onTexProgress){
+async function _loadSFSAssetBuffer(buffer, zipName, onDecompProgress, onTexProgress, namedCategory){
   const rawEntries = parseZip(buffer);
   const entries = await decompressEntries(rawEntries, onDecompProgress);
   let totalTextures = 0, totalPresets = 0, errors = 0;
@@ -594,8 +678,14 @@ async function _loadSFSAssetBuffer(buffer, zipName, onDecompProgress, onTexProgr
       const parsed = _parsePresetTxt(dec);
       if(parsed){
         const pname = filename.replace(/\.txt$/i, '').trim();
-        const cat = _presetCategory(pathLower) || 'custom';
-        dynamicPresets[cat][pname] = parsed;
+        if(namedCategory){
+          // Named import (e.g. BGH) — store in its own bucket, never touch vanilla/custom
+          if(!dynamicPresetSources[namedCategory]) dynamicPresetSources[namedCategory] = { presets:{}, zipName };
+          dynamicPresetSources[namedCategory].presets[pname] = parsed;
+        } else {
+          const cat = _presetCategory(pathLower) || 'custom';
+          dynamicPresets[cat][pname] = parsed;
+        }
         totalPresets++;
       } else { errors++; }
       continue;
@@ -695,5 +785,5 @@ setTimeout(resizeViewport, 50);
 // Attach unit parsers to distance input fields
 setTimeout(initUnitInputs, 100);
 // Auto-fetch remote assets if URL is configured (no-op when REMOTE_ASSETS_URL is null)
-autoLoadRemoteAssets();
+_autoLoadPromise = autoLoadRemoteAssets();
 

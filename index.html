@@ -175,13 +175,6 @@
 
   <div class="fs-page">
 
-    <!-- Info banner -->
-    <div class="fs-info-bar">
-      <span class="fs-info-label">📋 CONDITIONS</span>
-      All assets are free to use — You must give credit to the original creator.
-      To get your system featured here, it must be high quality.
-      <a class="fs-info-link" href="https://discord.gg/" target="_blank">Contact me on Discord ›</a>
-    </div>
 
     <!-- Grid -->
     <div class="fs-grid" id="fs-grid">
@@ -208,11 +201,48 @@
           The vanilla SFS solar system — Sun, Mercury, Venus, Earth &amp; Moon, Mars &amp; Phobos, and more.
         </div>
         <div class="fs-card-actions">
-          <button class="fs-btn fs-btn-dl" onclick="loadZipFromUrl('featured/Example.zip','SFS Default System.zip')">⬇ DOWNLOAD &amp; OPEN</button>
+          <button class="fs-btn fs-btn-dl" onclick="importFeatured('featured/Example.zip','SFS Default System.zip')">⬇ IMPORT</button>
+          <button class="fs-btn fs-btn-open" onclick="loadZipFromUrl('featured/Example.zip','SFS Default System.zip')">▶ OPEN IN EDITOR</button>
         </div>
       </div>
 
-      <!-- ── BLANK CARD slot 2 ── -->
+      <!-- ── BGH ── -->
+      <div class="fs-card">
+        <div class="fs-card-header">
+          <span class="fs-card-title">BGH — BEYOND GAIAS HORIZON</span>
+          <span class="fs-card-author">by Cyn / Althea Lyrae</span>
+        </div>
+        <div class="fs-card-preview">
+          <img src="featured/BGH.jpg" alt="BGH Preview">
+        </div>
+        <div class="fs-card-desc">
+          A custom planetary system set beyond the horizon of Gaia.
+        </div>
+        <div class="fs-card-actions">
+          <button class="fs-btn fs-btn-dl" onclick="importFeatured('featured/BGH Full Release-1.2.1.zip','BGH Full Release-1.2.1.zip')">⬇ IMPORT</button>
+          <button class="fs-btn fs-btn-open" onclick="loadZipFromUrl('featured/BGH Full Release-1.2.1.zip','BGH Full Release-1.2.1.zip')">▶ OPEN IN EDITOR</button>
+        </div>
+      </div>
+
+      <!-- ── CMP ── -->
+      <div class="fs-card">
+        <div class="fs-card-header">
+          <span class="fs-card-title">CMP — CHANNELS MP</span>
+          <span class="fs-card-author">by Astray Galaxy</span>
+        </div>
+        <div class="fs-card-preview" style="background:#090912;display:flex;align-items:center;justify-content:center">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--ink4);letter-spacing:.1em">PREVIEW COMING SOON</span>
+        </div>
+        <div class="fs-card-desc">
+          Channels Multiplayer system by Astray Galaxy. Download link coming soon.
+        </div>
+        <div class="fs-card-actions">
+          <button class="fs-btn fs-btn-dl" disabled title="Import coming soon">⬇ IMPORT</button>
+          <button class="fs-btn fs-btn-open" disabled title="Download coming soon">▶ OPEN IN EDITOR</button>
+        </div>
+      </div>
+
+      <!-- ── BLANK CARD slot ── -->
       <div class="fs-card fs-card-empty">
         <div class="fs-empty-icon">＋</div>
         <div class="fs-empty-label">YOUR SYSTEM HERE</div>
@@ -247,6 +277,7 @@
       <button class="prs-tab on" onclick="prsSetTab('all',this)">ALL</button>
       <button class="prs-tab" onclick="prsSetTab('vanilla',this)">🌍 VANILLA</button>
       <button class="prs-tab" onclick="prsSetTab('custom',this)">⭐ CUSTOM</button>
+      <button class="prs-tab" id="prs-tab-system" onclick="prsSetTab('system',this)" style="display:none">🚀 SYSTEM</button>
     </div>
     <!-- Search -->
     <div class="prs-search-wrap">
