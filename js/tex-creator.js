@@ -27,7 +27,12 @@ const TC = (() => {
   let _pvZoom      = 1;
   let _pvPanX      = 0;
   let _pvPanY      = 0;
-  let _pvAtmoScale = 1.45; // atmoR = planetR * _pvAtmoScale
+  // Preview atmosphere: physics-based sizing matching viewport
+  // atmoR = planetR * (1 + _pvGradH_km / _pvPlanetR_km)
+  let _pvPlanetR_km = 6371;   // planet radius in km (Earth default)
+  let _pvGradH_km   = 600;    // gradient height in km  → atmoScale ~1.094×
+  // Derived: atmoScale = 1 + gradH/planetR
+  function _pvAtmoScale(){ return 1 + _pvGradH_km / _pvPlanetR_km; }
 
   // DOM refs
   let _el = {}; // populated in init()
@@ -170,14 +175,14 @@ const TC = (() => {
     // ── Geometry ─────────────────────────────────────────────────────
     const basePlanetR = Math.min(W, H) * 0.22;
     const planetR  = basePlanetR * _pvZoom;
-    const atmoR    = planetR * _pvAtmoScale;   // outer atmosphere radius
+    const atmoR    = planetR * _pvAtmoScale(); // outer atmosphere radius
     const cx = W/2 + _pvPanX;
     const cy = H/2 + _pvPanY;
 
     // innerFrac: fraction of the polar disc that is "inside the planet"
-    // matches viewport: innerFrac = physR_px / drawR  →  planetR / atmoR
-    const innerFrac         = planetR / atmoR;               // = 1 / _pvAtmoScale
-    const innerFracClamped  = Math.min(0.999, innerFrac);
+    // matches viewport: innerFrac = physR_px / drawR  =  planetR / atmoR
+    const innerFrac        = planetR / atmoR;
+    const innerFracClamped = Math.min(0.999, innerFrac);
 
     // ── 2. Build polar-warp canvas (matches viewport._atmoPolarCache logic) ──
     // Resolution: use 512 for quality (viewport uses up to 512 for thin atmos)
@@ -293,6 +298,17 @@ const TC = (() => {
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
     ctx.stroke();
+    ctx.restore();
+
+    // 3e. Atmosphere outer-edge drag handle — dashed ring at atmoR
+    // Shows the draggable edge users can grab to change gradient height
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, atmoR, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(120,180,255,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
@@ -879,7 +895,7 @@ const TC = (() => {
     <div class="tc-sidebar">
       <div class="tc-tab-bar">
         <button class="tc-tab active" id="tc-tab-grad" data-tab="grad">GRADIENTS</button>
-        <button class="tc-tab tc-tab-soon" id="tc-tab-flare" data-tab="flare" disabled title="Coming soon">FLARES <span class="tc-soon-badge">SOON</span></button>
+        <button class="tc-tab" id="tc-tab-flare" data-tab="flare">FLARES</button>
       </div>
 
       <!-- ── GRADIENTS TAB ── -->
@@ -961,9 +977,13 @@ const TC = (() => {
     <div class="tc-canvas-area">
       <!-- Preview controls bar (shown only in preview mode) -->
       <div class="tc-preview-controls" id="tc-preview-controls" style="display:none">
-        <span class="tc-pvc-label">ATMO SIZE</span>
-        <input type="range" class="tc-range tc-pvc-range" id="tc-pv-atmo" min="1.1" max="4.0" step="0.05" value="1.45">
-        <span class="tc-range-val" id="tc-pv-atmo-val">1.45×</span>
+        <span class="tc-pvc-label" title="Planet radius in km — sets the base size ratio">PLANET R</span>
+        <input type="range" class="tc-range tc-pvc-range" id="tc-pv-planet-r" min="100" max="150000" step="50" value="6371">
+        <span class="tc-range-val" id="tc-pv-planet-r-val">6371 km</span>
+        <span class="tc-pvc-sep"></span>
+        <span class="tc-pvc-label" title="Gradient height in km — matches GRADIENT.height in planet JSON. Drag the top edge of the atmosphere ring in the preview to adjust.">GRAD H</span>
+        <input type="range" class="tc-range tc-pvc-range" id="tc-pv-grad-h" min="10" max="80000" step="10" value="600">
+        <span class="tc-range-val" id="tc-pv-grad-h-val">600 km</span>
         <span class="tc-pvc-sep"></span>
         <button class="tc-pvc-btn" id="tc-pv-reset" title="Reset pan/zoom">⊙ RESET</button>
       </div>
@@ -1146,11 +1166,19 @@ const TC = (() => {
     };
 
     // ── Preview pan/zoom/atmo controls ──
-    const pvAtmoR = ov.querySelector('#tc-pv-atmo');
-    const pvAtmoV = ov.querySelector('#tc-pv-atmo-val');
-    pvAtmoR.oninput = () => {
-      _pvAtmoScale = parseFloat(pvAtmoR.value);
-      pvAtmoV.textContent = _pvAtmoScale.toFixed(2) + '×';
+    const pvPlanetRSlider = ov.querySelector('#tc-pv-planet-r');
+    const pvPlanetRVal    = ov.querySelector('#tc-pv-planet-r-val');
+    const pvGradHSlider   = ov.querySelector('#tc-pv-grad-h');
+    const pvGradHVal      = ov.querySelector('#tc-pv-grad-h-val');
+    const _syncPvLabels = () => {
+      pvPlanetRVal.textContent = Math.round(_pvPlanetR_km) + ' km';
+      pvGradHVal.textContent   = Math.round(_pvGradH_km)   + ' km';
+      pvPlanetRSlider.value = _pvPlanetR_km;
+      pvGradHSlider.value   = _pvGradH_km;
+    };
+    pvPlanetRSlider.oninput = () => {
+      _pvPlanetR_km = parseFloat(pvPlanetRSlider.value);
+      pvPlanetRVal.textContent = Math.round(_pvPlanetR_km) + ' km';
       if(_mode==='preview') _renderPreview();
     };
     ov.querySelector('#tc-pv-reset').onclick = () => {
@@ -1158,22 +1186,86 @@ const TC = (() => {
       if(_mode==='preview') _renderPreview();
     };
 
-    // Preview canvas drag to pan
-    let _pvDragging = false, _pvDragX = 0, _pvDragY = 0;
-    let _pvPinchDist = 0;
+    // ── Preview canvas interactions ───────────────────────────────────
+    // Three interaction modes:
+    //   1. Drag on the atmosphere outer-edge ring → adjust gradient height (km)
+    //   2. Drag elsewhere → pan
+    //   3. Scroll / pinch → zoom
+    //
+    // "Outer edge ring" = within ±12px of atmoR from the planet centre.
+    let _pvDragging    = false;  // panning
+    let _pvEdgeDrag    = false;  // dragging the atmosphere outer edge
+    let _pvDragX = 0, _pvDragY = 0;
+    let _pvEdgeDragStartY = 0, _pvEdgeStartGradH = 0;
+    let _pvPinchDist   = 0;
     const _pvCanvas = _el.previewCanvas;
+
+    // Returns the current atmoR in canvas pixels for hit-testing
+    const _pvGetAtmoR = () => {
+      const basePlanetR = Math.min(_pvCanvas.width, _pvCanvas.height) * 0.22;
+      return basePlanetR * _pvZoom * _pvAtmoScale();
+    };
+    // Returns distance from canvas centre (with pan) to a canvas-space point
+    const _pvDistFromCenter = (cx_can, cy_can) => {
+      const rect = _pvCanvas.getBoundingClientRect();
+      const scaleX = _pvCanvas.width  / rect.width;
+      const scaleY = _pvCanvas.height / rect.height;
+      const canX = cx_can * scaleX;
+      const canY = cy_can * scaleY;
+      const pcx = _pvCanvas.width /2 + _pvPanX;
+      const pcy = _pvCanvas.height/2 + _pvPanY;
+      const dx = canX - pcx, dy = canY - pcy;
+      return Math.sqrt(dx*dx + dy*dy);
+    };
+    const _pvIsNearEdge = (clientX, clientY) => {
+      const rect = _pvCanvas.getBoundingClientRect();
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      const dist = _pvDistFromCenter(localX, localY);
+      const atmoR = _pvGetAtmoR() * (rect.width / _pvCanvas.width); // scale to CSS px
+      return Math.abs(dist - atmoR) < 14; // 14 CSS px hit zone
+    };
+
+    _pvCanvas.addEventListener('mousemove', e => {
+      if(_mode !== 'preview') return;
+      if(!_pvEdgeDrag && !_pvDragging){
+        _pvCanvas.style.cursor = _pvIsNearEdge(e.clientX, e.clientY) ? 'ns-resize' : '';
+      }
+    });
+
     _pvCanvas.addEventListener('mousedown', e => {
       if(_mode !== 'preview') return;
-      _pvDragging = true; _pvDragX = e.clientX; _pvDragY = e.clientY;
-      _pvCanvas.style.cursor = 'grabbing';
+      if(_pvIsNearEdge(e.clientX, e.clientY)){
+        _pvEdgeDrag = true;
+        _pvEdgeDragStartY = e.clientY;
+        _pvEdgeStartGradH = _pvGradH_km;
+        _pvCanvas.style.cursor = 'ns-resize';
+      } else {
+        _pvDragging = true; _pvDragX = e.clientX; _pvDragY = e.clientY;
+        _pvCanvas.style.cursor = 'grabbing';
+      }
     });
+
     window.addEventListener('mousemove', e => {
+      if(_pvEdgeDrag){
+        // Dragging upward (negative dy) → increase gradient height
+        // Scale: 1px drag ≈ planetR_km * 0.015  km change (feels natural)
+        const dy = e.clientY - _pvEdgeDragStartY;
+        const kmPerPx = _pvPlanetR_km * 0.015;
+        _pvGradH_km = Math.max(10, Math.min(80000, _pvEdgeStartGradH - dy * kmPerPx));
+        _syncPvLabels();
+        _renderPreview();
+        return;
+      }
       if(!_pvDragging) return;
       _pvPanX += e.clientX - _pvDragX; _pvPanY += e.clientY - _pvDragY;
       _pvDragX = e.clientX; _pvDragY = e.clientY;
       _renderPreview();
     });
-    window.addEventListener('mouseup', () => { _pvDragging = false; _pvCanvas.style.cursor = ''; });
+    window.addEventListener('mouseup', () => {
+      _pvDragging = false; _pvEdgeDrag = false;
+      _pvCanvas.style.cursor = '';
+    });
 
     // Scroll to zoom
     _pvCanvas.addEventListener('wheel', e => {
@@ -1184,13 +1276,21 @@ const TC = (() => {
       _renderPreview();
     }, {passive:false});
 
-    // Touch: drag to pan, pinch to zoom
+    // Touch: drag to pan / edge-drag / pinch to zoom
+    let _pvTouchEdge = false;
     _pvCanvas.addEventListener('touchstart', e => {
       if(_mode !== 'preview') return;
       if(e.touches.length === 1){
-        _pvDragging = true; _pvDragX = e.touches[0].clientX; _pvDragY = e.touches[0].clientY;
+        const t = e.touches[0];
+        if(_pvIsNearEdge(t.clientX, t.clientY)){
+          _pvTouchEdge = true;
+          _pvEdgeDragStartY = t.clientY;
+          _pvEdgeStartGradH = _pvGradH_km;
+        } else {
+          _pvDragging = true; _pvDragX = t.clientX; _pvDragY = t.clientY;
+        }
       } else if(e.touches.length === 2){
-        _pvDragging = false;
+        _pvDragging = false; _pvTouchEdge = false;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         _pvPinchDist = Math.sqrt(dx*dx+dy*dy);
@@ -1199,10 +1299,19 @@ const TC = (() => {
     _pvCanvas.addEventListener('touchmove', e => {
       if(_mode !== 'preview') return;
       e.preventDefault();
-      if(e.touches.length === 1 && _pvDragging){
-        _pvPanX += e.touches[0].clientX - _pvDragX; _pvPanY += e.touches[0].clientY - _pvDragY;
-        _pvDragX = e.touches[0].clientX; _pvDragY = e.touches[0].clientY;
-        _renderPreview();
+      if(e.touches.length === 1){
+        const t = e.touches[0];
+        if(_pvTouchEdge){
+          const dy = t.clientY - _pvEdgeDragStartY;
+          const kmPerPx = _pvPlanetR_km * 0.015;
+          _pvGradH_km = Math.max(10, Math.min(80000, _pvEdgeStartGradH - dy * kmPerPx));
+          _syncPvLabels();
+          _renderPreview();
+        } else if(_pvDragging){
+          _pvPanX += t.clientX - _pvDragX; _pvPanY += t.clientY - _pvDragY;
+          _pvDragX = t.clientX; _pvDragY = t.clientY;
+          _renderPreview();
+        }
       } else if(e.touches.length === 2){
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -1215,7 +1324,9 @@ const TC = (() => {
         _pvPinchDist = dist;
       }
     }, {passive:false});
-    _pvCanvas.addEventListener('touchend', () => { _pvDragging = false; _pvPinchDist = 0; });
+    _pvCanvas.addEventListener('touchend', () => {
+      _pvDragging = false; _pvTouchEdge = false; _pvPinchDist = 0;
+    });
 
     _setMode('canvas');
     _renderGradientList();
