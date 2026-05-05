@@ -368,8 +368,9 @@ const TC = (() => {
     const flares = [];
     for(let fi = 0; fi < count; fi++){
       const baseW = minW + rng() * (maxW - minW);
-      // Each flare reaches a random height: at least baseH, up to flareReach
-      const height = baseH + rng() * (flareReach - baseH);
+      // Height is fully independent of baseH — baseH only controls the glow band thickness.
+      // Flares always root at the very bottom (y=0) regardless of band size.
+      const height = rng() * flareReach;
       flares.push({
         cx:     rng(),          // 0..1 horizontal center (wrapping)
         baseHW: baseW * 0.5,
