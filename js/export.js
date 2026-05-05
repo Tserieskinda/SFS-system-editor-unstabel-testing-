@@ -165,24 +165,49 @@ function exportSystem(){
     const maskTex = d.WATER_DATA?.oceanMaskTexture;
     if(maskTex && maskTex !== 'None') usedTexNames.add(maskTex);
 
-    // Heightmaps referenced in textureFormula / terrainFormulaDifficulties
+    // Heightmaps referenced in any terrain formula field
+    // Collect all formula lines from every relevant field
+    const TD = d.TERRAIN_DATA || {};
     const formulaLines = [
-      ...(d.TERRAIN_DATA?.textureFormula || []),
-      ...Object.values(d.TERRAIN_DATA?.terrainFormulaDifficulties || {}).flat()
+      ...(TD.terrainFormula        || []),
+      ...(TD.textureFormula        || []),
+      ...Object.values(TD.terrainFormulaDifficulties || {}).flat(),
+      ...Object.values(TD.textureDifficulties        || {}).flat(),
     ];
     formulaLines.forEach(line => {
-      // First argument of any function call is typically the heightmap name
-      const m = line.match(/\(\s*([^,)\s]+)/);
-      if(m) usedHmNames.add(m[1]);
+      if(typeof line !== 'string') return;
+      // Extract every bare identifier and every quoted string —
+      // heightmap names appear as bare words (e.g. Earth) or quoted (e.g. "Earth")
+      // anywhere in the formula line, not just as first args.
+      // Quoted strings:
+      const qMatches = line.matchAll(/"([^"]+)"|'([^']+)'/g);
+      for(const m of qMatches) usedHmNames.add(m[1] || m[2]);
+      // Bare identifiers that look like names (letters, digits, underscores, dots, hyphens)
+      // but are NOT keywords or operators
+      const KEYWORDS = new Set(['SAMPLE','OUTPUT','sin','cos','abs','min','max','pow','sqrt',
+        'floor','ceil','round','log','PI','if','else','return','true','false','null',
+        'FLAT_ZONE','OCEAN_MASK','WATER','NOISE']);
+      const bareMatches = line.matchAll(/\b([A-Za-z][A-Za-z0-9_.\-]*)\b/g);
+      for(const m of bareMatches){
+        if(!KEYWORDS.has(m[1]) && !/^\d/.test(m[1])) usedHmNames.add(m[1]);
+      }
     });
   });
 
   // Heightmap Data/ — only used heightmaps, skipping vanilla (game provides them)
+  // Match by full name OR stem (formula lines use bare names without extension)
   assets.heightmaps.forEach(e => {
-    if(e.vanilla) return; // bundled with SFS — no need to ship
+    if(e.vanilla) return;
     const stem = e.name.replace(/\.[^.]+$/, '');
-    if(usedHmNames.has(e.name) || usedHmNames.has(stem)){
-      zipFiles[`${sysName}/Heightmap Data/${e.name}`] = e.url ? dataUrlToBytes(e.url) : enc(e.content);
+    const matched = usedHmNames.has(e.name) || usedHmNames.has(stem);
+    if(!matched) return;
+    // PNG heightmaps store bytes in e.url (data URL); txt heightmaps store text in e.content
+    if(e.url){
+      zipFiles[`${sysName}/Heightmap Data/${e.name}`] = dataUrlToBytes(e.url);
+    } else if(e.bytes){
+      zipFiles[`${sysName}/Heightmap Data/${e.name}`] = e.bytes;
+    } else if(e.content != null){
+      zipFiles[`${sysName}/Heightmap Data/${e.name}`] = enc(e.content);
     }
   });
 
@@ -210,8 +235,9 @@ function exportSystem(){
     }
   });
 
-  console.log(`[SFS|EXPORT] used textures (${usedTexNames.size}): [${[...usedTexNames].join(',')}]`);
-  console.log(`[SFS|EXPORT] used heightmaps (${usedHmNames.size}): [${[...usedHmNames].join(',')}]`);
+  const exportedHmNames = Object.keys(zipFiles).filter(k => k.includes('/Heightmap Data/') && !k.endsWith('/'));
+  console.log(`[SFS|EXPORT] formula referenced names (${usedHmNames.size}): [${[...usedHmNames].join(',')}]`);
+  console.log(`[SFS|EXPORT] heightmaps exported (${exportedHmNames.length}): [${exportedHmNames.map(k=>k.split('/').pop()).join(',')}]`);
 
   // Other uploaded files
   assets.other.forEach(e => {
