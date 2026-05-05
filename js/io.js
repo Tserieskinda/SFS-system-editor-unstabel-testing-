@@ -325,6 +325,63 @@ async function loadZipFile(file){
 }
 
 
+// ── Load a system zip directly from a URL (used by Featured Systems cards) ──
+// GitHub raw URLs are CORS-blocked, so we mirror through jsDelivr CDN.
+// Pass a jsDelivr URL: https://cdn.jsdelivr.net/gh/{user}/{repo}@{branch}/{path}
+async function loadZipFromUrl(cdnUrl, displayName){
+  showLoading(); setLoadingMsg('Downloading ' + displayName + '…');
+  try {
+    // Warn before clearing an active session
+    if(Object.keys(bodies).length > 0){
+      hideLoading(); hideLoadingBars();
+      if(!confirm('Clear current system and load "' + displayName + '"?')){
+        return;
+      }
+      showLoading(); setLoadingMsg('Downloading ' + displayName + '…');
+    }
+
+    showLoadingBars();
+    setBar1(0, 'DOWNLOADING');
+
+    const resp = await fetch(cdnUrl);
+    if(!resp.ok) throw new Error(`HTTP ${resp.status} — could not fetch ${displayName}`);
+
+    const contentLength = resp.headers.get('Content-Length');
+    let buffer;
+    if(contentLength){
+      const total = parseInt(contentLength, 10);
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while(true){
+        const {done, value} = await reader.read();
+        if(done) break;
+        chunks.push(value);
+        received += value.length;
+        setBar1(received / total * 100);
+      }
+      const full = new Uint8Array(received);
+      let off = 0;
+      for(const c of chunks){ full.set(c, off); off += c.length; }
+      buffer = full.buffer;
+    } else {
+      setBar1(50, 'DOWNLOADING…');
+      buffer = await resp.arrayBuffer();
+      setBar1(100);
+    }
+
+    // Feed through the same pipeline as a manually-uploaded zip
+    const fakeFile = new File([buffer], displayName, { type: 'application/zip' });
+    hideLoading(); hideLoadingBars();
+    await loadZipFile(fakeFile);
+
+  } catch(err){
+    hideLoading(); hideLoadingBars(); setLoadingTitle('LOADING SYSTEM');
+    console.error('Featured system load error:', err);
+    alert('Failed to download "' + displayName + '":\n' + err.message);
+  }
+}
+
 // ── Default texture zip loader ──
 // Maps folder names from the default texture ZIP to asset categories.
 
@@ -340,6 +397,7 @@ const REMOTE_ASSETS_URLS = [
   { url: 'assets/Vanilla Presets + textures.zip',  name: 'Vanilla Presets + textures.zip' },
   { url: 'assets/Vanilla Textures 2.zip',           name: 'Vanilla Textures 2.zip' },
   { url: 'assets/Custom and Terrain Files.zip',     name: 'Custom and Terrain Files.zip' },
+  { url: 'assets/Custom and Terrain Files.zip',     name: 'SFS tex+presets 2.zip' },
 ];
 
 // Auto-fetch remote asset zip on startup (online users only).

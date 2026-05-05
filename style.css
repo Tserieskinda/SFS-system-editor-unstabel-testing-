@@ -2381,8 +2381,10 @@ body {
 .fs-card-preview {
   background: #090912;
   min-height: 110px;
+  height: 160px;
   display: flex; align-items: center; justify-content: center;
   padding: 16px;
+  overflow: hidden;
 }
 .fs-planet-row {
   display: flex; align-items: center; justify-content: center;
@@ -2499,12 +2501,14 @@ body {
    MOBILE COMPATIBILITY — START MENU & ALL SCREENS
 ══════════════════════════════════════════════════════ */
 
-/* ── Make start screen scrollable so tall menus don't overflow ── */
-#s-start {
-  overflow-y: auto;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 40px 24px 40px;
+/* ── Make start screen scrollable so tall menus don't overflow (mobile only) ── */
+@media (max-width: 640px) {
+  #s-start {
+    overflow-y: auto;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 32px 16px 32px;
+  }
 }
 
 /* ── Menu buttons: full-width, no min-width constraint ── */
@@ -2518,12 +2522,6 @@ body {
   max-width: 400px;
 }
 @media (max-width: 640px) {
-
-  /* Start screen: less padding, vertically scrollable */
-  #s-start {
-    padding: 28px 16px 28px;
-    justify-content: flex-start;
-  }
 
   /* Logo: tighter on mobile */
   .logo-wrap {

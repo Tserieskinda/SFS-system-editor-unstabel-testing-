@@ -18,6 +18,7 @@ const TC = (() => {
   let _gradients   = [];   // array of gradient objects
   let _activeGrad  = -1;  // index into _gradients
   let _baseTexture = null; // offscreen canvas: loaded texture used as base layer under gradients
+  let _flareLayer  = null; // offscreen canvas: generated flares, composited below gradients
 
   // Offscreen draw canvas (the actual texture data)
   let _drawCanvas = null;
@@ -66,11 +67,17 @@ const TC = (() => {
   // ── Compose all gradients onto the draw canvas ─────────────────────
   function _composeGradients(){
     _drawCtx.clearRect(0, 0, TEX_W, TEX_H);
-    // Draw base texture first (loaded image sits under all gradient layers)
+    // 1. Base loaded texture (bottom-most)
     if(_baseTexture){
       _drawCtx.globalCompositeOperation = 'source-over';
       _drawCtx.globalAlpha = 1;
       _drawCtx.drawImage(_baseTexture, 0, 0, TEX_W, TEX_H);
+    }
+    // 2. Flare layer (generated flares sit above loaded texture, below gradients)
+    if(_flareLayer){
+      _drawCtx.globalCompositeOperation = 'source-over';
+      _drawCtx.globalAlpha = 1;
+      _drawCtx.drawImage(_flareLayer, 0, 0, TEX_W, TEX_H);
     }
     if(_gradients.length === 0){ _drawCtx.globalCompositeOperation = 'source-over'; return; }
 
@@ -344,8 +351,7 @@ const TC = (() => {
     const bb = parseInt(bgColor.slice(5,7),16);
 
     // Fresh pixel buffer for the entire texture
-    _drawCtx.clearRect(0, 0, TEX_W, TEX_H);
-    const fd = _drawCtx.createImageData(TEX_W, TEX_H);
+    const fd = new ImageData(TEX_W, TEX_H);
     const fpx = fd.data;
 
     // Fill background
@@ -443,7 +449,11 @@ const TC = (() => {
       }
     }
 
-    _drawCtx.putImageData(fd, 0, 0);
+    // Store into _flareLayer so _composeGradients can composite it persistently
+    _flareLayer = document.createElement('canvas');
+    _flareLayer.width  = TEX_W;
+    _flareLayer.height = TEX_H;
+    _flareLayer.getContext('2d').putImageData(fd, 0, 0);
   }
 
   // ── Refresh both views ─────────────────────────────────────────────
@@ -1068,7 +1078,7 @@ const TC = (() => {
         TEX_W = w; TEX_H = h;
         _initDrawCanvas();   // resize offscreen buffer
         _sizeCanvases();     // resize display canvas to match new aspect
-        _gradients = []; _activeGrad = -1;
+        _gradients = []; _activeGrad = -1; _baseTexture = null; _flareLayer = null;
         _renderGradientList(); _renderStopEditor(); _refresh();
       };
     }
@@ -1092,7 +1102,7 @@ const TC = (() => {
       _renderGradientList(); _renderStopEditor(); _refresh();
     };
     ov.querySelector('#tc-clear-all').onclick = () => {
-      _gradients = []; _activeGrad = -1; _baseTexture = null;
+      _gradients = []; _activeGrad = -1; _baseTexture = null; _flareLayer = null;
       _drawCtx.clearRect(0, 0, TEX_W, TEX_H);
       _renderGradientList(); _renderStopEditor(); _renderEditorCanvas();
       if(_mode === 'preview') _renderPreview();
@@ -1154,8 +1164,7 @@ const TC = (() => {
         seed:     parseInt(_flR('tc-fl-seed').value),
       });
       _renderGradientList();
-      _renderEditorCanvas();
-      if(_mode === 'preview') _renderPreview();
+      _refresh(); // composes _flareLayer into _drawCanvas so export always works
     };
 
     _flR('tc-fl-gen').onclick  = _doGenerateFlares;
@@ -1179,6 +1188,11 @@ const TC = (() => {
     pvPlanetRSlider.oninput = () => {
       _pvPlanetR_km = parseFloat(pvPlanetRSlider.value);
       pvPlanetRVal.textContent = Math.round(_pvPlanetR_km) + ' km';
+      if(_mode==='preview') _renderPreview();
+    };
+    pvGradHSlider.oninput = () => {
+      _pvGradH_km = parseFloat(pvGradHSlider.value);
+      pvGradHVal.textContent = Math.round(_pvGradH_km) + ' km';
       if(_mode==='preview') _renderPreview();
     };
     ov.querySelector('#tc-pv-reset').onclick = () => {
@@ -1205,25 +1219,19 @@ const TC = (() => {
       const basePlanetR = Math.min(_pvCanvas.width, _pvCanvas.height) * 0.22;
       return basePlanetR * _pvZoom * _pvAtmoScale();
     };
-    // Returns distance from canvas centre (with pan) to a canvas-space point
-    const _pvDistFromCenter = (cx_can, cy_can) => {
-      const rect = _pvCanvas.getBoundingClientRect();
-      const scaleX = _pvCanvas.width  / rect.width;
-      const scaleY = _pvCanvas.height / rect.height;
-      const canX = cx_can * scaleX;
-      const canY = cy_can * scaleY;
-      const pcx = _pvCanvas.width /2 + _pvPanX;
-      const pcy = _pvCanvas.height/2 + _pvPanY;
-      const dx = canX - pcx, dy = canY - pcy;
-      return Math.sqrt(dx*dx + dy*dy);
-    };
+    // Returns true if (clientX, clientY) is within the atmosphere ring hit zone
     const _pvIsNearEdge = (clientX, clientY) => {
       const rect = _pvCanvas.getBoundingClientRect();
+      const cssScale = rect.width / _pvCanvas.width;
       const localX = clientX - rect.left;
       const localY = clientY - rect.top;
-      const dist = _pvDistFromCenter(localX, localY);
-      const atmoR = _pvGetAtmoR() * (rect.width / _pvCanvas.width); // scale to CSS px
-      return Math.abs(dist - atmoR) < 14; // 14 CSS px hit zone
+      // Planet centre in CSS pixels (canvas centre + pan offset converted to CSS px)
+      const pcx = rect.width  / 2 + _pvPanX * cssScale;
+      const pcy = rect.height / 2 + _pvPanY * cssScale;
+      const dx = localX - pcx, dy = localY - pcy;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const atmoR = _pvGetAtmoR() * cssScale; // atmoR in CSS px
+      return Math.abs(dist - atmoR) < 16;
     };
 
     _pvCanvas.addEventListener('mousemove', e => {

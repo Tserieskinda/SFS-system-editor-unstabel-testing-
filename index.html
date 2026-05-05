@@ -178,9 +178,9 @@
     <!-- Info banner -->
     <div class="fs-info-bar">
       <span class="fs-info-label">📋 CONDITIONS</span>
-      All assets are free to use — please give credit to the original creator.
+      All assets are free to use — You must give credit to the original creator.
       To get your system featured here, it must be high quality.
-      <a class="fs-info-link" href="https://discord.gg/" target="_blank">Contact us on Discord ›</a>
+      <a class="fs-info-link" href="https://discord.gg/" target="_blank">Contact me on Discord ›</a>
     </div>
 
     <!-- Grid -->
@@ -190,11 +190,13 @@
       <div class="fs-card">
         <div class="fs-card-header">
           <span class="fs-card-title">SFS DEFAULT SYSTEM</span>
-          <span class="fs-card-author">by Stef / SFS Team</span>
+          <span class="fs-card-author">by SFS Dev Team / Team Curiosity</span>
         </div>
-        <div class="fs-card-preview" id="fs-default-preview">
-          <!-- Planet preview circles rendered by JS -->
-          <div class="fs-planet-row" id="fs-default-planets">
+        <div class="fs-card-preview" id="fs-default-preview" style="padding:0;overflow:hidden;border-radius:6px">
+          <img src="https://raw.githubusercontent.com/Tserieskinda/Sfs-System-Editor/main/featured/preview.png"
+               onerror="this.style.display='none';document.getElementById('fs-default-planets-fallback').style.display='flex'"
+               style="width:100%;height:100%;object-fit:cover;display:block" alt="SFS Default System Preview">
+          <div class="fs-planet-row" id="fs-default-planets-fallback" style="display:none">
             <div class="fs-planet" style="width:52px;height:52px;background:radial-gradient(circle at 38% 38%,#e8c878,#c89830,#7a5010);border:2px solid #c8a040" title="Sun"></div>
             <div class="fs-planet" style="width:28px;height:28px;background:radial-gradient(circle at 38% 38%,#d8c0a8,#a08868,#604830);border:2px solid #907050" title="Mercury"></div>
             <div class="fs-planet" style="width:36px;height:36px;background:radial-gradient(circle at 38% 38%,#e8d898,#c8a840,#806820);border:2px solid #b09040" title="Venus"></div>
@@ -203,42 +205,20 @@
           </div>
         </div>
         <div class="fs-card-desc">
-          The vanilla SFS solar system — Sun, Mercury, Venus, Earth &amp; Moon, Mars &amp; Phobos, and more. Faithful recreation of the in-game default.
+          The vanilla SFS solar system — Sun, Mercury, Venus, Earth &amp; Moon, Mars &amp; Phobos, and more.
         </div>
         <div class="fs-card-actions">
-          <button class="fs-btn fs-btn-dl" disabled title="Download link coming soon">⬇ DOWNLOAD</button>
-          <button class="fs-btn fs-btn-open" disabled title="Coming soon">▶ OPEN IN EDITOR</button>
+          <button class="fs-btn fs-btn-dl" onclick="loadZipFromUrl('https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/featured/Example.zip','SFS Default System.zip')">⬇ DOWNLOAD &amp; OPEN</button>
         </div>
-        <div class="fs-card-coming">Download link coming soon</div>
       </div>
 
       <!-- ── BLANK CARD slot 2 ── -->
       <div class="fs-card fs-card-empty">
         <div class="fs-empty-icon">＋</div>
         <div class="fs-empty-label">YOUR SYSTEM HERE</div>
-        <div class="fs-empty-sub">High-quality community systems will be featured here.</div>
+        <div class="fs-empty-sub">Consented systems will be featured here.</div>
       </div>
-
-      <!-- ── BLANK CARD slot 3 ── -->
-      <div class="fs-card fs-card-empty">
-        <div class="fs-empty-icon">＋</div>
-        <div class="fs-empty-label">YOUR SYSTEM HERE</div>
-        <div class="fs-empty-sub">High-quality community systems will be featured here.</div>
-      </div>
-
     </div><!-- /fs-grid -->
-
-    <!-- How to get featured -->
-    <div class="fs-howto">
-      <div class="fs-howto-title">HOW TO GET YOUR SYSTEM FEATURED</div>
-      <div class="fs-howto-body">
-        <div class="fs-howto-step"><span class="fs-step-num">1</span>Build a high-quality, complete system in the editor — original artwork and accurate data preferred.</div>
-        <div class="fs-howto-step"><span class="fs-step-num">2</span>Export it as a <code>.zip</code> from the editor and take a good screenshot or preview image.</div>
-        <div class="fs-howto-step"><span class="fs-step-num">3</span>Share it with us — contact Tserieskinda on Discord or GitHub with your system zip, preview image, and your creator name.</div>
-        <div class="fs-howto-step"><span class="fs-step-num">4</span>We'll review it and add it here if it meets quality standards. You keep full credit and can request updates anytime.</div>
-      </div>
-    </div>
-
   </div>
 </div>
 
