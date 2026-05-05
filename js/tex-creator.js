@@ -334,6 +334,10 @@ const TC = (() => {
     const baseH      = opts.baseH      ?? 0.18;
     // flareReach: max height a flare can reach (fraction from bottom, <=1)
     const flareReach = opts.flareReach ?? 0.88;
+    // lenEq: 0=fully random heights, 1=all flares same height (equalised)
+    const lenEq      = opts.lenEq      ?? 0;
+    // distEq: 0=fully random positions, 1=perfectly evenly spaced around circumference
+    const distEq     = opts.distEq     ?? 0;
 
     // Seedable RNG (mulberry32)
     let _s = (seed * 0x9e3779b9) >>> 0;
@@ -368,10 +372,28 @@ const TC = (() => {
       const height = baseH + rng() * (flareReach - baseH);
       flares.push({
         cx:     rng(),          // 0..1 horizontal center (wrapping)
-        baseHW: baseW * 0.5,    // half-width at the base (bottom)
-        tipHW:  baseW * 0.03,   // half-width at the tip — very narrow
-        height,                 // how far up (yFromBottom fraction) this flare goes
+        baseHW: baseW * 0.5,
+        tipHW:  baseW * 0.03,
+        height,
         peak:   0.5 + rng() * (bright - 0.5),
+      });
+    }
+
+    // ── Length equalisation ──────────────────────────────────────────
+    // Blend each flare's random height toward the mean height by lenEq factor
+    if(lenEq > 0){
+      const meanH = flares.reduce((s,f) => s + f.height, 0) / flares.length;
+      for(const f of flares) f.height = f.height + (meanH - f.height) * lenEq;
+    }
+
+    // ── Distance equalisation ────────────────────────────────────────
+    // Blend each flare's random cx toward its evenly-spaced slot by distEq factor
+    if(distEq > 0){
+      // Sort flares by current cx so slots are assigned in order
+      const sorted = flares.slice().sort((a,b) => a.cx - b.cx);
+      sorted.forEach((f, i) => {
+        const evenCx = i / flares.length; // evenly spaced 0..1
+        f.cx = f.cx + (evenCx - f.cx) * distEq;
       });
     }
 
@@ -975,6 +997,16 @@ const TC = (() => {
             <input type="range" class="tc-range" id="tc-fl-seed" min="0" max="9999" step="1" value="42">
             <span class="tc-range-val" id="tc-fl-seed-val">42</span>
           </div>
+          <div class="tc-flare-row">
+            <label title="Pulls all flare heights toward the same length — 0% = fully random lengths, 100% = all flares the same height">LENGTH EQUALISATION</label>
+            <input type="range" class="tc-range" id="tc-fl-leneq" min="0" max="1" step="0.01" value="0">
+            <span class="tc-range-val" id="tc-fl-leneq-val">0%</span>
+          </div>
+          <div class="tc-flare-row">
+            <label title="Pulls flares toward even spacing — 0% = random positions, 100% = perfectly evenly distributed around the planet">DISTANCE EQUALISATION</label>
+            <input type="range" class="tc-range" id="tc-fl-disteq" min="0" max="1" step="0.01" value="0">
+            <span class="tc-range-val" id="tc-fl-disteq-val">0%</span>
+          </div>
           <div class="tc-flare-btns">
             <button class="tc-flare-gen-btn" id="tc-fl-gen">✦ GENERATE</button>
             <button class="tc-flare-rand-btn" id="tc-fl-rand">⟳ RANDOMISE</button>
@@ -1144,6 +1176,8 @@ const TC = (() => {
     _flV('tc-fl-bright',  'tc-fl-bright-val',  v => Math.round(v*100) + '%');
     _flV('tc-fl-bgalpha', 'tc-fl-bgalpha-val', v => Math.round(v*100) + '%');
     _flV('tc-fl-seed',    'tc-fl-seed-val',    v => v);
+    _flV('tc-fl-leneq',   'tc-fl-leneq-val',   v => Math.round(v*100) + '%');
+    _flV('tc-fl-disteq',  'tc-fl-disteq-val',  v => Math.round(v*100) + '%');
     _flR('tc-fl-color').oninput = () => { _flR('tc-fl-color-hex').textContent = _flR('tc-fl-color').value; };
     _flR('tc-fl-bg').oninput    = () => { _flR('tc-fl-bg-hex').textContent    = _flR('tc-fl-bg').value; };
 
@@ -1162,6 +1196,8 @@ const TC = (() => {
         flareReach: parseFloat(_flR('tc-fl-reach').value),
         bright:   parseFloat(_flR('tc-fl-bright').value),
         seed:     parseInt(_flR('tc-fl-seed').value),
+        lenEq:    parseFloat(_flR('tc-fl-leneq').value),
+        distEq:   parseFloat(_flR('tc-fl-disteq').value),
       });
       _renderGradientList();
       _refresh(); // composes _flareLayer into _drawCanvas so export always works
