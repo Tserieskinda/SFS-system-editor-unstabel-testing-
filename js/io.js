@@ -493,12 +493,76 @@ let _remoteAbortCtrl = null;
 let _autoLoadPromise = null;   // resolves when startup autoload finishes (or fails)
 function cancelRemoteAssets(){ if(_remoteAbortCtrl) _remoteAbortCtrl.abort(); }
 
+// ── IDB cache replay helpers ──────────────────────────────────────────────────
+
+// Replay a cached asset payload directly into the live stores (no network, no
+// decompression).  Returns { totalTextures, totalPresets }.
+async function _replayFromCache(record){
+  let totalTextures = 0, totalPresets = 0;
+
+  // Textures
+  for(const t of (record.textures || [])){
+    if(!assets.textures.find(a => a.name === t.name)){
+      cacheTexture(t.name.replace(/\.[^.]+$/,''), t.url);
+      assets.textures.push(t);
+      renderAssetThumb(t);
+      totalTextures++;
+    }
+  }
+
+  // Presets (vanilla / custom)
+  const dp = record.presets || {};
+  for(const cat of ['vanilla','custom']){
+    if(dp[cat]){
+      for(const [k,v] of Object.entries(dp[cat])){
+        dynamicPresets[cat][k] = v;
+        totalPresets++;
+      }
+    }
+  }
+
+  // Named preset sources
+  for(const [label, src] of Object.entries(record.namedSources || {})){
+    dynamicPresetSources[label] = src;
+    totalPresets += Object.keys(src.presets||{}).length;
+  }
+
+  // Heightmaps
+  for(const h of (record.heightmaps || [])){
+    if(!assets.heightmaps.find(a => a.name === h.name)){
+      assets.heightmaps.push(h);
+      renderAssetRow(h, 'heightmaps');
+      injectCustomHeightmap(h.name);
+    }
+  }
+
+  if(totalTextures > 0){ refreshTexPickerLists(); updateAssetEmptyState(); drawViewport(); }
+  return { totalTextures, totalPresets };
+}
+
+// Snapshot assets that were added during a fresh load so we can persist them.
+function _snapshotNewAssets(texBefore, presetsBefore, hmBefore){
+  const textures = assets.textures.slice(texBefore);
+  const heightmaps = assets.heightmaps.slice(hmBefore);
+
+  // Preset delta (vanilla + custom)
+  const presets = { vanilla:{}, custom:{} };
+  const dpv = Object.keys(dynamicPresets.vanilla);
+  const dpc = Object.keys(dynamicPresets.custom);
+  dpv.slice(presetsBefore.vanilla).forEach(k => { presets.vanilla[k] = dynamicPresets.vanilla[k]; });
+  dpc.slice(presetsBefore.custom ).forEach(k => { presets.custom[k]  = dynamicPresets.custom[k];  });
+
+  return { textures, presets, heightmaps, namedSources:{} };
+}
+
+// ── Main autoload (with IDB cache) ───────────────────────────────────────────
+
 async function autoLoadRemoteAssets(){
   if(!REMOTE_ASSETS_URLS || !REMOTE_ASSETS_URLS.length) return;
   const statusEl = document.getElementById('default-tex-status');
   const btn = document.getElementById('btn-load-assets');
   const cancelBtn = document.getElementById('btn-cancel-remote');
-  if(statusEl){ statusEl.textContent = '⟳ Fetching assets…'; statusEl.style.color = 'var(--sky2)'; }
+  if(statusEl){ statusEl.textContent = '⟳ Loading assets…'; statusEl.style.color = 'var(--sky2)'; }
 
   let totalTextures = 0, totalPresets = 0, errors = 0, cancelled = false;
   _remoteAbortCtrl = new AbortController();
@@ -513,12 +577,46 @@ async function autoLoadRemoteAssets(){
     if(signal.aborted){ cancelled = true; break; }
     const { url, name: fname } = REMOTE_ASSETS_URLS[i];
     setLoadingMsg(`(${i+1}/${REMOTE_ASSETS_URLS.length}) ${fname}`);
-    setBar1(0, 'DOWNLOADING');
+    setBar1(0, 'CHECKING CACHE');
     setBar2(null, 'LOADING TEXTURES');
 
     try{
+      // ── 1. Try to get current ETag/Last-Modified via HEAD (fast, no body) ──
+      let freshEtag = null;
+      let freshSize = 0;
+      try{
+        const head = await fetch(url, { method:'HEAD', signal });
+        if(head.ok){
+          freshEtag = head.headers.get('ETag') || head.headers.get('Last-Modified') || null;
+          freshSize = parseInt(head.headers.get('Content-Length')||'0', 10);
+        }
+      } catch(_){ /* offline or CORS no-HEAD — skip cache check, fall through to full fetch */ }
+
+      // ── 2. Check IDB for a valid cached entry ──────────────────────────────
+      const cached = await idbCacheRead(url);
+      if(cached && cached.textures && cached.textures.length > 0 &&
+         freshEtag && cached.etag === freshEtag){
+        // Cache hit — replay instantly
+        setBar1(50, 'FROM CACHE');
+        const r = await _replayFromCache(cached);
+        totalTextures += r.totalTextures;
+        totalPresets  += r.totalPresets;
+        setBar1(100, 'FROM CACHE ✓');
+        console.log(`[SFS|IDB] Cache hit for "${fname}" — skipped download`);
+        await _yield();
+        continue;
+      }
+
+      // ── 3. Cache miss or stale — fetch zip normally ────────────────────────
+      setBar1(0, 'DOWNLOADING');
       const resp = await fetch(url, { signal });
       if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      // Grab ETag from the actual GET response if HEAD didn't give us one
+      if(!freshEtag){
+        freshEtag = resp.headers.get('ETag') || resp.headers.get('Last-Modified') || null;
+        freshSize = parseInt(resp.headers.get('Content-Length')||'0', 10);
+      }
 
       // Stream download with bar1 progress if Content-Length is known
       const contentLength = resp.headers.get('Content-Length');
@@ -542,11 +640,18 @@ async function autoLoadRemoteAssets(){
         for(const c of chunks){ full.set(c, off); off += c.length; }
         buffer = full.buffer;
       } else {
-        // No Content-Length — just fetch and pulse bar indeterminate
         setBar1(50, 'DOWNLOADING…');
         buffer = await resp.arrayBuffer();
         setBar1(100);
       }
+
+      // ── 4. Snapshot pre-load state so we can diff what was added ──────────
+      const texBefore    = assets.textures.length;
+      const hmBefore     = assets.heightmaps.length;
+      const presetsBefore = {
+        vanilla: Object.keys(dynamicPresets.vanilla).length,
+        custom:  Object.keys(dynamicPresets.custom).length,
+      };
 
       setBar1(100, 'DECOMPRESSING');
       const res = await _loadSFSAssetBuffer(
@@ -557,6 +662,15 @@ async function autoLoadRemoteAssets(){
       totalTextures += res.totalTextures;
       totalPresets  += res.totalPresets;
       errors        += res.errors;
+
+      // ── 5. Persist processed assets to IDB (async, non-blocking) ──────────
+      if(res.totalTextures > 0 || res.totalPresets > 0){
+        const payload = _snapshotNewAssets(texBefore, presetsBefore, hmBefore);
+        idbCacheWrite(url, freshEtag, freshSize, payload).then(ok => {
+          if(ok) console.log(`[SFS|IDB] Cached "${fname}" (${payload.textures.length} tex, etag=${freshEtag})`);
+        });
+      }
+
     } catch(err){
       if(err.name === 'AbortError'){ cancelled = true; break; }
       console.warn(`[SFS] Failed to load ${fname}:`, err);
@@ -588,6 +702,12 @@ async function autoLoadRemoteAssets(){
     }
   }
   if(btn && totalTextures > 0){ btn.style.display = 'none'; }
+}
+
+// Expose cache-clear for the settings panel
+async function clearAssetCache(){
+  await idbCacheClear();
+  console.log('[SFS|IDB] Asset cache cleared');
 }
 
 // ── Dynamic preset store — populated when asset zips are loaded ──────────────

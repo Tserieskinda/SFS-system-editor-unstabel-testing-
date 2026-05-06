@@ -252,21 +252,82 @@ function confirmPreset(){
       b.data.ORBIT_DATA && b.data.ORBIT_DATA.parent === parentName
     );
 
+    const AU = 1.496e11; // 1 Astronomical Unit in metres
+
+    // ── Smart SOI-aware SMA placement ────────────────────────────────────────
+    // Strategy:
+    //  1. Compute the parent's SOI radius (or use a sensible bound for center/large SOIs)
+    //  2. Find the outermost sibling orbit
+    //  3. Try to place the new body inside the SOI at 1.5× the outermost sibling
+    //     (or at a fraction of the SOI if no siblings)
+    //  4. If the result exceeds the SOI, use a fallback fraction of the SOI
+    //  5. The system center has infinite SOI — start at 0.01 AU minimum
+    //  6. Always respect a floor of parentRadius × 5 (clear the body's surface)
+
+    function _getParentSOI_m(pName){
+      // System centre: infinite SOI → return null
+      const pb = bodies[pName];
+      if(!pb) return null;
+      if(pb.isCenter) return null;
+      return computeSOI_m(pName);  // may also return null if uncomputable
+    }
+
+    const parentSOI_m = _getParentSOI_m(parentName);
+    const MIN_CLEAR   = parentRadius * 5;            // must clear parent surface
+    const HARD_FLOOR  = 0.01 * AU;                   // absolute minimum (system center)
+
     let defaultSMA;
-    if(siblings.length > 0){
-      const maxSibSMA = Math.max(...siblings.map(b => effectiveSMA(b.data.ORBIT_DATA)));
-      defaultSMA = Math.max(maxSibSMA * 1.5, parentRadius * 80);
-    } else {
-      const parentOD = parentBody && parentBody.data.ORBIT_DATA;
-      if(parentBody && parentBody.isCenter){
-        defaultSMA = Math.max(parentRadius * 80, centerRadius * 0.15);
-      } else if(parentOD && effectiveSMA(parentOD) > 0){
-        defaultSMA = Math.max(effectiveSMA(parentOD) * 0.15, parentRadius * 20);
+
+    if(parentSOI_m === null){
+      // ── Case A: system center (infinite SOI) ─────────────────────────────
+      // Start from 0.01 AU minimum; push out beyond the farthest sibling if any.
+      const minForCenter = Math.max(parentRadius * 80, HARD_FLOOR);
+      if(siblings.length > 0){
+        const maxSibSMA = Math.max(...siblings.map(b => effectiveSMA(b.data.ORBIT_DATA)));
+        defaultSMA = Math.max(maxSibSMA * 1.5, minForCenter);
       } else {
-        defaultSMA = Math.max(parentRadius * 20, centerRadius * 0.1);
+        defaultSMA = minForCenter;
+      }
+
+    } else if(parentSOI_m <= parentRadius){
+      // ── Case B: degenerate SOI (SOI is inside the body radius) ───────────
+      // Fallback: place at parentRadius × 80 (classic heuristic); user can adjust.
+      defaultSMA = parentRadius * 80;
+
+    } else {
+      // ── Case C: normal body with a finite, usable SOI ────────────────────
+      const soiSafe = parentSOI_m * 0.80;   // stay within 80 % of SOI to avoid edge instability
+
+      if(siblings.length > 0){
+        const maxSibSMA = Math.max(...siblings.map(b => effectiveSMA(b.data.ORBIT_DATA)));
+        const candidate = maxSibSMA * 1.5;
+        if(candidate <= soiSafe){
+          // Fits comfortably inside SOI
+          defaultSMA = candidate;
+        } else if(maxSibSMA < soiSafe){
+          // Siblings exist and farthest is inside SOI; squeeze new body between farthest sibling and SOI edge
+          defaultSMA = maxSibSMA + (soiSafe - maxSibSMA) * 0.5;
+        } else {
+          // Siblings already spill beyond SOI; use 50 % of SOI as best guess
+          defaultSMA = soiSafe * 0.5;
+        }
+      } else {
+        // No siblings — place at 33 % of SOI (a resonant inner orbit feel)
+        defaultSMA = soiSafe * 0.33;
+      }
+
+      // Clamp: must fit inside SOI and clear the surface
+      defaultSMA = Math.min(defaultSMA, soiSafe);
+      defaultSMA = Math.max(defaultSMA, MIN_CLEAR);
+
+      // If even MIN_CLEAR is outside the SOI, fall back to midpoint between surface and SOI
+      if(MIN_CLEAR >= soiSafe){
+        defaultSMA = (parentRadius + soiSafe) * 0.5;
       }
     }
-    defaultSMA = Math.max(defaultSMA, parentRadius * 80);
+
+    // Final absolute floor
+    defaultSMA = Math.max(defaultSMA, parentRadius * 5);
 
     data.ORBIT_DATA = {
       parent: parentName,

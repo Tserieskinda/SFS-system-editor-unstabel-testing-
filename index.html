@@ -71,6 +71,11 @@
 
   <input type="file" id="fi-sfs-assets" accept=".zip" multiple style="display:none" onchange="loadSFSAssetZips(this.files);this.value=''">
   <p id="default-tex-status" style="font-size:.65rem;color:var(--jade);font-family:'JetBrains Mono',monospace;text-align:center;margin-top:8px;min-height:1.2em;opacity:.8"></p>
+  <p style="text-align:center;margin-top:4px">
+    <button id="btn-clear-asset-cache" class="menu-btn" style="font-size:.6rem;padding:3px 8px;opacity:.55"
+      title="Force re-download assets on next load (clears local cache)"
+      onclick="clearAssetCache().then(()=>{ this.textContent='✓ cache cleared'; this.disabled=true; })">⟳ clear asset cache</button>
+  </p>
 </div>
 
 
@@ -1477,6 +1482,7 @@
 <script src="js/sidebar.js?v=5.8"></script>
 <script src="js/export.js?v=5.8"></script>
 <script src="js/assets.js?v=5.8"></script>
+<script src="js/idb-cache.js?v=5.8"></script>
 <script src="js/io.js?v=5.8"></script>
 <script src="js/body-search.js?v=5.8"></script>
 <script src="js/namegen.js?v=5.8"></script>

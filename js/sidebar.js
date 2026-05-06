@@ -177,12 +177,47 @@ function importBodyFromTxt(input){
       // No center yet and file has no orbit — treat as center
       // (fine — user dropped a star txt as first body)
     } else if(lacksOrbit && existingCenter){
-      // File has no orbit data but a center exists — inject a default orbit
+      // File has no orbit data but a center exists — inject a smart default orbit
       const centerName = Object.keys(bodies).find(n => bodies[n].isCenter) || 'Sun';
-      const centerR = existingCenter.data.BASE_DATA?.radius || 1e6;
+      const parentName = (selectedBody && bodies[selectedBody]) ? selectedBody : centerName;
+      const parentBody = bodies[parentName];
+      const parentRadius = (parentBody?.data?.BASE_DATA?.radius) || (existingCenter.data.BASE_DATA?.radius || 1e6);
+      const AU_m = 1.496e11;
+      // Compute parent SOI (null = infinite, i.e. system center)
+      let parentSOI_m = null;
+      if(parentBody && !parentBody.isCenter) parentSOI_m = computeSOI_m(parentName);
+      const siblings = Object.values(bodies).filter(b =>
+        b.data.ORBIT_DATA && b.data.ORBIT_DATA.parent === parentName
+      );
+      let smartSMA;
+      if(parentSOI_m === null){
+        // System center (infinite SOI) — start at 0.01 AU minimum, push out past siblings
+        const minC = Math.max(parentRadius * 80, 0.01 * AU_m);
+        smartSMA = siblings.length > 0
+          ? Math.max(Math.max(...siblings.map(b => effectiveSMA(b.data.ORBIT_DATA))) * 1.5, minC)
+          : minC;
+      } else if(parentSOI_m <= parentRadius){
+        // Degenerate SOI (inside body radius) — classic fallback
+        smartSMA = parentRadius * 80;
+      } else {
+        const soiSafe = parentSOI_m * 0.80;
+        if(siblings.length > 0){
+          const maxSibSMA = Math.max(...siblings.map(b => effectiveSMA(b.data.ORBIT_DATA)));
+          const candidate = maxSibSMA * 1.5;
+          smartSMA = candidate <= soiSafe ? candidate
+            : maxSibSMA < soiSafe ? maxSibSMA + (soiSafe - maxSibSMA) * 0.5
+            : soiSafe * 0.5;
+        } else {
+          smartSMA = soiSafe * 0.33;
+        }
+        smartSMA = Math.min(smartSMA, soiSafe);
+        smartSMA = Math.max(smartSMA, parentRadius * 5);
+        if(parentRadius * 5 >= soiSafe) smartSMA = (parentRadius + soiSafe) * 0.5;
+      }
+      smartSMA = Math.max(smartSMA, parentRadius * 5);
       bodyData.ORBIT_DATA = {
-        parent: selectedBody && bodies[selectedBody] ? selectedBody : centerName,
-        semiMajorAxis: centerR * 80,
+        parent: parentName,
+        semiMajorAxis: smartSMA,
         eccentricity: 0, argumentOfPeriapsis: 0, direction: 1,
         multiplierSOI: 2.5, smaDifficultyScale: {}, soiDifficultyScale: {}
       };
