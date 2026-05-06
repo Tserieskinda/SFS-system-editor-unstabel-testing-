@@ -1,12 +1,15 @@
 // ════════════════════════════════════════════════════════════════════
 //  SFX  —  UI sound effects
-//  Sounds auto-load from assets/ on startup via Web Audio API.
-//  All functions are patched non-destructively (original still runs).
+//  Auto-loads from assets/ on startup via Web Audio API.
+//  Volume: 0.35 global.  Positive plays at most once every 2 seconds.
 // ════════════════════════════════════════════════════════════════════
 
 const SFX = (() => {
 
-  // ── Audio context (created on first user gesture to satisfy browsers) ──
+  const VOLUME       = 0.35;   // master volume for all sounds
+  const POS_COOLDOWN = 2000;   // ms min gap between Positive plays
+
+  // ── Audio context ─────────────────────────────────────────────────
   let _ctx = null;
   function _getCtx() {
     if (!_ctx) _ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -14,7 +17,7 @@ const SFX = (() => {
     return _ctx;
   }
 
-  // ── Buffer store ──
+  // ── Buffer store ─────────────────────────────────────────────────
   const _bufs = {};
   const _FILES = {
     click:    'assets/Click.wav',
@@ -23,23 +26,24 @@ const SFX = (() => {
     warning:  'assets/Warning.mp3',
   };
 
-  // Load all files in parallel, silently ignore missing/blocked ones
   async function _loadAll() {
     await Promise.allSettled(
       Object.entries(_FILES).map(async ([key, path]) => {
         try {
           const res = await fetch(path);
           if (!res.ok) return;
-          const ab  = await res.arrayBuffer();
-          const ctx = _getCtx();
-          _bufs[key] = await ctx.decodeAudioData(ab);
-        } catch (_) { /* graceful — no sound if file missing */ }
+          _bufs[key] = await _getCtx().decodeAudioData(await res.arrayBuffer());
+        } catch (_) {}
       })
     );
   }
 
-  // ── Playback ──
-  function play(key, opts = {}) {
+  // ── Volume control ────────────────────────────────────────────────
+  let _volume = VOLUME;
+  function setVolume(v) { _volume = Math.max(0, Math.min(1, v)); }
+
+  // ── Playback ──────────────────────────────────────────────────────
+  function _play(key) {
     const buf = _bufs[key];
     if (!buf) return;
     try {
@@ -47,107 +51,184 @@ const SFX = (() => {
       const src  = ctx.createBufferSource();
       src.buffer = buf;
       const gain = ctx.createGain();
-      gain.gain.value = opts.volume ?? 1.0;
+      gain.gain.value = _volume;
       src.connect(gain);
       gain.connect(ctx.destination);
       src.start(0);
     } catch (_) {}
   }
 
-  // Public aliases
-  const click    = () => play('click');
-  const select   = () => play('select');
-  const positive = () => play('positive');
-  const warning  = () => play('warning');
-
-  // ── Function patcher ──────────────────────────────────────────────
-  // Wraps a global function so sfxFn() fires BEFORE the original.
-  function patch(name, sfxFn) {
-    const original = window[name];
-    if (typeof original !== 'function') return;
-    window[name] = function (...args) {
-      try { sfxFn(); } catch (_) {}
-      return original.apply(this, args);
-    };
+  // Positive: cooldown guard so it only fires on truly meaningful moments
+  let _lastPositive = 0;
+  function _positive() {
+    const now = Date.now();
+    if (now - _lastPositive < POS_COOLDOWN) return;
+    _lastPositive = now;
+    _play('positive');
   }
 
-  // ── Wire up after all scripts have loaded ─────────────────────────
+  const click    = () => _play('click');
+  const select   = () => _play('select');
+  const positive = _positive;
+  const warning  = () => _play('warning');
+
+  // Bypass cooldown for the TEST button
+  const testPositive = () => { _lastPositive = 0; _positive(); };
+
+  // ── Non-destructive function patcher ─────────────────────────────
+  function patch(name, sfxFn) {
+    function _apply() {
+      const fn = window[name];
+      if (typeof fn !== 'function' || fn._sfxPatched) return false;
+      window[name] = function (...a) { try { sfxFn(); } catch(_){} return fn.apply(this, a); };
+      window[name]._sfxPatched = true;
+      return true;
+    }
+    if (!_apply()) setTimeout(_apply, 600); // retry once for late-loaded scripts
+  }
+
+  // ── Wire every button ────────────────────────────────────────────
   function _wire() {
 
-    // ── CLICK  (navigation, toggles, dropdowns, tab switches, closes)
-    patch('goStart',                click);
-    patch('goOpen',                 click);
-    patch('goFeatured',             click);
-    patch('goCreateTextures',       click);
-    patch('goCreateTexturesBack',   click);
-    patch('toggleToolsDropdown',    click);
-    patch('toggleEnvDropdown',      click);
-    patch('toggleTerrainDetailDrop',click);
-    patch('openBodySearch',         click);
-    patch('closeBodySearch',        click);
-    patch('closePreset',            click);
-    patch('closeSidebar',           click);
-    patch('openAppSettings',        click);
-    patch('openSysSettings',        click);
-    patch('openAssets',             click);
-    patch('openPlanetComparison',   click);
-    patch('openAsteroidsMenu',      click);
-    patch('closeAsteroidsMenu',     click);
-    patch('switchAsteroidTab',      click);
-    patch('cycleDifficulty',        click);
-    patch('toggleHighResSurface',   click);
-    patch('toggleLockSidebar',      click);
-    patch('enterDragOrbitMode',     click);
-    patch('exitDragOrbitMode',      click);
-    patch('prsSetTab',              click);
-    patch('switchTab',              click);
-    patch('undoAction',             click);
-    patch('closeClearAll',          click);
-    patch('zoomToBody',             click);
+    // ── NAVIGATION / BACK ─────────────────────────────────────────
+    patch('goStart',              click);
+    patch('goOpen',               click);
+    patch('show',                 click);   // show('s-open') etc.
+    patch('goFeatured',           click);
+    patch('goCreateTextures',     click);
+    patch('goCreateTexturesBack', click);
 
-    // ── SELECT  (choosing items, previewing presets, body interactions)
-    patch('openPreset',             select);
-    patch('addBodyPrompt',          select);
-    patch('replaceBodyPrompt',      select);
-    patch('loadZipFromUrl',         select);
+    // ── OPEN PANELS / DROPDOWNS ───────────────────────────────────
+    patch('toggleToolsDropdown',      select);
+    patch('toggleEnvDropdown',        select);
+    patch('toggleTerrainDetailDrop',  select);
+    patch('openBodySearch',           select);
+    patch('openAppSettings',          select);
+    patch('openSysSettings',          select);
+    patch('openAssets',               select);
+    patch('openPlanetComparison',     select);
+    patch('openAsteroidsMenu',        select);
+    patch('hmToggleLibrary',          select);
+    patch('hmToggleGroup',            select);
 
-    // ── POSITIVE  (create, confirm, export, save)
-    patch('goNew',                  positive);
-    patch('goNewFromOpen',          positive);
-    patch('confirmPreset',          positive);
-    patch('exportSystem',           positive);
-    patch('importFeatured',         positive);
-    patch('addFogKey',              positive);
-    patch('fxRandomizeSeed',        positive);   // asteroid tools
-    patch('astFxRandomize',         positive);
-    patch('astGenerate',            positive);
-    patch('astDownload',            positive);
-    patch('astExportTxt',           positive);
+    // ── CLOSE / CANCEL ────────────────────────────────────────────
+    patch('closeBodySearch',       click);
+    patch('closePreset',           click);
+    patch('closeSidebar',          click);
+    patch('closeAppSettings',      click);
+    patch('closeSysSettings',      click);
+    patch('closeAssets',           click);
+    patch('closePlanetComparison', click);
+    patch('closeAsteroidsMenu',    click);
+    patch('closeClearAll',         click);
+    patch('cancelRemoteAssets',    click);
 
-    // ── WARNING  (delete, clear, danger)
-    patch('confirmClearAll',        warning);
-    patch('clearAll',               warning);
-    patch('confirmDeleteBody',      warning);
-    patch('astClearCanvas',         warning);
-    patch('astClearTrace',          click);
-    patch('astTogglePan',           click);
-    patch('astApplyRes',            click);
+    // ── TAB SWITCHES ──────────────────────────────────────────────
+    patch('switchTab',         select);
+    patch('switchAsteroidTab', select);
+    patch('switchSettingsTab', select);
+    patch('switchAppTab',      select);
+    patch('switchAssetTab',    select);
+    patch('prsSetTab',         select);
+    patch('_pscSetMode',       select);
+    patch('hmSetDiff',         select);
 
-    // ── Toggle elements (tog divs, env buttons) via event delegation ──
-    // These don't have named functions — we catch them via bubbling.
+    // ── TOGGLES / CYCLES / MISC UI ────────────────────────────────
+    patch('cycleDifficulty',       select);
+    patch('toggleHighResSurface',  select);
+    patch('toggleLockSidebar',     select);
+    patch('enterDragOrbitMode',    select);
+    patch('exitDragOrbitMode',     select);
+    patch('toggleEnvFlag',         select);
+    patch('toggleOrbitHas',        select);
+    patch('zoomToBody',            select);
+    patch('undoAction',            click);
+    patch('refreshJsonView',       click);
+    patch('resetUiHue',            select);
+    patch('setBgTheme',            select);
+    patch('clearCustomBg',         click);
+    patch('setDefaultScale',       select);
+    patch('astTogglePan',          select);
+    patch('astApplyRes',           select);
+    patch('astClearTrace',         click);
+    patch('hmUploadClick',         select);
+    patch('hmAddLine',             select);
+    patch('hmMoveLine',            click);
+
+    // ── SELECT ────────────────────────────────────────────────────
+    patch('openPreset',        select);
+    patch('addBodyPrompt',     select);
+    patch('replaceBodyPrompt', select);
+    patch('hmInsertMap',       select);
+
+    // ── POSITIVE (meaningful confirms — 2 s cooldown) ─────────────
+    patch('goNew',              positive);
+    patch('goNewFromOpen',      positive);
+    patch('confirmPreset',      positive);
+    patch('exportSystem',       positive);
+    patch('loadZipFromUrl',     positive);
+    patch('importFeatured',     positive);
+    patch('executeReplaceBody', positive);
+    patch('addFogKey',          positive);
+    patch('addPPKey',           positive);
+    patch('addLandmark',        positive);
+    patch('addFlatZone',        positive);
+    patch('astGenerate',        positive);
+    patch('astDownload',        positive);
+    patch('astExportTxt',       positive);
+    patch('astFxRandomize',     positive);
+
+    // ── WARNING ───────────────────────────────────────────────────
+    patch('confirmClearAll',   warning);
+    patch('clearAll',          warning);
+    patch('confirmDeleteBody', warning);
+    patch('executeDeleteBody', warning);
+    patch('delFogKey',         warning);
+    patch('delPPKey',          warning);
+    patch('delLandmark',       warning);
+    patch('hmRemoveLine',      warning);
+    patch('astClearCanvas',    warning);
+
+    // ── Event delegation — elements without named global functions ─
     document.addEventListener('click', e => {
-      const t = e.target;
-      // .tog toggles
-      if (t.classList.contains('tog')) { click(); return; }
-      // env surface buttons in toolbar  (env-btn-*)
-      if (t.id && t.id.startsWith('env-btn-')) { click(); return; }
-      // preset-modal item cards
+      const t   = e.target;
+      const oc  = t.getAttribute ? (t.getAttribute('onclick') || '') : '';
+
+      // .tog toggles (atmos, rings, terrain, water, etc.)
+      if (t.classList.contains('tog')) { select(); return; }
+
+      // Env toolbar icon buttons  (#env-btn-*)
+      if (t.id && t.id.startsWith('env-btn-')) { select(); return; }
+
+      // Preset modal item cards
       if (t.closest && t.closest('.prs-item')) { select(); return; }
-    }, true); // capture phase so we hear it even if stopPropagation is used
+
+      // NameGen dice  onclick="NameGen.roll()"
+      if (t.classList.contains('namegen-dice') || oc.includes('NameGen.roll')) {
+        positive(); return;
+      }
+
+      // Inline vshift reset button
+      if (oc.includes('applyVShift')) { click(); return; }
+
+      // modal-*.classList.remove('open') dismiss buttons
+      if (oc.includes("classList.remove('open')")) { click(); return; }
+
+      // TC.open() — texture creator launch
+      if (oc.includes('TC.open')) { select(); return; }
+
+      // triggerFileInput — file pickers
+      if (oc.startsWith('triggerFileInput') || oc.startsWith('document.getElementById(') && oc.includes('.click()')) {
+        select(); return;
+      }
+
+      // Wt advanced toggle (inline IIFE)
+      if (oc.includes('wt-advanced')) { select(); return; }
+
+    }, true); // capture so we hear it even if child stops propagation
   }
 
   // ── Bootstrap ─────────────────────────────────────────────────────
-  // Load sounds immediately; wire patches once DOM is ready.
   _loadAll();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', _wire);
@@ -155,6 +236,53 @@ const SFX = (() => {
     _wire();
   }
 
-  // Expose for inline use in the asteroid panel buttons
-  return { click, select, positive, warning, play };
+  return { click, select, positive, warning, testPositive, setVolume };
 })();
+
+// ── SFX Settings (wired to the SOUND tab in App Settings) ────────────────────
+// Per-sound muted flags
+const _sfxMuted = { click: false, select: false, positive: false, warning: false };
+let   _sfxEnabled = true;
+
+// Patch _play to respect enabled + muted flags
+// We wrap via the public API so the IIFE's closure stays intact.
+(function _patchSfxForSettings() {
+  const orig = {
+    click:    SFX.click,
+    select:   SFX.select,
+    positive: SFX.positive,
+    warning:  SFX.warning,
+  };
+  ['click','select','positive','warning'].forEach(k => {
+    SFX[k] = function() {
+      if (!_sfxEnabled || _sfxMuted[k]) return;
+      orig[k]();
+    };
+  });
+  // testPositive also needs the gate
+  const origTP = SFX.testPositive;
+  SFX.testPositive = function() {
+    if (!_sfxEnabled || _sfxMuted.positive) return;
+    origTP();
+  };
+})();
+
+function sfxSettingToggleMaster() {
+  _sfxEnabled = !_sfxEnabled;
+  const tog = document.getElementById('sfx-master-tog');
+  if (tog) tog.classList.toggle('on', _sfxEnabled);
+}
+
+function sfxSettingVolume(val) {
+  const v = parseInt(val, 10);
+  const lbl = document.getElementById('sfx-vol-val');
+  if (lbl) lbl.textContent = v + '%';
+  SFX.setVolume(v / 100);
+}
+
+function sfxSettingToggle(key) {
+  _sfxMuted[key] = !_sfxMuted[key];
+  const tog = document.getElementById('sfx-tog-' + key);
+  if (tog) tog.classList.toggle('on', !_sfxMuted[key]);
+}
+
