@@ -176,6 +176,14 @@
   <div class="fs-page">
 
 
+    <!-- Conditions note -->
+    <div class="fs-info-bar">
+      <span class="fs-info-label">📋 CONDITIONS</span>
+      All assets are free to use — but please give credit to the original creator.
+      &nbsp;·&nbsp; Want your system featured here? DM me! (Must be high quality.)
+      &nbsp;·&nbsp; Already featured? Remind me if you'd like to update it.
+    </div>
+
     <!-- Grid -->
     <div class="fs-grid" id="fs-grid">
 
@@ -212,11 +220,11 @@
           <span class="fs-card-title">BGH — BEYOND GAIAS HORIZON</span>
           <span class="fs-card-author">by Cyn / Althea Lyrae</span>
         </div>
-        <div class="fs-card-preview">
-          <img src="featured/BGH.jpg" alt="BGH Preview">
+        <div class="fs-card-preview" style="padding:0;overflow:hidden;border-radius:6px;aspect-ratio:16/9;height:auto;min-height:unset">
+          <img src="featured/BGH.jpg" alt="BGH Preview" style="width:100%;height:100%;object-fit:cover;display:block">
         </div>
         <div class="fs-card-desc">
-          A custom planetary system set beyond the horizon of Gaia.
+          A huge galaxy pack with real and fictional systems :3
         </div>
         <div class="fs-card-actions">
           <button class="fs-btn fs-btn-dl" onclick="importFeatured('featured/BGH Full Release-1.2.1.zip','BGH Full Release-1.2.1.zip')">⬇ IMPORT</button>
@@ -227,18 +235,18 @@
       <!-- ── CMP ── -->
       <div class="fs-card">
         <div class="fs-card-header">
-          <span class="fs-card-title">CMP — CHANNELS MP</span>
+          <span class="fs-card-title">ATSS — Astray's Solar System</span>
           <span class="fs-card-author">by Astray Galaxy</span>
         </div>
-        <div class="fs-card-preview" style="background:#090912;display:flex;align-items:center;justify-content:center">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--ink4);letter-spacing:.1em">PREVIEW COMING SOON</span>
+        <div class="fs-card-preview" style="padding:0;overflow:hidden;border-radius:6px;aspect-ratio:16/9;height:auto;min-height:unset">
+          <img src="featured/ATSS.png" alt="ATSS Preview" style="width:100%;height:100%;object-fit:cover;display:block">
         </div>
         <div class="fs-card-desc">
-          Channels Multiplayer system by Astray Galaxy. Download link coming soon.
+          This solar system contains a major enhancement to the stock solar system and also adds a few neighboring star systems.
         </div>
         <div class="fs-card-actions">
-          <button class="fs-btn fs-btn-dl" disabled title="Import coming soon">⬇ IMPORT</button>
-          <button class="fs-btn fs-btn-open" disabled title="Download coming soon">▶ OPEN IN EDITOR</button>
+          <button class="fs-btn fs-btn-dl" onclick="importFeatured('featured/ATSS.zip','ATSS.zip')">⬇ IMPORT</button>
+          <button class="fs-btn fs-btn-open" onclick="loadZipFromUrl('featured/ATSS.zip','ATSS.zip')">▶ OPEN IN EDITOR</button>
         </div>
       </div>
 
@@ -1392,6 +1400,7 @@
 <script src="js/body-search.js?v=5.8"></script>
 <script src="js/namegen.js?v=5.8"></script>
 <script src="js/tex-creator.js?v=5.8"></script>
+<script src="js/sfx.js?v=5.8"></script>
 <!-- ══ TERRAIN DETAIL DROPDOWN (body-level to escape topbar stacking context) ══ -->
 <div id="terrain-detail-dropdown" style="display:none;position:fixed;
   min-width:200px;background:rgba(6,10,22,.97);border:1px solid rgba(180,140,255,.25);
@@ -1511,7 +1520,834 @@
       background:rgba(255,180,80,.12);color:rgba(255,180,80,.4);border:1px solid rgba(255,180,80,.2);
       letter-spacing:.08em;flex-shrink:0">OFF</span>
   </button>
+  <div style="height:1px;background:rgba(255,180,80,.1);margin:0 10px"></div>
+  <button onclick="openAsteroidsMenu()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='rgba(90,240,192,.1)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">☄️</span>
+    <span>
+      <span style="display:block;color:rgba(90,240,192,.9)">ASTEROIDS</span>
+      <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Draw, generate & place asteroids</span>
+    </span>
+  </button>
 </div>
+
+<!-- ═══════════════════════════ ASTEROIDS MODAL ═══════════════════════════ -->
+<div id="asteroids-modal" style="display:none;position:fixed;inset:0;z-index:200001;
+  background:rgba(2,5,14,.92);backdrop-filter:blur(6px);
+  flex-direction:column;align-items:center;justify-content:flex-start;
+  overflow-y:auto;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,8px);
+  box-sizing:border-box;-webkit-overflow-scrolling:touch">
+
+  <!-- Header -->
+  <div style="width:min(98vw,680px);display:flex;align-items:center;gap:8px;
+    padding:10px 14px;background:rgba(6,10,22,.98);border:1px solid rgba(90,240,192,.25);
+    border-bottom:none;border-radius:6px 6px 0 0;flex-shrink:0;margin-top:16px;flex-wrap:wrap;min-width:0">
+    <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;color:rgba(90,240,192,.9);
+      letter-spacing:.14em;flex:1">☄️ ASTEROIDS</span>
+    <button onclick="closeAsteroidsMenu()" style="background:none;border:1px solid rgba(90,240,192,.2);
+      border-radius:3px;color:rgba(90,240,192,.6);font-family:'JetBrains Mono',monospace;
+      font-size:.6rem;padding:4px 10px;cursor:pointer;letter-spacing:.06em">✕ CLOSE</button>
+  </div>
+
+  <!-- Tab bar -->
+  <div style="width:min(98vw,680px);display:flex;background:rgba(6,10,22,.98);
+    border-left:1px solid rgba(90,240,192,.25);border-right:1px solid rgba(90,240,192,.25);
+    flex-shrink:0">
+    <button id="ast-tab-draw" onclick="switchAsteroidTab('draw')"
+      style="flex:1;padding:9px 6px;background:rgba(90,240,192,.1);border:none;border-bottom:2px solid rgba(90,240,192,.8);
+      font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(90,240,192,.95);
+      letter-spacing:.08em;cursor:pointer;transition:all .15s">✏ DRAW</button>
+    <button id="ast-tab-generate" onclick="switchAsteroidTab('generate')"
+      style="flex:1;padding:9px 6px;background:none;border:none;border-bottom:2px solid transparent;
+      font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(150,150,180,.6);
+      letter-spacing:.08em;cursor:pointer;transition:all .15s">⚡ GENERATE</button>
+    <button id="ast-tab-belt" onclick="switchAsteroidTab('belt')"
+      style="flex:1;padding:9px 6px;background:none;border:none;border-bottom:2px solid transparent;
+      font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(150,150,180,.6);
+      letter-spacing:.08em;cursor:pointer;transition:all .15s">🪐 BELT / RING</button>
+  </div>
+
+  <!-- Content area -->
+  <div style="width:min(98vw,680px);background:rgba(6,10,22,.98);border:1px solid rgba(90,240,192,.25);
+    border-top:none;border-radius:0 0 6px 6px;flex-shrink:0;margin-bottom:24px;overflow:hidden">
+
+    <!-- ── DRAW TAB ── -->
+    <div id="ast-panel-draw" style="display:block;padding:14px;display:flex;flex-direction:column;gap:12px">
+
+      <!-- Draw canvas panel -->
+      <div style="background:rgba(18,18,26,.7);border:1px solid rgba(90,240,192,.15);padding:10px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.5rem;letter-spacing:.14em;color:rgba(90,240,192,.45);text-transform:uppercase">Draw Shape</div>
+        <div style="width:100%;position:relative">
+          <canvas id="ast-polar" width="420" height="420"
+            style="display:block;width:100%!important;height:auto!important;
+            touch-action:none;cursor:crosshair;border:1px solid rgba(90,240,192,.15);background:#060608"></canvas>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="astClearCanvas()" style="flex:1;background:transparent;border:1px solid rgba(240,90,122,.4);
+            color:rgba(240,90,122,.8);font-family:'JetBrains Mono',monospace;font-size:.58rem;
+            letter-spacing:.08em;padding:10px 12px;min-height:40px;cursor:pointer;text-transform:uppercase">Clear</button>
+          <button onclick="astGenerate()" style="flex:1;background:transparent;border:1px solid rgba(90,240,192,.5);
+            color:rgba(90,240,192,.9);font-family:'JetBrains Mono',monospace;font-size:.58rem;
+            letter-spacing:.08em;padding:10px 12px;min-height:40px;cursor:pointer;text-transform:uppercase">Generate →</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(90,90,112,.9);letter-spacing:.05em">
+          Smooth:
+          <input type="range" id="ast-smooth" min="0" max="60" value="12"
+            style="accent-color:rgba(90,240,192,.8);flex:1;height:28px"
+            oninput="document.getElementById('ast-smooth-val').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()">
+          <span id="ast-smooth-val" style="color:rgba(220,220,255,.8);min-width:22px">12</span>
+        </div>
+        <!-- Trace image -->
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.5rem;letter-spacing:.14em;color:rgba(90,240,192,.45);margin-top:2px">Trace Image</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button id="ast-trace-btn" onclick="document.getElementById('ast-trace-file').click()"
+            style="flex:1;background:transparent;border:1px dashed rgba(90,90,112,.5);
+            color:rgba(90,90,112,.8);font-family:'JetBrains Mono',monospace;font-size:.54rem;
+            letter-spacing:.06em;padding:10px 12px;min-height:38px;cursor:pointer;text-align:center">+ Upload Reference Image</button>
+          <button id="ast-trace-clear" onclick="astClearTrace()" style="display:none;flex:0;background:transparent;
+            border:1px solid rgba(90,90,112,.4);color:rgba(180,180,200,.6);
+            font-family:'JetBrains Mono',monospace;font-size:.6rem;padding:10px 12px;min-height:38px;cursor:pointer">✕</button>
+        </div>
+        <input type="file" id="ast-trace-file" accept="image/*" style="display:none" onchange="astLoadTrace(this)">
+        <div id="ast-trace-opacity-row" style="display:none;align-items:center;gap:10px;
+          font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(90,90,112,.9)">
+          Opacity:
+          <input type="range" id="ast-trace-opacity" min="5" max="80" value="35"
+            style="accent-color:rgba(90,240,192,.8);flex:1;height:28px"
+            oninput="document.getElementById('ast-trace-op-val').textContent=this.value;astRedraw()">
+          <span id="ast-trace-op-val" style="color:rgba(220,220,255,.8);min-width:22px">35</span>%
+        </div>
+        <div id="ast-pan-controls" style="display:none">
+          <button id="ast-pan-btn" onclick="astTogglePan()"
+            style="background:transparent;border:1px solid rgba(90,90,112,.4);color:rgba(180,180,200,.6);
+            font-family:'JetBrains Mono',monospace;font-size:.52rem;letter-spacing:.06em;
+            padding:8px 12px;min-height:34px;cursor:pointer;white-space:nowrap">⤢ Pan / Zoom Image</button>
+        </div>
+        <div id="ast-draw-hint" style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.8);letter-spacing:.04em">Drag to paint the asteroid silhouette</div>
+      </div>
+
+      <!-- Effects panel -->
+      <div style="background:rgba(18,18,26,.7);border:1px solid rgba(90,240,192,.15);padding:10px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.5rem;letter-spacing:.14em;color:rgba(90,240,192,.45)">Add-On Effects</div>
+        <div style="display:flex;flex-direction:column;gap:8px" id="ast-effects-list">
+
+          <!-- Craters -->
+          <div class="ast-fx-card" id="ast-fx-craters" onclick="astToggleEffect('craters')"
+            style="border:1px solid rgba(42,42,58,.8);padding:10px;cursor:pointer;position:relative;transition:border-color .15s">
+            <div style="position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;
+              border:1px solid rgba(42,42,58,.8)" id="ast-dot-craters"></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.56rem;letter-spacing:.1em;color:rgba(220,220,255,.8);text-transform:uppercase">Craters</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.48rem;color:rgba(85,85,112,.8);margin-top:3px">Punch circular impact dips into the silhouette edge</div>
+            <div id="ast-fx-sliders-craters" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Count
+                <input type="range" id="ast-craters-count" min="1" max="30" value="8" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-craters-count-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-craters-count-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">8</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Depth
+                <input type="range" id="ast-craters-depth" min="1" max="100" value="40" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-craters-depth-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-craters-depth-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">40</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Width
+                <input type="range" id="ast-craters-width" min="2" max="80" value="20" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-craters-width-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-craters-width-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">20</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Roughness -->
+          <div class="ast-fx-card" id="ast-fx-roughness" onclick="astToggleEffect('roughness')"
+            style="border:1px solid rgba(42,42,58,.8);padding:10px;cursor:pointer;position:relative;transition:border-color .15s">
+            <div style="position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;
+              border:1px solid rgba(42,42,58,.8)" id="ast-dot-roughness"></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.56rem;letter-spacing:.1em;color:rgba(220,220,255,.8);text-transform:uppercase">Roughness</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.48rem;color:rgba(85,85,112,.8);margin-top:3px">Add high-frequency jagged noise to the outline</div>
+            <div id="ast-fx-sliders-roughness" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Amount
+                <input type="range" id="ast-roughness-amt" min="1" max="100" value="30" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-roughness-amt-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-roughness-amt-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">30</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Scale
+                <input type="range" id="ast-roughness-scale" min="1" max="60" value="12" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-roughness-scale-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-roughness-scale-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">12</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Flat Zones -->
+          <div class="ast-fx-card" id="ast-fx-flats" onclick="astToggleEffect('flats')"
+            style="border:1px solid rgba(42,42,58,.8);padding:10px;cursor:pointer;position:relative;transition:border-color .15s">
+            <div style="position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;
+              border:1px solid rgba(42,42,58,.8)" id="ast-dot-flats"></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.56rem;letter-spacing:.1em;color:rgba(220,220,255,.8);text-transform:uppercase">Flat Zones</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.48rem;color:rgba(85,85,112,.8);margin-top:3px">Carve flat plateaus into the heightmap profile</div>
+            <div id="ast-fx-sliders-flats" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Count
+                <input type="range" id="ast-flats-count" min="1" max="12" value="3" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-flats-count-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-flats-count-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">3</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Width
+                <input type="range" id="ast-flats-width" min="5" max="80" value="20" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-flats-width-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-flats-width-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">20</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Boulders -->
+          <div class="ast-fx-card" id="ast-fx-boulders" onclick="astToggleEffect('boulders')"
+            style="border:1px solid rgba(42,42,58,.8);padding:10px;cursor:pointer;position:relative;transition:border-color .15s">
+            <div style="position:absolute;top:10px;right:10px;width:6px;height:6px;border-radius:50%;
+              border:1px solid rgba(42,42,58,.8)" id="ast-dot-boulders"></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.56rem;letter-spacing:.1em;color:rgba(220,220,255,.8);text-transform:uppercase">Boulders</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.48rem;color:rgba(85,85,112,.8);margin-top:3px">Add protruding bumps along the surface edge</div>
+            <div id="ast-fx-sliders-boulders" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Count
+                <input type="range" id="ast-boulders-count" min="1" max="20" value="6" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-boulders-count-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-boulders-count-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">6</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.9)">Size
+                <input type="range" id="ast-boulders-size" min="1" max="100" value="35" style="flex:1;height:22px;accent-color:rgba(90,240,192,.8)"
+                  oninput="document.getElementById('ast-boulders-size-v').textContent=this.value;astInvalidateCache();astRedraw();astGenerate()" onclick="event.stopPropagation()">
+                <span id="ast-boulders-size-v" style="color:rgba(220,220,255,.8);min-width:22px;font-size:.5rem">35</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">
+          <button onclick="astFxRandomize()" style="flex:1;background:transparent;border:1px solid rgba(90,90,112,.4);
+            color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.55rem;
+            letter-spacing:.06em;padding:10px 12px;min-height:38px;cursor:pointer;text-transform:uppercase">Randomize</button>
+          <button onclick="astGenerate()" style="flex:1;background:transparent;border:1px solid rgba(90,240,192,.4);
+            color:rgba(90,240,192,.8);font-family:'JetBrains Mono',monospace;font-size:.55rem;
+            letter-spacing:.06em;padding:10px 12px;min-height:38px;cursor:pointer;text-transform:uppercase">Apply + Generate</button>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.7);letter-spacing:.04em">Tap a card to toggle. Effects apply on generate.</div>
+      </div>
+
+      <!-- Heightmap output -->
+      <div style="background:rgba(18,18,26,.7);border:1px solid rgba(90,240,192,.15);padding:10px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.5rem;letter-spacing:.14em;color:rgba(90,240,192,.45)">Heightmap Output</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.9);letter-spacing:.04em">
+          <span>Resolution:</span>
+          <span style="color:rgba(220,220,255,.7);font-size:.5rem">W</span>
+          <input type="number" id="ast-res-w" value="512" min="64" max="4096"
+            style="width:68px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);color:rgba(220,220,255,.8);
+            font-family:'JetBrains Mono',monospace;font-size:.56rem;padding:4px 6px;text-align:center">
+          <span style="color:rgba(220,220,255,.7);font-size:.5rem">H</span>
+          <input type="number" id="ast-res-h" value="160" min="32" max="4096"
+            style="width:68px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);color:rgba(220,220,255,.8);
+            font-family:'JetBrains Mono',monospace;font-size:.56rem;padding:4px 6px;text-align:center">
+          <button onclick="astApplyRes()" style="flex:0;background:transparent;border:1px solid rgba(90,90,112,.4);
+            color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.52rem;
+            padding:5px 10px;min-height:28px;cursor:pointer;letter-spacing:.04em">Apply</button>
+        </div>
+        <div style="width:100%">
+          <canvas id="ast-map" width="512" height="160"
+            style="display:block;width:100%!important;height:auto!important;border:1px solid rgba(90,90,112,.3);
+            background:repeating-conic-gradient(#1a1a2a 0% 25%,#0a0a14 0% 50%) 0 0/12px 12px"></canvas>
+        </div>
+        <canvas id="ast-graph" height="50" style="width:100%;display:block;border:1px solid rgba(90,90,112,.3);background:#060608"></canvas>
+        <div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.9)">
+          <span>V-Shift:</span>
+          <input type="range" id="ast-vshift" min="-100" max="100" value="0"
+            style="flex:1;accent-color:rgba(90,240,192,.8);height:28px"
+            oninput="document.getElementById('ast-vshift-val').textContent=this.value;astApplyVShift()">
+          <span id="ast-vshift-val" style="color:rgba(220,220,255,.8);min-width:28px">0</span>px
+          <button onclick="document.getElementById('ast-vshift').value=0;document.getElementById('ast-vshift-val').textContent=0;astApplyVShift()"
+            style="flex:0;background:transparent;border:1px solid rgba(90,90,112,.3);color:rgba(150,150,180,.6);
+            font-family:'JetBrains Mono',monospace;font-size:.5rem;padding:3px 8px;min-height:24px;cursor:pointer">Reset</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="astDownload()" style="flex:1;background:transparent;border:1px solid rgba(90,240,192,.4);
+            color:rgba(90,240,192,.8);font-family:'JetBrains Mono',monospace;font-size:.55rem;
+            letter-spacing:.06em;padding:10px 12px;min-height:38px;cursor:pointer;text-transform:uppercase">Download PNG</button>
+          <button onclick="astExportTxt()" style="flex:1;background:transparent;border:1px solid rgba(90,240,192,.4);
+            color:rgba(90,240,192,.8);font-family:'JetBrains Mono',monospace;font-size:.55rem;
+            letter-spacing:.06em;padding:10px 12px;min-height:38px;cursor:pointer;text-transform:uppercase">Export TXT</button>
+          <button onclick="astGenerate()" style="flex:1;background:transparent;border:1px solid rgba(90,90,112,.4);
+            color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.55rem;
+            letter-spacing:.06em;padding:10px 12px;min-height:38px;cursor:pointer;text-transform:uppercase">Refresh</button>
+        </div>
+        <div id="ast-map-info" style="font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.7);letter-spacing:.04em">Generate to see output</div>
+      </div>
+
+    </div><!-- /draw panel -->
+
+    <!-- ── GENERATE TAB ── -->
+    <div id="ast-panel-generate" style="display:none;padding:30px 14px;text-align:center;
+      font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(90,90,112,.7);letter-spacing:.08em">
+      <div style="font-size:2rem;margin-bottom:12px">⚡</div>
+      <div style="color:rgba(150,150,180,.6);margin-bottom:6px">GENERATE</div>
+      <div style="font-size:.5rem;color:rgba(85,85,112,.6)">Procedural asteroid generation coming soon</div>
+    </div>
+
+    <!-- ── BELT/RING TAB ── -->
+    <div id="ast-panel-belt" style="display:none;padding:30px 14px;text-align:center;
+      font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(90,90,112,.7);letter-spacing:.08em">
+      <div style="font-size:2rem;margin-bottom:12px">🪐</div>
+      <div style="color:rgba(150,150,180,.6);margin-bottom:6px">BELT / RING</div>
+      <div style="font-size:.5rem;color:rgba(85,85,112,.6)">Asteroid belt & ring placement coming soon</div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /asteroids-modal -->
+
+<!-- Loupe for asteroid draw tool -->
+<div id="ast-loupe" style="position:fixed;width:120px;height:120px;border-radius:50%;
+  border:2px solid rgba(90,240,192,.8);box-shadow:0 0 0 1px rgba(90,240,192,.3),0 4px 24px rgba(0,0,0,.7);
+  overflow:hidden;pointer-events:none;display:none;z-index:210000;background:#060608">
+  <canvas id="ast-loupe-canvas" width="120" height="120" style="position:absolute;top:0;left:0"></canvas>
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:12px;height:12px;pointer-events:none;z-index:2">
+    <div style="position:absolute;width:1px;height:100%;left:50%;top:0;background:rgba(90,240,192,.8)"></div>
+    <div style="position:absolute;height:1px;width:100%;top:50%;left:0;background:rgba(90,240,192,.8)"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════ ASTEROIDS MODULE ═══════════════════════
+
+function openAsteroidsMenu() {
+  _toolsDropOpen = false;
+  document.getElementById('tools-dropdown').style.display = 'none';
+  const m = document.getElementById('asteroids-modal');
+  m.style.display = 'flex';
+  // Init canvas after display so dimensions are correct
+  setTimeout(() => { astRedraw(); }, 50);
+}
+
+function closeAsteroidsMenu() {
+  document.getElementById('asteroids-modal').style.display = 'none';
+}
+
+function switchAsteroidTab(tab) {
+  ['draw','generate','belt'].forEach(t => {
+    document.getElementById('ast-panel-' + t).style.display = t === tab ? (t==='draw'?'flex':'block') : 'none';
+    const btn = document.getElementById('ast-tab-' + t);
+    if (t === tab) {
+      btn.style.background = 'rgba(90,240,192,.1)';
+      btn.style.borderBottom = '2px solid rgba(90,240,192,.8)';
+      btn.style.color = 'rgba(90,240,192,.95)';
+    } else {
+      btn.style.background = 'none';
+      btn.style.borderBottom = '2px solid transparent';
+      btn.style.color = 'rgba(150,150,180,.6)';
+    }
+  });
+  if (tab === 'draw') setTimeout(() => astRedraw(), 30);
+}
+
+// Fix initial draw panel display
+document.getElementById('ast-panel-draw').style.display = 'flex';
+document.getElementById('ast-panel-draw').style.flexDirection = 'column';
+document.getElementById('ast-panel-draw').style.gap = '12px';
+document.getElementById('ast-panel-draw').style.padding = '14px';
+
+// ─── Asteroid Draw Engine ───────────────────────────────────────────────────
+
+const AST_RES = 1024;
+let astRadii = new Float32Array(AST_RES);
+let astRawMapData = null;
+let astCachedProcessed = null;
+let astFxSeed = Math.random() * 9999 | 0;
+const astActiveEffects = new Set();
+
+let astDrawing = false;
+let astLastAngleIdx = null;
+let astTraceImage = null;
+let astPanMode = false;
+let astTraceOffsetX = 0, astTraceOffsetY = 0, astTraceScale = 1;
+let astPanActive = false, astPanLastX = 0, astPanLastY = 0;
+let astPinchStartDist = 0, astPinchStartScale = 1;
+
+function astGetCanvas() { return document.getElementById('ast-polar'); }
+
+function astGetPos(e) {
+  if (e.touches) e = e.touches[0];
+  const c = astGetCanvas();
+  const rect = c.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (c.width / rect.width),
+    y: (e.clientY - rect.top)  * (c.height / rect.height)
+  };
+}
+
+function astInvalidateCache() { astCachedProcessed = null; }
+
+function astGetProcessed() {
+  if (!astCachedProcessed) astCachedProcessed = astApplyEffects(astGetSmoothed());
+  return astCachedProcessed;
+}
+
+function astPaintAt(p) {
+  const c = astGetCanvas();
+  const CX = c.width/2, CY = c.height/2;
+  const MAX_R = Math.min(CX, CY) - 10;
+  const dx = p.x - CX, dy = p.y - CY;
+  const angle = Math.atan2(dy, dx);
+  const dist  = Math.min(Math.sqrt(dx*dx + dy*dy), MAX_R);
+  let idx = Math.floor((angle + Math.PI) / (2 * Math.PI) * AST_RES);
+  idx = ((idx % AST_RES) + AST_RES) % AST_RES;
+
+  if (astLastAngleIdx !== null) {
+    let a = astLastAngleIdx, b = idx, diff = b - a;
+    if (diff > AST_RES/2)  diff -= AST_RES;
+    if (diff < -AST_RES/2) diff += AST_RES;
+    const steps = Math.abs(diff);
+    for (let s = 0; s <= steps; s++) {
+      let i = ((a + Math.round(diff * s / Math.max(steps,1))) % AST_RES + AST_RES) % AST_RES;
+      const t = steps===0?1:s/steps;
+      const prevDist = astRadii[astLastAngleIdx]||dist;
+      astRadii[i] = Math.max(astRadii[i], prevDist + (dist-prevDist)*t);
+    }
+  } else {
+    astRadii[idx] = Math.max(astRadii[idx], dist);
+  }
+  astLastAngleIdx = idx;
+  astInvalidateCache();
+  astRedraw();
+}
+
+function astGetSmoothed() {
+  const smooth = parseInt(document.getElementById('ast-smooth').value);
+  const filled = Float32Array.from(astRadii);
+  if (!filled.some(v=>v>0)) return filled;
+  for (let pass=0;pass<2;pass++) {
+    let i=0;
+    while(i<AST_RES) {
+      if(filled[i]===0) {
+        const gs=i; let ge=i;
+        while(ge<AST_RES&&filled[ge]===0) ge++;
+        const li=((gs-1)%AST_RES+AST_RES)%AST_RES;
+        const ri=ge%AST_RES;
+        const lv=filled[li]||0, rv=filled[ri]||0;
+        const gl=ge-gs;
+        if(lv>0&&rv>0){for(let k=0;k<gl;k++){const t=(k+1)/(gl+1);filled[(gs+k)%AST_RES]=lv*(1-t)+rv*t;}}
+        else if(lv>0){for(let k=0;k<gl;k++) filled[(gs+k)%AST_RES]=lv;}
+        else if(rv>0){for(let k=0;k<gl;k++) filled[(gs+k)%AST_RES]=rv;}
+        i=ge;
+      } else i++;
+    }
+  }
+  if(smooth===0) return filled;
+  const out=new Float32Array(AST_RES);
+  for(let i=0;i<AST_RES;i++){
+    let sum=0;
+    for(let k=-smooth;k<=smooth;k++) sum+=filled[((i+k)%AST_RES+AST_RES)%AST_RES];
+    out[i]=sum/(smooth*2+1);
+  }
+  return out;
+}
+
+function astRedraw() {
+  const c = astGetCanvas();
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const CX=c.width/2, CY=c.height/2, MAX_R=Math.min(CX,CY)-10;
+  ctx.clearRect(0,0,c.width,c.height);
+
+  if(astTraceImage) {
+    const op=parseInt(document.getElementById('ast-trace-opacity').value)/100;
+    ctx.save(); ctx.globalAlpha=op;
+    const iw=astTraceImage.width, ih=astTraceImage.height;
+    const bs=Math.min(c.width/iw,c.height/ih)*astTraceScale;
+    const dw=iw*bs, dh=ih*bs;
+    ctx.drawImage(astTraceImage,(c.width-dw)/2+astTraceOffsetX,(c.height-dh)/2+astTraceOffsetY,dw,dh);
+    ctx.restore();
+  }
+  ctx.strokeStyle='rgba(26,26,42,.8)'; ctx.lineWidth=1;
+  for(let r=50;r<MAX_R;r+=50){ctx.beginPath();ctx.arc(CX,CY,r,0,Math.PI*2);ctx.stroke();}
+  ctx.fillStyle='rgba(42,42,74,.9)'; ctx.beginPath(); ctx.arc(CX,CY,3,0,Math.PI*2); ctx.fill();
+
+  const sm=astGetProcessed();
+  if(!sm.some(v=>v>0)) return;
+  ctx.beginPath(); let started=false;
+  for(let i=0;i<AST_RES;i++){
+    const r=sm[i]; if(r===0) continue;
+    const a=(i/AST_RES)*Math.PI*2-Math.PI;
+    const x=CX+Math.cos(a)*r, y=CY+Math.sin(a)*r;
+    if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  const g=ctx.createRadialGradient(CX,CY,0,CX,CY,MAX_R);
+  g.addColorStop(0,'rgba(90,240,192,.15)');g.addColorStop(.6,'rgba(90,240,192,.08)');g.addColorStop(1,'rgba(90,240,192,.02)');
+  ctx.fillStyle=g; ctx.fill();
+  ctx.strokeStyle='rgba(90,240,192,.9)'; ctx.lineWidth=1.5; ctx.stroke();
+
+  if(parseInt(document.getElementById('ast-smooth').value)>0){
+    ctx.beginPath(); started=false;
+    for(let i=0;i<AST_RES;i++){
+      const r=astRadii[i]; if(r===0) continue;
+      const a=(i/AST_RES)*Math.PI*2-Math.PI;
+      if(!started){ctx.moveTo(CX+Math.cos(a)*r,CY+Math.sin(a)*r);started=true;}
+      else ctx.lineTo(CX+Math.cos(a)*r,CY+Math.sin(a)*r);
+    }
+    ctx.closePath();
+    ctx.strokeStyle='rgba(90,240,192,.2)'; ctx.lineWidth=.5; ctx.stroke();
+  }
+}
+
+function astGenerate() {
+  const mc=document.getElementById('ast-map');
+  if(!mc) return;
+  const mctx=mc.getContext('2d');
+  const W=mc.width, H=mc.height;
+  const sm=astGetProcessed();
+  const maxR=Math.max(...sm);
+  if(maxR===0){document.getElementById('ast-map-info').textContent='Nothing drawn yet';astRawMapData=null;return;}
+  astRawMapData=new Float32Array(W);
+  for(let x=0;x<W;x++) astRawMapData[x]=sm[Math.floor(x/W*AST_RES)]/maxR;
+  document.getElementById('ast-vshift').value=0;
+  document.getElementById('ast-vshift-val').textContent='0';
+  astRenderMap(0);
+  document.getElementById('ast-map-info').textContent=`${W}×${H}  ·  max radius ${Math.round(maxR)}px  ·  ${AST_RES} angular samples`;
+}
+
+function astRenderMap(shiftPx) {
+  if(!astRawMapData) return;
+  const mc=document.getElementById('ast-map');
+  const mctx=mc.getContext('2d');
+  const W=mc.width, H=mc.height;
+  const img=mctx.createImageData(W,H);
+  for(let x=0;x<W;x++){
+    const h=astRawMapData[x];
+    const cutY=Math.round(H*(1-h))+shiftPx;
+    for(let y=0;y<H;y++){
+      const i=(y*W+x)*4;
+      const below=y>=cutY;
+      img.data[i]=img.data[i+1]=img.data[i+2]=0;
+      img.data[i+3]=below?255:0;
+    }
+  }
+  mctx.putImageData(img,0,0);
+  astDrawGraph();
+}
+
+function astDrawGraph() {
+  if(!astRawMapData) return;
+  const shift=parseInt(document.getElementById('ast-vshift').value)||0;
+  const mc=document.getElementById('ast-map');
+  const H=mc.height;
+  const gc=document.getElementById('ast-graph');
+  gc.width=gc.offsetWidth||512;
+  const gw=gc.width, gh=gc.height;
+  const gctx=gc.getContext('2d');
+  gctx.clearRect(0,0,gw,gh);
+  gctx.beginPath();
+  const W=astRawMapData.length;
+  for(let x=0;x<gw;x++){
+    const col=Math.floor(x/gw*W);
+    const cutY=Math.round(H*(1-astRawMapData[col]))+shift;
+    const gameH=Math.max(0,Math.min(1,cutY/H));
+    const py=gh-gameH*gh;
+    if(x===0) gctx.moveTo(x,py); else gctx.lineTo(x,py);
+  }
+  gctx.strokeStyle='rgba(240,192,90,.9)'; gctx.lineWidth=1.5; gctx.stroke();
+  gctx.fillStyle='rgba(85,85,112,.7)';
+  gctx.font='9px Courier New'; gctx.fillText('POINTS CURVE (game view)',4,10);
+}
+
+function astApplyVShift() {
+  astRenderMap(parseInt(document.getElementById('ast-vshift').value));
+}
+
+function astApplyRes() {
+  const mc=document.getElementById('ast-map');
+  const w=Math.max(64,Math.min(4096,parseInt(document.getElementById('ast-res-w').value)||512));
+  const h=Math.max(32,Math.min(4096,parseInt(document.getElementById('ast-res-h').value)||160));
+  document.getElementById('ast-res-w').value=w;
+  document.getElementById('ast-res-h').value=h;
+  mc.width=w; mc.height=h;
+  const vs=document.getElementById('ast-vshift');
+  vs.min=-h; vs.max=h;
+  astRawMapData=null; astGenerate();
+}
+
+function astClearCanvas() {
+  astRadii.fill(0); astLastAngleIdx=null; astRawMapData=null; astInvalidateCache();
+  const mc=document.getElementById('ast-map');
+  mc.getContext('2d').clearRect(0,0,mc.width,mc.height);
+  document.getElementById('ast-vshift').value=0;
+  document.getElementById('ast-vshift-val').textContent='0';
+  document.getElementById('ast-map-info').textContent='Generate to see output';
+  astRedraw();
+}
+
+function astDownload() {
+  if(!astRawMapData) astGenerate();
+  const link=document.createElement('a');
+  link.download='asteroid_heightmap.png';
+  link.href=document.getElementById('ast-map').toDataURL('image/png');
+  link.click();
+}
+
+function astExportTxt() {
+  if(!astRawMapData) astGenerate();
+  if(!astRawMapData) return;
+  const mc=document.getElementById('ast-map');
+  const W=mc.width, H=mc.height;
+  const pixels=mc.getContext('2d').getImageData(0,0,W,H).data;
+  const points=new Float32Array(W);
+  for(let x=0;x<W;x++){
+    let h=1.0;
+    for(let y=0;y<H;y++){
+      if(pixels[(y*W+x)*4+3]>=255){h=(y/H)-1.0;break;}
+    }
+    points[x]=h;
+  }
+  const arr=Array.from(points).map(v=>parseFloat(v.toFixed(6)));
+  const json='{\n    "points": [\n        '+arr.join(',\n        ')+'\n    ]\n}';
+  const link=document.createElement('a');
+  link.download='asteroid_heightmap.txt';
+  link.href=URL.createObjectURL(new Blob([json],{type:'text/plain'}));
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// ── Trace ────────────────────────────────────────────────────────
+function astLoadTrace(input) {
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      astTraceImage=img;
+      document.getElementById('ast-trace-btn').textContent='✓ '+file.name;
+      document.getElementById('ast-trace-btn').style.borderColor='rgba(90,240,192,.5)';
+      document.getElementById('ast-trace-btn').style.color='rgba(90,240,192,.8)';
+      document.getElementById('ast-trace-clear').style.display='';
+      document.getElementById('ast-trace-opacity-row').style.display='flex';
+      document.getElementById('ast-pan-controls').style.display='';
+      astRedraw();
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function astClearTrace() {
+  astTraceImage=null;
+  document.getElementById('ast-trace-file').value='';
+  document.getElementById('ast-trace-btn').textContent='+ Upload Reference Image';
+  document.getElementById('ast-trace-btn').style.borderColor='';
+  document.getElementById('ast-trace-btn').style.color='';
+  document.getElementById('ast-trace-clear').style.display='none';
+  document.getElementById('ast-trace-opacity-row').style.display='none';
+  document.getElementById('ast-pan-controls').style.display='none';
+  astPanMode=false; astUpdatePanUI(); astRedraw();
+}
+function astTogglePan() {
+  astPanMode=!astPanMode; astUpdatePanUI();
+}
+function astUpdatePanUI() {
+  const btn=document.getElementById('ast-pan-btn');
+  const hint=document.getElementById('ast-draw-hint');
+  const c=astGetCanvas();
+  if(astPanMode){
+    btn.textContent='✏ Draw Mode';
+    btn.style.borderColor='rgba(240,192,90,.5)';
+    btn.style.color='rgba(240,192,90,.8)';
+    c.style.cursor='move';
+    hint.textContent='Drag to move image · Pinch or scroll to zoom';
+  } else {
+    btn.textContent='⤢ Pan / Zoom Image';
+    btn.style.borderColor=''; btn.style.color='';
+    c.style.cursor='crosshair';
+    hint.textContent='Drag to paint the asteroid silhouette';
+  }
+}
+
+// ── Loupe ────────────────────────────────────────────────────────
+function astShowLoupe(cx, cy) {
+  if(astPanMode) {astHideLoupe();return;}
+  const c=astGetCanvas();
+  const rect=c.getBoundingClientRect();
+  const sx=(cx-rect.left)*(c.width/rect.width);
+  const sy=(cy-rect.top)*(c.height/rect.height);
+  const lc=document.getElementById('ast-loupe-canvas');
+  const lctx=lc.getContext('2d');
+  lctx.clearRect(0,0,120,120);
+  lctx.drawImage(c,sx-30,sy-30,60,60,0,0,120,120);
+  const loupe=document.getElementById('ast-loupe');
+  loupe.style.left=Math.min(window.innerWidth-124,cx+80)+'px';
+  loupe.style.top=Math.max(4,cy-120)+'px';
+  loupe.style.display='block';
+}
+function astHideLoupe() { document.getElementById('ast-loupe').style.display='none'; }
+
+// ── Input events ─────────────────────────────────────────────────
+(function(){
+  const c=astGetCanvas();
+  if(!c) return;
+
+  c.addEventListener('mousedown', e=>{
+    if(astPanMode){astPanActive=true;astPanLastX=e.clientX;astPanLastY=e.clientY;}
+    else{astDrawing=true;astLastAngleIdx=null;astPaintAt(astGetPos(e));}
+  });
+  c.addEventListener('mousemove', e=>{
+    if(astPanMode&&astPanActive){
+      const rect=c.getBoundingClientRect(),sx=c.width/rect.width;
+      astTraceOffsetX+=(e.clientX-astPanLastX)*sx;
+      astTraceOffsetY+=(e.clientY-astPanLastY)*sx;
+      astPanLastX=e.clientX;astPanLastY=e.clientY;astRedraw();
+    } else if(!astPanMode&&astDrawing){astPaintAt(astGetPos(e));}
+  });
+  c.addEventListener('mouseup',()=>{astPanActive=false;astDrawing=false;astLastAngleIdx=null;});
+  c.addEventListener('mouseleave',()=>{astPanActive=false;astDrawing=false;astLastAngleIdx=null;});
+  c.addEventListener('wheel',e=>{
+    if(!astTraceImage)return; e.preventDefault();
+    astTraceScale=Math.max(.1,Math.min(10,astTraceScale*(e.deltaY<0?1.1:.9)));
+    astRedraw();
+  },{passive:false});
+
+  c.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    if(astPanMode){
+      astPanActive=true;
+      if(e.touches.length===1){astPanLastX=e.touches[0].clientX;astPanLastY=e.touches[0].clientY;}
+      else if(e.touches.length===2){
+        astPinchStartDist=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY);
+        astPinchStartScale=astTraceScale;
+      }
+    } else {
+      astDrawing=true;astLastAngleIdx=null;astPaintAt(astGetPos(e));
+      astShowLoupe(e.touches[0].clientX,e.touches[0].clientY);
+    }
+  },{passive:false});
+  c.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    if(astPanMode&&astPanActive){
+      const rect=c.getBoundingClientRect(),sx=c.width/rect.width;
+      if(e.touches.length===1){
+        astTraceOffsetX+=(e.touches[0].clientX-astPanLastX)*sx;
+        astTraceOffsetY+=(e.touches[0].clientY-astPanLastY)*sx;
+        astPanLastX=e.touches[0].clientX;astPanLastY=e.touches[0].clientY;astRedraw();
+      } else if(e.touches.length===2){
+        const d=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY);
+        astTraceScale=Math.max(.1,Math.min(10,astPinchStartScale*(d/astPinchStartDist)));
+        astRedraw();
+      }
+    } else if(!astPanMode&&astDrawing){
+      astPaintAt(astGetPos(e));
+      astShowLoupe(e.touches[0].clientX,e.touches[0].clientY);
+    }
+  },{passive:false});
+  c.addEventListener('touchend',e=>{
+    if(e.touches.length===0){astPanActive=false;astDrawing=false;astLastAngleIdx=null;astHideLoupe();}
+    else if(e.touches.length===1&&astPanMode){astPanLastX=e.touches[0].clientX;astPanLastY=e.touches[0].clientY;}
+  });
+})();
+
+// ── Effects ───────────────────────────────────────────────────────
+function astFxRandomize() { astFxSeed=Math.random()*9999|0; astInvalidateCache(); astRedraw(); astGenerate(); }
+
+function astToggleEffect(name) {
+  if(astActiveEffects.has(name)) astActiveEffects.delete(name);
+  else astActiveEffects.add(name);
+  const card=document.getElementById('ast-fx-'+name);
+  const dot=document.getElementById('ast-dot-'+name);
+  const sliders=document.getElementById('ast-fx-sliders-'+name);
+  const on=astActiveEffects.has(name);
+  card.style.borderColor=on?'rgba(90,240,192,.5)':'rgba(42,42,58,.8)';
+  card.style.background=on?'rgba(90,240,192,.05)':'';
+  dot.style.background=on?'rgba(90,240,192,.9)':'';
+  dot.style.borderColor=on?'rgba(90,240,192,.9)':'rgba(42,42,58,.8)';
+  if(sliders) sliders.style.display=on?'flex':'none';
+  astInvalidateCache(); astRedraw(); astGenerate();
+}
+
+function astMakePRNG(seed) {
+  return function(){
+    seed|=0; seed=seed+0x6D2B79F5|0;
+    let t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return((t^t>>>14)>>>0)/4294967296;
+  };
+}
+
+function astApplyEffects(src) {
+  const out=Float32Array.from(src);
+  const rng=astMakePRNG(astFxSeed);
+  const c=astGetCanvas();
+  const MAX_R=Math.min(c.width,c.height)/2-10;
+
+  if(astActiveEffects.has('roughness')){
+    const intensity=parseInt(document.getElementById('ast-roughness-amt').value)/100;
+    const scale=parseInt(document.getElementById('ast-roughness-scale').value);
+    const nl=Math.max(4,Math.floor(AST_RES/Math.max(scale,1)));
+    const noise=new Float32Array(nl);
+    for(let i=0;i<nl;i++) noise[i]=(rng()-.5)*2;
+    for(let i=0;i<AST_RES;i++){
+      if(out[i]===0) continue;
+      const t=(i/AST_RES)*nl; const i0=Math.floor(t)%nl; const i1=(i0+1)%nl;
+      const n=noise[i0]*(1-(t-Math.floor(t)))+noise[i1]*(t-Math.floor(t));
+      out[i]=Math.max(1,out[i]+n*out[i]*intensity*.5);
+    }
+  }
+  if(astActiveEffects.has('craters')){
+    const count=parseInt(document.getElementById('ast-craters-count').value);
+    const depth=parseInt(document.getElementById('ast-craters-depth').value)/100;
+    const widthPct=parseInt(document.getElementById('ast-craters-width').value)/100;
+    for(let c2=0;c2<count;c2++){
+      const center=Math.floor(rng()*AST_RES);
+      const width=Math.floor(widthPct*AST_RES*.08*(.5+rng()*.8)+3);
+      const d=depth*(.4+rng()*.6);
+      for(let k=-width;k<=width;k++){
+        const idx=((center+k)%AST_RES+AST_RES)%AST_RES;
+        if(out[idx]===0) continue;
+        const dip=Math.cos(Math.abs(k)/width*Math.PI*.5);
+        out[idx]=Math.max(1,out[idx]*(1-d*dip));
+      }
+    }
+  }
+  if(astActiveEffects.has('flats')){
+    const count=parseInt(document.getElementById('ast-flats-count').value);
+    const width=parseInt(document.getElementById('ast-flats-width').value);
+    for(let c2=0;c2<count;c2++){
+      const center=Math.floor(rng()*AST_RES);
+      const hw=Math.floor(width/100*AST_RES/count/2);
+      const flatR=out[center]>0?out[center]:0;
+      if(flatR===0) continue;
+      for(let k=-hw;k<=hw;k++){
+        const idx=((center+k)%AST_RES+AST_RES)%AST_RES;
+        if(out[idx]===0) continue;
+        const t=1-Math.abs(k)/(hw+1);
+        out[idx]=out[idx]*(1-t)+flatR*t;
+      }
+    }
+  }
+  if(astActiveEffects.has('boulders')){
+    const count=parseInt(document.getElementById('ast-boulders-count').value);
+    const size=parseInt(document.getElementById('ast-boulders-size').value)/100;
+    for(let c2=0;c2<count;c2++){
+      const center=Math.floor(rng()*AST_RES);
+      const width=Math.floor(rng()*12+4);
+      const bump=size*(.3+rng()*.7);
+      for(let k=-width;k<=width;k++){
+        const idx=((center+k)%AST_RES+AST_RES)%AST_RES;
+        if(out[idx]===0) continue;
+        const rise=Math.cos(Math.abs(k)/width*Math.PI*.5);
+        out[idx]=Math.min(MAX_R,out[idx]*(1+bump*rise*.4));
+      }
+    }
+  }
+  return out;
+}
+
+// Close modal on backdrop click
+document.getElementById('asteroids-modal').addEventListener('click', function(e){
+  if(e.target===this) closeAsteroidsMenu();
+});
+</script>
+
 <div id="psc-modal" style="display:none;position:fixed;inset:0;z-index:200000;
   background:rgba(2,5,14,.88);backdrop-filter:blur(4px);
   flex-direction:column;align-items:center;justify-content:flex-start;

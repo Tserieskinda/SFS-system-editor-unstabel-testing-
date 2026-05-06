@@ -324,6 +324,13 @@ async function loadZipFile(file){
     Object.entries(bodies).forEach(([name, b]) => {
       systemPresets[name] = JSON.parse(JSON.stringify(b.data));
     });
+    // If this system was previously imported as a named bucket (via IMPORT),
+    // remove that bucket so the same bodies don't appear under two separate tabs.
+    const _derivedLabel = systemName.replace(/-?\d+(\.\d+)*$/, '').trim();
+    if(typeof dynamicPresetSources !== 'undefined' && dynamicPresetSources[_derivedLabel]){
+      delete dynamicPresetSources[_derivedLabel];
+      if(typeof prsRefreshNamedTabs === 'function') prsRefreshNamedTabs();
+    }
     // Show/hide the SYSTEM tab in the preset modal based on whether bodies loaded
     prsRefreshSystemTab();
 
@@ -628,6 +635,10 @@ async function _loadSFSAssetBuffer(buffer, zipName, onDecompProgress, onTexProgr
   const rawEntries = parseZip(buffer);
   const entries = await decompressEntries(rawEntries, onDecompProgress);
   let totalTextures = 0, totalPresets = 0, errors = 0;
+
+  // If this is a named import (e.g. BGH, ATSS), reset the bucket up-front so
+  // re-importing the same system replaces it instead of accumulating duplicates.
+  if(namedCategory) dynamicPresetSources[namedCategory] = { presets:{}, zipName };
 
   // Pre-count texture entries for progress reporting
   const allEntries = Object.entries(entries);
