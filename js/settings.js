@@ -36,7 +36,7 @@ function switchSettingsTab(tab){
 }
 
 function switchAppTab(tab){
-  ['theme','appcredits'].forEach(t=>{
+  ['theme','sound','appcredits'].forEach(t=>{
     const active = t===tab;
     const btn = document.getElementById('apptab-'+t);
     const content = document.getElementById('apptab-'+t+'-content');
