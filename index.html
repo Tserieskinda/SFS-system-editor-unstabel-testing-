@@ -628,6 +628,8 @@
             </div>
           </div>
           <input type="file" id="hm-file-input" multiple accept=".png,.txt" style="display:none" onchange="hmFileAdded(this.files)">
+          <!-- missing heightmap warning (shown when formula refs unloaded names) -->
+          <div id="hm-missing-warn" style="display:none;font-size:.65rem;color:#f5a623;background:rgba(245,166,35,.12);border:1px solid rgba(245,166,35,.3);border-radius:5px;padding:6px 8px;margin-bottom:6px;line-height:1.5"></div>
           <!-- loaded heightmap grid rendered here by JS -->
           <div id="hm-library-wrap">
             <div id="hm-loaded-list" style="margin-top:4px"></div>

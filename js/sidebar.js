@@ -1612,6 +1612,30 @@ function hmRefreshLoadedList(){
     `<option value="${n}"${n===curMap?' selected':''}>${n}${builtins.includes(n)?' (built-in)':' (custom)'}</option>`
   ).join('');
 
+  // Check if any active formula lines reference heightmap names not currently loaded
+  // (happens when a preset references a custom heightmap that hasn't been uploaded yet)
+  (function _checkMissingHmRefs(){
+    const warn = document.getElementById('hm-missing-warn');
+    if(!warn) return;
+    const allFormulas = ['tf-normal','tf-hard','tf-realistic'].map(id=>{
+      const el = document.getElementById(id);
+      return el ? el.value : '';
+    }).join('\n');
+    // Extract map names used in formula calls e.g. SET(EarthHM, ...) or OUTPUT = SET(EarthHM, ...)
+    const used = new Set();
+    allFormulas.replace(/\b[A-Za-z_][A-Za-z0-9_]*\s*\(/g,''); // skip function names
+    for(const m of allFormulas.matchAll(/(?:SET|ADD|SUB|MUL|MAX|MIN)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)/g)){
+      used.add(m[1]);
+    }
+    const missing = [...used].filter(n => !builtins.includes(n) && !customNames.includes(n));
+    if(missing.length){
+      warn.style.display = '';
+      warn.textContent = `⚠ Heightmap${missing.length>1?'s':''} not loaded: ${missing.join(', ')} — upload the file(s) in the Assets panel.`;
+    } else {
+      warn.style.display = 'none';
+    }
+  })();
+
   if(hms.length === 0){
     list.innerHTML = '';
     hint.style.display = '';

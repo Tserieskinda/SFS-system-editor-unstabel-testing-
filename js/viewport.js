@@ -2422,6 +2422,7 @@ function _getHeightMap(hmName) {
   if (entry.url) {
     _hmCache[hmName] = _parseHmPng(entry.url).then(pts => {
       _hmCache[hmName] = pts;
+      if (typeof invalidateTerrainCache === 'function') invalidateTerrainCache('*');
       if (typeof drawViewport === 'function') drawViewport();
     });
     return null;
