@@ -108,6 +108,11 @@
         <button class="tb-btn" id="btn-tools" onclick="toggleToolsDropdown()" title="Tools"
           style="border-color:rgba(255,180,80,.35);color:#ffb850;font-size:.88rem;padding:7px 11px">🔧</button>
       </div>
+      <!-- ── Utils dropdown ── -->
+      <div id="utils-dropdown-wrap" style="position:relative;display:inline-block">
+        <button class="tb-btn" id="btn-utils" onclick="toggleUtilsDropdown()" title="Utilities"
+          style="border-color:rgba(100,220,180,.35);color:#64dcb4;font-size:.78rem;letter-spacing:.06em;padding:7px 11px">⊞ UTILS</button>
+      </div>
       <button class="tb-btn" onclick="openAssets()">📁 ASSETS</button>
       <button class="tb-btn" onclick="openSysSettings()">⚙ SYSTEM</button>
       <button class="tb-btn save" onclick="exportSystem()">⬇ EXPORT ZIP</button>
@@ -1490,6 +1495,7 @@
 <script src="js/namegen.js?v=5.8"></script>
 <script src="js/tex-creator.js?v=5.8"></script>
 <script src="js/sfx.js?v=5.8"></script>
+<script src="js/utils.js?v=5.8"></script>
 <!-- ══ TERRAIN DETAIL DROPDOWN (body-level to escape topbar stacking context) ══ -->
 <div id="terrain-detail-dropdown" style="display:none;position:fixed;
   min-width:200px;background:rgba(6,10,22,.97);border:1px solid rgba(180,140,255,.25);
@@ -2583,6 +2589,139 @@ document.addEventListener('keydown', function(e){
   };
 })();
 </script>
+
+<!-- ══════════════ UTILS DROPDOWN ══════════════ -->
+<div id="utils-dropdown" style="display:none;position:fixed;
+  min-width:180px;background:rgba(6,10,22,.97);border:1px solid rgba(100,220,180,.22);
+  border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,.7);z-index:99999;overflow:hidden">
+  <div style="padding:5px 10px 4px;font-family:'Orbitron',sans-serif;font-size:.5rem;
+    color:rgba(100,220,180,.5);letter-spacing:.12em;border-bottom:1px solid rgba(100,220,180,.1)">UTILITIES</div>
+  <button onclick="openCalculator()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='rgba(100,220,180,.1)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">🧮</span>
+    <span><span style="display:block;color:rgba(100,220,180,.9)">CALCULATOR</span>
+    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Circumference, cloud &amp; heightmap width</span></span>
+  </button>
+</div>
+
+<!-- ══════════════ CALCULATOR MODAL ══════════════ -->
+<div id="calc-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100000;
+  align-items:center;justify-content:center;padding:16px">
+  <div id="calc-modal" style="background:rgba(6,10,22,.98);border:1px solid rgba(100,220,180,.25);
+    border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,.8);width:100%;max-width:460px;
+    max-height:90vh;overflow-y:auto;font-family:'JetBrains Mono',monospace">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:12px 16px;border-bottom:1px solid rgba(100,220,180,.12)">
+      <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.12em;color:rgba(100,220,180,.9)">🧮 CALCULATOR</span>
+      <button onclick="closeCalculator()" style="background:none;border:none;cursor:pointer;
+        color:rgba(180,180,210,.5);font-size:1.1rem;padding:0 4px;line-height:1" title="Close">✕</button>
+    </div>
+
+    <!-- Body picker -->
+    <div style="padding:12px 16px 0">
+      <div style="font-size:.58rem;color:rgba(100,220,180,.6);letter-spacing:.1em;margin-bottom:5px">SELECT BODY</div>
+      <select id="calc-body-sel" onchange="calcBodyChanged()"
+        style="width:100%;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
+        border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
+        font-size:.65rem;padding:7px 10px;outline:none;cursor:pointer">
+        <option value="">— no bodies loaded —</option>
+      </select>
+      <!-- Selected body radius display -->
+      <div id="calc-body-info" style="display:none;margin-top:6px;padding:6px 10px;
+        background:rgba(100,220,180,.06);border:1px solid rgba(100,220,180,.12);border-radius:4px;
+        font-size:.58rem;color:rgba(150,190,170,.8);line-height:1.7">
+        <span id="calc-info-r"></span><br>
+        <span id="calc-info-cloud"></span>
+      </div>
+    </div>
+
+    <!-- Calculator tabs -->
+    <div style="display:flex;gap:0;padding:12px 16px 0;border-bottom:1px solid rgba(100,220,180,.08)">
+      <button id="calc-tab-circ"   onclick="calcSetTab('circ')"   class="calc-tab calc-tab-active">Circumference</button>
+      <button id="calc-tab-cloud"  onclick="calcSetTab('cloud')"  class="calc-tab">Cloud Width</button>
+      <button id="calc-tab-hm"     onclick="calcSetTab('hm')"     class="calc-tab">HMap Width</button>
+    </div>
+
+    <!-- CIRCUMFERENCE panel -->
+    <div id="calc-panel-circ" class="calc-panel" style="padding:16px">
+      <div class="calc-formula-box">2 π r</div>
+      <div class="calc-desc">Full equatorial circumference of the planet surface.</div>
+      <div class="calc-result-wrap">
+        <div class="calc-result-label">RESULT</div>
+        <div id="calc-res-circ" class="calc-result">—</div>
+      </div>
+    </div>
+
+    <!-- CLOUD WIDTH panel -->
+    <div id="calc-panel-cloud" class="calc-panel" style="display:none;padding:16px">
+      <div class="calc-formula-box">2 π (r + cloudStartHeight) / N</div>
+      <div class="calc-desc">Width of one cloud tile for N tiles covering the full cloud layer circumference.</div>
+      <div style="display:flex;align-items:center;gap:10px;margin:12px 0 4px">
+        <label style="font-size:.58rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (TILES)</label>
+        <input id="calc-cloud-n" type="number" min="1" step="1" value="8" oninput="calcUpdate()"
+          style="flex:1;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
+          border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
+          font-size:.68rem;padding:6px 10px;outline:none;max-width:120px">
+      </div>
+      <div id="calc-cloud-sh-note" style="font-size:.55rem;color:rgba(150,150,200,.5);margin-bottom:10px"></div>
+      <div class="calc-result-wrap">
+        <div class="calc-result-label">RESULT (per tile)</div>
+        <div id="calc-res-cloud" class="calc-result">—</div>
+      </div>
+    </div>
+
+    <!-- HEIGHTMAP WIDTH panel -->
+    <div id="calc-panel-hm" class="calc-panel" style="display:none;padding:16px">
+      <div class="calc-formula-box">2 π r / N</div>
+      <div class="calc-desc">Width covered by one column of a heightmap PNG with N total columns.</div>
+      <div style="display:flex;align-items:center;gap:10px;margin:12px 0 4px">
+        <label style="font-size:.58rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (COLUMNS)</label>
+        <input id="calc-hm-n" type="number" min="1" step="1" value="1024" oninput="calcUpdate()"
+          style="flex:1;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
+          border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
+          font-size:.68rem;padding:6px 10px;outline:none;max-width:120px">
+      </div>
+      <div class="calc-result-wrap">
+        <div class="calc-result-label">RESULT (per column)</div>
+        <div id="calc-res-hm" class="calc-result">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.calc-tab {
+  flex:1;padding:7px 4px;background:none;border:none;border-bottom:2px solid transparent;
+  cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.56rem;letter-spacing:.06em;
+  color:rgba(150,160,190,.6);transition:all .15s;
+}
+.calc-tab:hover { color:rgba(100,220,180,.8); }
+.calc-tab-active { color:rgba(100,220,180,.95) !important;border-bottom-color:rgba(100,220,180,.7) !important; }
+.calc-formula-box {
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;color:rgba(100,220,180,.9);
+  background:rgba(100,220,180,.07);border:1px solid rgba(100,220,180,.15);
+  border-radius:4px;padding:8px 14px;text-align:center;letter-spacing:.08em;margin-bottom:8px;
+}
+.calc-desc { font-size:.57rem;color:rgba(150,160,190,.6);line-height:1.6;margin-bottom:4px; }
+.calc-result-wrap {
+  margin-top:14px;padding:12px 14px;background:rgba(100,220,180,.06);
+  border:1px solid rgba(100,220,180,.18);border-radius:6px;
+}
+.calc-result-label { font-size:.52rem;color:rgba(100,220,180,.5);letter-spacing:.1em;margin-bottom:4px; }
+.calc-result {
+  font-size:1.05rem;font-family:'JetBrains Mono',monospace;color:rgba(200,240,220,.95);
+  letter-spacing:.04em;word-break:break-all;
+}
+@media (max-width:520px){
+  #calc-modal { max-height:85vh; border-radius:6px; }
+  .calc-result { font-size:.85rem; }
+  .calc-tab { font-size:.5rem; padding:6px 2px; }
+}
+</style>
 
 </body>
 

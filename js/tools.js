@@ -337,15 +337,7 @@ vp.addEventListener('mousedown', e => {
       if(b.isCenter) return; // center can't be orbit-dragged
       const br = (b.data.BASE_DATA||{}).radius || 1;
       const iconR = (b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4) * iconScale;
-      const r = Math.max(iconR, br * sc2 * vpZ);
-      const d = Math.hypot(mx - sp.x, my - sp.y);
-      if(d < r + 12) hits.push({name, iconR, d});
-    });
-    hits.sort((a,b) => b.iconR - a.iconR || a.d - b.d);
-    if(hits.length){
-      _dob_body = hits[0].name;
-      _dob_active = true;
-      _dob_freeze(_dob_body);   // freeze scale + parent pos BEFORE any SMA mutation
+      const r = Math.max(iconR, br * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
       pushUndo();
       vp.style.cursor = 'grabbing';
     }
@@ -427,7 +419,7 @@ vp.addEventListener('click', e => {
     const b = bodies[name];
     const bodyRadius_m = (b.data.BASE_DATA||{}).radius || 1;
     const iconR = (b.isCenter?18 : b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4) * iconScale;
-    const r = Math.max(iconR, bodyRadius_m * sc2 * vpZ);
+    const r = Math.max(iconR, bodyRadius_m * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
     const d = Math.hypot(mx - sp.x, my - sp.y);
     if(d < r + 10) hitCandidates.push({name, iconR, d});
   });
@@ -464,7 +456,7 @@ vp.addEventListener('dblclick', e => {
     const b = bodies[name];
     const br = (b.data.BASE_DATA||{}).radius || 1;
     const iconR = (b.isCenter?18 : b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4) * iconScale;
-    const r = Math.max(iconR, br * sc2 * vpZ);
+    const r = Math.max(iconR, br * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
     const d = Math.hypot(mx-sp.x, my-sp.y);
     if(d < r + 10) hits.push({name, iconR, d});
   });
@@ -499,7 +491,7 @@ vp.addEventListener('touchstart', e => {
       if(b.isCenter) return;
       const br = (b.data.BASE_DATA||{}).radius || 1;
       const iconR = (b.preset==='star'?14:(b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4) * iconScale;
-      const r = Math.max(iconR, br * sc2 * vpZ);
+      const r = Math.max(iconR, br * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
       const d = Math.hypot(mx - sp.x, my - sp.y);
       if(d < r + 16) hits.push({name, iconR, d});
     });
@@ -620,7 +612,7 @@ vp.addEventListener('touchend', e => {
           const b = bodies[name];
           const br = (b.data.BASE_DATA||{}).radius || 1;
           const iconR = (b.isCenter?18:b.preset==='star'?14:(b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4) * iconScale;
-          const r = Math.max(iconR, br * sc2 * vpZ);
+          const r = Math.max(iconR, br * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
           const d = Math.hypot(mx-sp.x, my-sp.y);
           if(d < r + 10) hits.push({name, iconR, d});
         });
@@ -637,7 +629,7 @@ vp.addEventListener('touchend', e => {
         const b = bodies[name];
         const br = (b.data.BASE_DATA||{}).radius || 1;
         const iconR = b.isCenter?18 : b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4;
-        const r = Math.max(iconR, br * sc2t * vpZ);
+        const r = Math.max(iconR, br * sc2t * vpZ, bodyTerrainPeakPx[name] || 0);
         const d = Math.hypot(mx-sp.x, my-sp.y);
         if(d < r + 14) hitCandidatesT.push({name, iconR, d});
       });
@@ -799,9 +791,22 @@ function _pscDraw(){
 
   const totalW = xCursor;
 
-  // Clamp pan so content edge stays visible
+  // Label extent: rotated 45° text extends diagonally up-left from the baseline.
+  // Longest label ≈ fontSize * name.length * 0.6 px. At 45° the vertical rise
+  // equals the horizontal extent. Reserve enough padding so labels are never clipped.
+  const maxLabelPx = Math.max(...layout.map(it => {
+    const fontSize = Math.max(9, Math.min(12, it.displayR * 0.35 + 8));
+    return (it.name.length * fontSize * 0.6 + 24) * Math.SQRT2; // diagonal length
+  }));
+
+  // Clamp pan so content stays reachable in both axes.
+  // X: rightmost edge must not scroll fully off left; leftmost must not scroll off right.
   const minPanX = Math.min(0, W - totalW * _PSC.zoom);
   _PSC.panX = Math.min(0, Math.max(minPanX, _PSC.panX));
+  // Y: allow scrolling up enough to reveal labels (they extend above baselineY)
+  const contentH = (usableH + maxLabelPx) * _PSC.zoom;
+  const minPanY = Math.min(0, H - contentH);
+  _PSC.panY = Math.min(0, Math.max(minPanY, _PSC.panY));
 
   ctx.save();
   ctx.translate(_PSC.panX, _PSC.panY);

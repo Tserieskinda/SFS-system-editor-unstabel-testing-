@@ -182,21 +182,39 @@ function renderAssetRow(entry, type){
 
 function removeAsset(safeName, type){
   if(type && type !== 'textures'){
+    // Find the real name before removing, so we can bust caches keyed by it
+    const removed = assets[type]?.find(a => sanitize(a.name) === safeName);
     if(assets[type]) assets[type] = assets[type].filter(a=>sanitize(a.name)!==safeName);
     document.getElementById('asset-'+type+'-'+safeName)?.remove();
-    // Update heightmaps empty state
     if(type === 'heightmaps'){
+      // Bust heightmap cache entries for removed name
+      if(removed && typeof _hmCache !== 'undefined'){
+        delete _hmCache[removed.name];
+        const base = removed.name.replace(/\.[^.]+$/, '');
+        if(base !== removed.name) delete _hmCache[base];
+      }
+      if(typeof invalidateTerrainCache === 'function') invalidateTerrainCache('*');
+      if(typeof hmRefreshLoadedList === 'function') hmRefreshLoadedList();
+      // Update empty state
       const list = document.getElementById('alist-heightmaps');
       const empty = document.getElementById('asset-hm-empty');
       if(empty && list) empty.style.display = list.querySelectorAll('.asset-row').length === 0 ? 'block' : 'none';
     }
+    if(typeof drawViewport === 'function') drawViewport();
     return;
   }
   // Remove from textures list
+  const removedTex = assets.textures.find(a => sanitize(a.name) === safeName);
   assets.textures = assets.textures.filter(a=>sanitize(a.name)!==safeName);
   document.getElementById('asset-tex-'+safeName)?.remove();
+  // Bust texture cache for removed entry
+  if(removedTex && typeof textureCache !== 'undefined'){
+    const texBase = removedTex.name.replace(/\.[^.]+$/, '');
+    delete textureCache[texBase];
+  }
   refreshTexPickerLists();
   updateAssetEmptyState();
+  if(typeof drawViewport === 'function') drawViewport();
 }
 
 function updateAssetEmptyState(){

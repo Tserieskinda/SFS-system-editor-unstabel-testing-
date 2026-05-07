@@ -144,6 +144,9 @@ let bodyVisible = {};
 // Store computed screen positions and visibility for hit-testing
 let bodyScreenPos = {};
 let bodyVisibleMap = {};
+// Max terrain radius in pixels for each body (updated each draw frame).
+// Keyed by body name. 0 means no terrain / not yet computed.
+let bodyTerrainPeakPx = {};
 let showFrontClouds = true; // legacy alias — kept for draw code gate
 let dbgFogOpacity = 1.0;   // kept for any legacy references (unused by new system)
 
@@ -1116,6 +1119,25 @@ function _drawViewportNow(){
     const _arcInfo = _canArcCull
       ? _computeVisibleArc(sp, Math.max(r, physR_px), W, H)
       : null;
+
+    // ── Terrain peak hit-radius — updated regardless of LOD/draw threshold ──
+    // Use cached full-circle 360-sample if available; do not block on async HM.
+    // This ensures bodyTerrainPeakPx is correct even when body is tiny on screen.
+    if (b.data.TERRAIN_DATA) {
+      const _peakResult = _terrainSampleCache[
+        Object.keys(_terrainSampleCache).find(k =>
+          k.startsWith(`${name}|${(bodyRadius_m * getRadiusDifficultyMult(b.data.BASE_DATA)).toFixed(0)}|`) &&
+          !k.includes('|arc|')
+        )
+      ];
+      if (_peakResult && _peakResult.heights) {
+        let _pH = 0;
+        for (let _pi = 0; _pi < _peakResult.heights.length; _pi++) {
+          if (_peakResult.heights[_pi] > _pH) _pH = _peakResult.heights[_pi];
+        }
+        bodyTerrainPeakPx[name] = physR_px * (1 + _pH / (bodyRadius_m * getRadiusDifficultyMult(b.data.BASE_DATA)));
+      }
+    }
 
     // ── Step 1: Base fill — terrain polygon or icon gradient ─────────────────
     {
@@ -3062,6 +3084,16 @@ function drawTerrainBody(ctx, b, bodyName, sp, physR_px, radius_m, mapColor, N, 
 
   const result = _getTerrainSamples(bodyName, b, radius_m, N, arcInfo);
   if (!result) return false;
+
+  // Track the max terrain radius in screen pixels for hit-testing.
+  // Peak formula mirrors _buildTerrainPath: physR_px * (1 + h / radius_m).
+  {
+    let _peakH = 0;
+    for (let _i = 0; _i < result.heights.length; _i++) {
+      if (result.heights[_i] > _peakH) _peakH = result.heights[_i];
+    }
+    bodyTerrainPeakPx[bodyName] = physR_px * (1 + _peakH / radius_m);
+  }
 
   // ── Edge-disk fill ───────────────────────────────────────────────────────
   // Sample the outermost few rows of the planet texture once and cache the
