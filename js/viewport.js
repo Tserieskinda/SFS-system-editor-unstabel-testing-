@@ -571,6 +571,7 @@ function _drawViewportNow(){
 
   bodyScreenPos = {};
   names.forEach(name => {
+    try {
     const b = bodies[name];
     const wp = bodyWorldPos[name] || {x:0, y:0};
     const sp = worldToScreen(wp.x, wp.y);
@@ -1119,25 +1120,6 @@ function _drawViewportNow(){
     const _arcInfo = _canArcCull
       ? _computeVisibleArc(sp, Math.max(r, physR_px), W, H)
       : null;
-
-    // ── Terrain peak hit-radius — updated regardless of LOD/draw threshold ──
-    // Use cached full-circle 360-sample if available; do not block on async HM.
-    // This ensures bodyTerrainPeakPx is correct even when body is tiny on screen.
-    if (b.data.TERRAIN_DATA) {
-      const _peakResult = _terrainSampleCache[
-        Object.keys(_terrainSampleCache).find(k =>
-          k.startsWith(`${name}|${(bodyRadius_m * getRadiusDifficultyMult(b.data.BASE_DATA)).toFixed(0)}|`) &&
-          !k.includes('|arc|')
-        )
-      ];
-      if (_peakResult && _peakResult.heights) {
-        let _pH = 0;
-        for (let _pi = 0; _pi < _peakResult.heights.length; _pi++) {
-          if (_peakResult.heights[_pi] > _pH) _pH = _peakResult.heights[_pi];
-        }
-        bodyTerrainPeakPx[name] = physR_px * (1 + _pH / (bodyRadius_m * getRadiusDifficultyMult(b.data.BASE_DATA)));
-      }
-    }
 
     // ── Step 1: Base fill — terrain polygon or icon gradient ─────────────────
     {
@@ -2158,6 +2140,7 @@ function _drawViewportNow(){
         ctx2.lineCap = 'butt';
       }
     }
+    } catch(e) { console.error('[SFS|DRAW] Error drawing body "'+name+'": '+e.message, e); }
   });
 
   bodyScreenPos = {};

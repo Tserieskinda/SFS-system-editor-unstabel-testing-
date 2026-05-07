@@ -1876,6 +1876,86 @@
         <div id="ast-map-info" style="font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.7);letter-spacing:.04em">Generate to see output</div>
       </div>
 
+      <!-- ── APPLY TO BODY PANEL ── -->
+      <div id="ast-apply-panel" style="background:rgba(18,18,26,.7);border:1px solid rgba(90,240,192,.15);padding:10px;display:flex;flex-direction:column;gap:10px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.5rem;letter-spacing:.14em;color:rgba(90,240,192,.45)">Apply to Body</div>
+
+        <!-- PNG name -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.9);white-space:nowrap">PNG name:</span>
+          <input type="text" id="ast-png-name" value="asteroid_heightmap"
+            style="flex:1;min-width:120px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);
+            color:rgba(220,220,255,.8);font-family:'JetBrains Mono',monospace;font-size:.56rem;
+            padding:5px 8px;border-radius:2px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.6)">.png</span>
+        </div>
+
+        <!-- Body selector -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.9);white-space:nowrap">Target body:</span>
+          <select id="ast-body-select"
+            style="flex:1;min-width:120px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);
+            color:rgba(220,220,255,.8);font-family:'JetBrains Mono',monospace;font-size:.54rem;
+            padding:5px 8px;border-radius:2px;appearance:auto">
+            <option value="">— select body —</option>
+          </select>
+          <button onclick="astRefreshBodyList()" title="Refresh body list"
+            style="flex:0;background:transparent;border:1px solid rgba(90,90,112,.3);color:rgba(150,150,180,.6);
+            font-family:'JetBrains Mono',monospace;font-size:.6rem;padding:5px 9px;min-height:28px;cursor:pointer">↺</button>
+        </div>
+
+        <!-- Height slider -->
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.9);white-space:nowrap">Height:</span>
+            <input type="range" id="ast-hmap-height" min="-50000" max="50000" value="5000"
+              style="flex:1;accent-color:rgba(90,240,192,.8);height:28px"
+              oninput="document.getElementById('ast-hmap-height-val').value=this.value;astUpdateApplyPreview()">
+            <input type="number" id="ast-hmap-height-val" value="5000"
+              style="width:78px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);
+              color:rgba(220,220,255,.8);font-family:'JetBrains Mono',monospace;font-size:.54rem;
+              padding:4px 6px;text-align:right;border-radius:2px"
+              oninput="document.getElementById('ast-hmap-height').value=this.value;astUpdateApplyPreview()">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.6)">m</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.7)">
+            <span>Range:</span>
+            <input type="number" id="ast-height-min" value="-50000" placeholder="min"
+              style="width:70px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.3);
+              color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.5rem;
+              padding:3px 5px;text-align:center;border-radius:2px"
+              oninput="astClampHeightRange()">
+            <span>to</span>
+            <input type="number" id="ast-height-max" value="50000" placeholder="max"
+              style="width:70px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.3);
+              color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.5rem;
+              padding:3px 5px;text-align:center;border-radius:2px"
+              oninput="astClampHeightRange()">
+            <button onclick="astSetHeightRange()"
+              style="background:transparent;border:1px solid rgba(90,90,112,.3);color:rgba(150,150,180,.6);
+              font-family:'JetBrains Mono',monospace;font-size:.5rem;padding:3px 8px;cursor:pointer;border-radius:2px">Set</button>
+          </div>
+        </div>
+
+        <!-- Formula preview -->
+        <div style="background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.3);padding:8px;border-radius:2px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:.45rem;letter-spacing:.1em;color:rgba(90,240,192,.35);margin-bottom:4px">WILL APPEND TO TERRAIN FORMULA (Normal)</div>
+          <div id="ast-apply-preview" style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(200,200,240,.7);word-break:break-all;line-height:1.5">
+            <span style="color:rgba(85,85,112,.5)">— generate heightmap first —</span>
+          </div>
+        </div>
+
+        <!-- Apply button -->
+        <button id="ast-apply-btn" onclick="astApplyToBody()" disabled
+          style="width:100%;background:rgba(90,240,192,.04);border:1px solid rgba(90,90,112,.35);
+          color:rgba(90,90,112,.5);font-family:'JetBrains Mono',monospace;font-size:.62rem;
+          letter-spacing:.12em;padding:13px 12px;min-height:44px;cursor:not-allowed;
+          text-transform:uppercase;transition:all .2s;border-radius:2px">
+          ✦ APPLY HEIGHTMAP TO BODY
+        </button>
+        <div id="ast-apply-status" style="font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.6);text-align:center;min-height:14px"></div>
+      </div>
+
     </div><!-- /draw panel -->
 
     <!-- ── GENERATE TAB ── -->
@@ -2100,7 +2180,10 @@ function astGenerate() {
   const maxR=Math.max(...sm);
   if(maxR===0){document.getElementById('ast-map-info').textContent='Nothing drawn yet';astRawMapData=null;return;}
   astRawMapData=new Float32Array(W);
-  for(let x=0;x<W;x++) astRawMapData[x]=sm[Math.floor(x/W*AST_RES)]/maxR;
+  // Sample right-to-left so the exported heightmap is horizontally mirrored
+  // relative to the drawing. This cancels the in-game left-right flip without
+  // changing how the silhouette looks in the draw preview.
+  for(let x=0;x<W;x++) astRawMapData[x]=sm[Math.floor((W-1-x)/W*AST_RES)]/maxR;
   document.getElementById('ast-vshift').value=0;
   document.getElementById('ast-vshift-val').textContent='0';
   astRenderMap(0);
@@ -2114,7 +2197,7 @@ function astRenderMap(shiftPx) {
   const W=mc.width, H=mc.height;
   const img=mctx.createImageData(W,H);
   for(let x=0;x<W;x++){
-    const h=astRawMapData[x];
+    const h=1-astRawMapData[x];
     const cutY=Math.round(H*(1-h))+shiftPx;
     for(let y=0;y<H;y++){
       const i=(y*W+x)*4;
@@ -2141,7 +2224,7 @@ function astDrawGraph() {
   const W=astRawMapData.length;
   for(let x=0;x<gw;x++){
     const col=Math.floor(x/gw*W);
-    const cutY=Math.round(H*(1-astRawMapData[col]))+shift;
+    const cutY=Math.round(H*astRawMapData[col])+shift;
     const gameH=Math.max(0,Math.min(1,cutY/H));
     const py=gh-gameH*gh;
     if(x===0) gctx.moveTo(x,py); else gctx.lineTo(x,py);
@@ -2149,6 +2232,34 @@ function astDrawGraph() {
   gctx.strokeStyle='rgba(240,192,90,.9)'; gctx.lineWidth=1.5; gctx.stroke();
   gctx.fillStyle='rgba(85,85,112,.7)';
   gctx.font='9px Courier New'; gctx.fillText('POINTS CURVE (game view)',4,10);
+}
+
+// Build a fresh offscreen canvas from astRawMapData at export time.
+// This avoids reading from the on-screen ast-map canvas which may have its
+// pixel buffer discarded by the browser when its parent panel is display:none.
+function astBuildOffscreenCanvas(shiftPx) {
+  if (!astRawMapData) return null;
+  const mc = document.getElementById('ast-map');
+  const W = mc.width, H = mc.height;
+  const oc = document.createElement('canvas');
+  oc.width = W; oc.height = H;
+  const ctx = oc.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const shift = (shiftPx === undefined)
+    ? (parseInt(document.getElementById('ast-vshift').value) || 0)
+    : shiftPx;
+  for (let x = 0; x < W; x++) {
+    const h = 1 - astRawMapData[x];
+    const cutY = Math.round(H * (1 - h)) + shift;
+    for (let y = 0; y < H; y++) {
+      const i = (y * W + x) * 4;
+      const below = y >= cutY;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 0;
+      img.data[i + 3] = below ? 255 : 0;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return oc;
 }
 
 function astApplyVShift() {
@@ -2179,18 +2290,22 @@ function astClearCanvas() {
 
 function astDownload() {
   if(!astRawMapData) astGenerate();
+  if(!astRawMapData) return;
+  const oc = astBuildOffscreenCanvas();
+  if(!oc) return;
   const link=document.createElement('a');
   link.download='asteroid_heightmap.png';
-  link.href=document.getElementById('ast-map').toDataURL('image/png');
+  link.href=oc.toDataURL('image/png');
   link.click();
 }
 
 function astExportTxt() {
   if(!astRawMapData) astGenerate();
   if(!astRawMapData) return;
-  const mc=document.getElementById('ast-map');
-  const W=mc.width, H=mc.height;
-  const pixels=mc.getContext('2d').getImageData(0,0,W,H).data;
+  const oc=astBuildOffscreenCanvas();
+  if(!oc) return;
+  const W=oc.width, H=oc.height;
+  const pixels=oc.getContext('2d').getImageData(0,0,W,H).data;
   const points=new Float32Array(W);
   for(let x=0;x<W;x++){
     let h=1.0;
@@ -2441,6 +2556,165 @@ function astApplyEffects(src) {
 document.getElementById('asteroids-modal').addEventListener('click', function(e){
   if(e.target===this) closeAsteroidsMenu();
 });
+
+// ── Apply to Body ─────────────────────────────────────────────────
+
+function astGetCircumference(bodyName) {
+  const b = bodies[bodyName];
+  if (!b) return null;
+  const r = (b.data && b.data.BASE_DATA && b.data.BASE_DATA.radius) ? b.data.BASE_DATA.radius : null;
+  if (!r) return null;
+  return parseFloat((2 * Math.PI * r).toFixed(7));
+}
+
+function astRefreshBodyList() {
+  const sel = document.getElementById('ast-body-select');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— select body —</option>';
+  const names = Object.keys(typeof bodies !== 'undefined' ? bodies : {}).sort();
+  names.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = n;
+    sel.appendChild(opt);
+  });
+  if (prev && names.includes(prev)) sel.value = prev;
+  astUpdateApplyPreview();
+}
+
+function astClampHeightRange() {
+  const minV = parseFloat(document.getElementById('ast-height-min').value) || -50000;
+  const maxV = parseFloat(document.getElementById('ast-height-max').value) || 50000;
+  const sl = document.getElementById('ast-hmap-height');
+  const ni = document.getElementById('ast-hmap-height-val');
+  let v = parseFloat(ni.value) || 0;
+  v = Math.max(minV, Math.min(maxV, v));
+  sl.value = v; ni.value = v;
+}
+
+function astSetHeightRange() {
+  const minV = parseFloat(document.getElementById('ast-height-min').value) || -50000;
+  const maxV = parseFloat(document.getElementById('ast-height-max').value) || 50000;
+  const sl = document.getElementById('ast-hmap-height');
+  sl.min = minV; sl.max = maxV;
+  astClampHeightRange();
+  astUpdateApplyPreview();
+}
+
+function astUpdateApplyPreview() {
+  const hasMap = !!astRawMapData;
+  const bodyName = document.getElementById('ast-body-select').value;
+  const pngName = (document.getElementById('ast-png-name').value || 'asteroid_heightmap').replace(/\.png$/i,'');
+  const height = parseFloat(document.getElementById('ast-hmap-height-val').value) || 5000;
+  const preview = document.getElementById('ast-apply-preview');
+  const btn = document.getElementById('ast-apply-btn');
+
+  if (!hasMap) {
+    preview.innerHTML = '<span style="color:rgba(85,85,112,.5)">— generate heightmap first —</span>';
+    btn.disabled = true;
+    btn.style.cursor = 'not-allowed';
+    btn.style.background = 'rgba(90,240,192,.04)';
+    btn.style.borderColor = 'rgba(90,90,112,.35)';
+    btn.style.color = 'rgba(90,90,112,.5)';
+    return;
+  }
+
+  let circumStr = '???';
+  if (bodyName) {
+    const circ = astGetCircumference(bodyName);
+    if (circ !== null) circumStr = circ;
+  }
+
+  const line = `OUTPUT = AddHeightMap(${pngName}.png, ${circumStr}, ${height})`;
+  preview.textContent = line;
+
+  const ready = hasMap && !!bodyName;
+  btn.disabled = !ready;
+  btn.style.cursor = ready ? 'pointer' : 'not-allowed';
+  btn.style.background = ready ? 'rgba(90,240,192,.08)' : 'rgba(90,240,192,.04)';
+  btn.style.borderColor = ready ? 'rgba(90,240,192,.6)' : 'rgba(90,90,112,.35)';
+  btn.style.color = ready ? 'rgba(90,240,192,.95)' : 'rgba(90,90,112,.5)';
+}
+
+function astApplyToBody() {
+  if (!astRawMapData) { alert('Generate a heightmap first.'); return; }
+  const bodyName = document.getElementById('ast-body-select').value;
+  if (!bodyName || !bodies[bodyName]) { alert('Select a target body first.'); return; }
+
+  const rawName = (document.getElementById('ast-png-name').value || 'asteroid_heightmap').trim().replace(/\.png$/i,'');
+  const pngName = rawName + '.png';
+  const height = parseFloat(document.getElementById('ast-hmap-height-val').value) || 5000;
+  const circ = astGetCircumference(bodyName);
+  if (circ === null) { alert('Could not read body radius.'); return; }
+
+  const formulaLine = `OUTPUT = AddHeightMap(${rawName}.png, ${circ}, ${height})`;
+
+  // 1. Save PNG into assets.heightmaps
+  const mc = astBuildOffscreenCanvas();
+  if (!mc) { alert('Failed to render heightmap.'); return; }
+  mc.toBlob(blob => {
+    if (!blob) { alert('Failed to export PNG.'); return; }
+    const url = URL.createObjectURL(blob);
+    const entry = { name: pngName, url, type: 'image/png', bytes: null };
+    // Store bytes for export
+    blob.arrayBuffer().then(ab => { entry.bytes = new Uint8Array(ab); }).catch(()=>{});
+
+    // Remove any existing entry with same name
+    const existing = (typeof assets !== 'undefined') ? assets.heightmaps : null;
+    if (existing) {
+      const idx = existing.findIndex(e => e.name === pngName);
+      if (idx !== -1) existing.splice(idx, 1);
+      existing.push(entry);
+    }
+
+    // Inject into heightmap system
+    if (typeof injectCustomHeightmap === 'function') injectCustomHeightmap(pngName);
+    // Render asset row
+    if (typeof renderAssetRow === 'function') renderAssetRow(entry, 'heightmaps');
+
+    // 2. Append formula line to Normal terrain formula of selected body
+    const b = bodies[bodyName];
+    const TD = (b.data.TERRAIN_DATA = b.data.TERRAIN_DATA || {});
+    const tfd = (TD.terrainFormulaDifficulties = TD.terrainFormulaDifficulties || {});
+
+    // Append to Normal (and mirror to Hard/Realistic if empty)
+    const appendLine = (key) => {
+      const cur = (tfd[key] || []);
+      // Remove any previous AddHeightMap for this png so we don't duplicate
+      const filtered = cur.filter(l => !l.includes(`AddHeightMap(${rawName}.png`));
+      filtered.push(formulaLine);
+      tfd[key] = filtered;
+    };
+    appendLine('Normal');
+    if (!tfd.Hard || tfd.Hard.length === 0) appendLine('Hard');
+    if (!tfd.Realistic || tfd.Realistic.length === 0) appendLine('Realistic');
+
+    // 3. Refresh the sidebar if this body is currently selected
+    if (typeof selectedBody !== 'undefined' && selectedBody === bodyName && typeof fillSidebar === 'function') {
+      fillSidebar(bodyName);
+    }
+
+    // 4. Status feedback
+    const status = document.getElementById('ast-apply-status');
+    status.textContent = `✓ Saved ${pngName} & appended to "${bodyName}" terrain formula`;
+    status.style.color = 'rgba(90,240,192,.8)';
+    setTimeout(() => { status.textContent = ''; }, 4000);
+
+  }, 'image/png');
+}
+
+// Update preview whenever relevant inputs change
+document.getElementById('ast-png-name').addEventListener('input', astUpdateApplyPreview);
+document.getElementById('ast-body-select').addEventListener('change', astUpdateApplyPreview);
+document.getElementById('ast-hmap-height-val').addEventListener('input', astUpdateApplyPreview);
+
+// Refresh body list when the modal opens
+const _astOrigOpen = openAsteroidsMenu;
+openAsteroidsMenu = function() { _astOrigOpen(); astRefreshBodyList(); };
+
+// Hook astGenerate to light up the Apply button when map is ready
+const _astOrigGenerate = astGenerate;
+astGenerate = function() { _astOrigGenerate(); astUpdateApplyPreview(); };
 </script>
 
 <div id="psc-modal" style="display:none;position:fixed;inset:0;z-index:200000;

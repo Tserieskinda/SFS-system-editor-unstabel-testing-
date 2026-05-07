@@ -20,12 +20,14 @@ function toggleUtilsDropdown() {
 
 // Close when clicking outside
 document.addEventListener('mousedown', e => {
-  const wrap = document.getElementById('utils-dropdown-wrap');
-  const dd   = document.getElementById('utils-dropdown');
-  if (wrap && !wrap.contains(e.target) && dd && !dd.contains(e.target)) {
-    _utilsDropOpen = false;
-    dd.style.display = 'none';
-  }
+  try {
+    const wrap = document.getElementById('utils-dropdown-wrap');
+    const dd   = document.getElementById('utils-dropdown');
+    if (wrap && !wrap.contains(e.target) && dd && !dd.contains(e.target)) {
+      _utilsDropOpen = false;
+      dd.style.display = 'none';
+    }
+  } catch(_){}
 }, true);
 
 
@@ -119,14 +121,10 @@ function calcSetTab(tab) {
   calcUpdate();
 }
 
-// Format metres into a readable string with multiple unit conversions
+// Format metres — always outputs raw metres only
 function _fmtMetres(m) {
   if (!isFinite(m) || m <= 0) return '—';
-  const km  = m / 1000;
-  const Mm  = m / 1e6;
-  if (m < 1000)      return `${m.toFixed(2)} m`;
-  if (m < 1e6)       return `${km.toFixed(3)} km  (${m.toLocaleString('en-US', {maximumFractionDigits:0})} m)`;
-  return `${Mm.toFixed(4)} Mm  (${km.toFixed(2)} km)`;
+  return `${parseFloat(m.toFixed(7))} m`;
 }
 
 function calcUpdate() {

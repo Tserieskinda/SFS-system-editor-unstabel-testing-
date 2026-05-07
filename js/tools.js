@@ -50,14 +50,16 @@ function setTerrainDetail(val){
 // Close detail dropdown on outside click (registered together with other dropdowns)
 // handled in the existing mousedown listener below — we append to it via a second listener
 document.addEventListener('mousedown', e => {
-  const wrap = document.getElementById('btn-terrain-detail');
-  const dd   = document.getElementById('terrain-detail-dropdown');
-  if(dd && dd.style.display !== 'none'){
-    if((!wrap || !wrap.contains(e.target)) && !dd.contains(e.target)){
-      _terrainDetailDropOpen = false;
-      dd.style.display = 'none';
+  try {
+    const wrap = document.getElementById('btn-terrain-detail');
+    const dd   = document.getElementById('terrain-detail-dropdown');
+    if(dd && dd.style.display !== 'none'){
+      if((!wrap || !wrap.contains(e.target)) && !dd.contains(e.target)){
+        _terrainDetailDropOpen = false;
+        dd.style.display = 'none';
+      }
     }
-  }
+  } catch(_){}
 }, true);
 
 // ════════════════════════════════ TOOLS: HIGH RES SURFACE ════════════════════════════════
@@ -125,12 +127,14 @@ function toggleToolsDropdown(){
 }
 // Close dropdowns when clicking outside
 document.addEventListener('mousedown', e => {
-  const wrap = document.getElementById('tools-dropdown-wrap');
-  const toolsDd = document.getElementById('tools-dropdown');
-  if(wrap && !wrap.contains(e.target) && toolsDd && !toolsDd.contains(e.target)){ _toolsDropOpen = false; toolsDd.style.display='none'; }
-  const envWrap = document.getElementById('env-dropdown-wrap');
-  const envDd = document.getElementById('env-dropdown');
-  if(envWrap && !envWrap.contains(e.target) && envDd && !envDd.contains(e.target)){ _envDropOpen = false; envDd.style.display='none'; }
+  try {
+    const wrap = document.getElementById('tools-dropdown-wrap');
+    const toolsDd = document.getElementById('tools-dropdown');
+    if(wrap && !wrap.contains(e.target) && toolsDd && !toolsDd.contains(e.target)){ _toolsDropOpen = false; toolsDd.style.display='none'; }
+    const envWrap = document.getElementById('env-dropdown-wrap');
+    const envDd = document.getElementById('env-dropdown');
+    if(envWrap && !envWrap.contains(e.target) && envDd && !envDd.contains(e.target)){ _envDropOpen = false; envDd.style.display='none'; }
+  } catch(_){}
 }, true);
 
 let dragOrbitMode = false;
