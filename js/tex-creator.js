@@ -1312,12 +1312,23 @@ const TC = (() => {
       _pvCanvas.style.cursor = '';
     });
 
-    // Scroll to zoom
+    // Scroll to zoom toward cursor
     _pvCanvas.addEventListener('wheel', e => {
       if(_mode !== 'preview') return;
       e.preventDefault();
+      const rect = _pvCanvas.getBoundingClientRect();
+      // Cursor in canvas logical pixels
+      const mx = (e.clientX - rect.left) * (_pvCanvas.width  / rect.width);
+      const my = (e.clientY - rect.top)  * (_pvCanvas.height / rect.height);
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const oldZoom = _pvZoom;
       _pvZoom = Math.max(0.3, Math.min(6, _pvZoom * delta));
+      // Adjust pan so the point under the cursor stays fixed.
+      // cx = W/2 + _pvPanX, so point-under-cursor in pan-space = mx - W/2 - _pvPanX.
+      // After zoom, the same world point maps to a different pan offset.
+      const factor = _pvZoom / oldZoom;
+      _pvPanX = mx - _pvCanvas.width  / 2 - (mx - _pvCanvas.width  / 2 - _pvPanX) * factor;
+      _pvPanY = my - _pvCanvas.height / 2 - (my - _pvCanvas.height / 2 - _pvPanY) * factor;
       _renderPreview();
     }, {passive:false});
 
@@ -1363,7 +1374,17 @@ const TC = (() => {
         const dist = Math.sqrt(dx*dx+dy*dy);
         if(_pvPinchDist > 0){
           const ratio = dist / _pvPinchDist;
+          const oldZoom = _pvZoom;
           _pvZoom = Math.max(0.3, Math.min(6, _pvZoom * ratio));
+          // Zoom toward the midpoint between the two fingers
+          const rect = _pvCanvas.getBoundingClientRect();
+          const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const midClientY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const mx = (midClientX - rect.left) * (_pvCanvas.width  / rect.width);
+          const my = (midClientY - rect.top)  * (_pvCanvas.height / rect.height);
+          const factor = _pvZoom / oldZoom;
+          _pvPanX = mx - _pvCanvas.width  / 2 - (mx - _pvCanvas.width  / 2 - _pvPanX) * factor;
+          _pvPanY = my - _pvCanvas.height / 2 - (my - _pvCanvas.height / 2 - _pvPanY) * factor;
           _renderPreview();
         }
         _pvPinchDist = dist;

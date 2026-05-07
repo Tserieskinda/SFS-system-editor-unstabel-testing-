@@ -338,6 +338,14 @@ vp.addEventListener('mousedown', e => {
       const br = (b.data.BASE_DATA||{}).radius || 1;
       const iconR = (b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4) * iconScale;
       const r = Math.max(iconR, br * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
+      const d = Math.hypot(mx - sp.x, my - sp.y);
+      if(d < r + 12) hits.push({name, iconR, d});
+    });
+    hits.sort((a,b) => b.iconR - a.iconR || a.d - b.d);
+    if(hits.length){
+      _dob_body = hits[0].name;
+      _dob_active = true;
+      _dob_freeze(_dob_body);
       pushUndo();
       vp.style.cursor = 'grabbing';
     }
