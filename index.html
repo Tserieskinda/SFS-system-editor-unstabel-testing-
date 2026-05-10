@@ -370,7 +370,7 @@
       <div class="fsec">
         <div class="fsec-title">BASE DATA</div>
         <div class="frow"><span class="flabel">Radius</span>
-          <input class="finput" id="b-radius" type="number" step="1000" oninput="onDistInput('b-radius','b-radius-unit','b-radius-hint','radius')">
+          <input class="finput" id="b-radius" type="text" inputmode="decimal" step="1000" oninput="onDistInput('b-radius','b-radius-unit','b-radius-hint','radius')">
           <select class="funit-sel" id="b-radius-unit" onchange="onUnitChange('b-radius','b-radius-unit','b-radius-hint','radius')">
             <option value="m">m</option><option value="km" selected>km</option><option value="Mm">Mm</option>
             <option value="Gm">Gm</option><option value="ly">ly</option><option value="R_earth">R Earth</option><option value="R_sun">R Sun</option><option value="R_jupiter">R Jupiter</option>
@@ -381,24 +381,24 @@
         </div>
         <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Radius Difficulty Scale</div>
         <div class="diff-grid">
-          <div><div class="diff-label">Normal</div><input class="finput" id="b-radius-n" type="number" step="0.01" placeholder="1.0"></div>
-          <div><div class="diff-label">Hard</div><input class="finput" id="b-radius-h" type="number" step="0.01" placeholder="1.0"></div>
-          <div><div class="diff-label">Realistic</div><input class="finput" id="b-radius-r" type="number" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Normal</div><input class="finput" id="b-radius-n" type="text" inputmode="decimal" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Hard</div><input class="finput" id="b-radius-h" type="text" inputmode="decimal" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Realistic</div><input class="finput" id="b-radius-r" type="text" inputmode="decimal" step="0.01" placeholder="1.0"></div>
         </div>
         <button type="button" class="default-scale-btn" onclick="setDefaultScale('b-radius-n','b-radius-h','b-radius-r')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
         <div class="frow"><span class="flabel">Gravity</span>
-          <input class="finput" id="b-gravity" style="flex:1;min-width:60px" type="number" step="0.01" oninput="onGravUnitChange()"><select class="funit-sel" id="b-gravity-unit" style="width:62px" onchange="onGravUnitChange()"><option value="ms2">m/s²</option><option value="cms2">cm/s²</option><option value="kms2">km/s²</option></select></div>
+          <input class="finput" id="b-gravity" style="flex:1;min-width:60px" type="text" inputmode="decimal" step="0.01"><select class="funit-sel" id="b-gravity-unit" style="width:62px" onchange="onGravUnitChange()"><option value="ms2">m/s²</option><option value="cms2">cm/s²</option><option value="kms2">km/s²</option></select></div>
         <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Gravity Difficulty Scale</div>
         <div class="diff-grid">
-          <div><div class="diff-label">Normal</div><input class="finput" id="b-grav-n" type="number" step="0.01" placeholder="1.0"></div>
-          <div><div class="diff-label">Hard</div><input class="finput" id="b-grav-h" type="number" step="0.01" placeholder="1.0"></div>
-          <div><div class="diff-label">Realistic</div><input class="finput" id="b-grav-r" type="number" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Normal</div><input class="finput" id="b-grav-n" type="text" inputmode="decimal" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Hard</div><input class="finput" id="b-grav-h" type="text" inputmode="decimal" step="0.01" placeholder="1.0"></div>
+          <div><div class="diff-label">Realistic</div><input class="finput" id="b-grav-r" type="text" inputmode="decimal" step="0.01" placeholder="1.0"></div>
         </div>
         <button type="button" class="default-scale-btn" onclick="setDefaultScale('b-grav-n','b-grav-h','b-grav-r')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
         <div class="frow"><span class="flabel">Timewarp Height</span>
-          <input class="finput" id="b-twh" type="number" step="100"></div>
+          <input class="finput" id="b-twh" type="text" inputmode="decimal" step="100"></div>
         <div class="frow"><span class="flabel">Vel. Arrows Ht.</span>
-          <input class="finput" id="b-vah" type="number" step="100"></div>
+          <input class="finput" id="b-vah" type="text" inputmode="decimal" step="100"></div>
         <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Map Color <span style="color:var(--ink4);font-size:.52rem">(shown on orbital map)</span></div>
         <div class="cpick-wrap">
           <span class="flabel">Color</span>
@@ -412,7 +412,7 @@
         </div>
         <div class="cpick-hdr-row">
           <span class="cpick-hdr-label">HDR ×</span>
-          <input type="number" class="cpick-hdr" id="b-hdr" step="0.1" min="0.1" max="4" value="1.0" oninput="liveSync()">
+          <input type="text" inputmode="decimal" class="cpick-hdr" id="b-hdr" step="0.1" min="0.1" max="4" value="1.0" oninput="liveSync()">
         </div>
         <!-- Hidden inputs carry the final 0–1 values into liveSync -->
         <input type="hidden" id="b-cr"><input type="hidden" id="b-cg">
@@ -448,19 +448,19 @@
           <div class="tog" id="env-btn-physAtmo" onclick="toggleEnvFlag('physAtmo')" style="cursor:pointer"></div></div>
         <div id="atmos-fields">
           <div class="frow"><span class="flabel">Height (m)</span>
-            <input class="finput" style="flex:1;min-width:60px" id="ap-height" type="number" step="1000"><select class="funit-sel" id="ap-height-unit" style="width:52px" onchange="onSimpleKmChange('ap-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="ap-height" type="text" inputmode="decimal" step="1000"><select class="funit-sel" id="ap-height-unit" style="width:52px" onchange="onSimpleKmChange('ap-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Density</span>
-            <input class="finput" id="ap-density" type="number" step="0.0001"></div>
+            <input class="finput" id="ap-density" type="text" inputmode="decimal" step="0.0001"></div>
           <div class="frow"><span class="flabel">Curve</span>
-            <input class="finput" id="ap-curve" type="number" step="0.5"></div>
+            <input class="finput" id="ap-curve" type="text" inputmode="decimal" step="0.5"></div>
           <div class="frow"><span class="flabel">Parachute Mult.</span>
-            <input class="finput" id="ap-chute" type="number" step="0.1"></div>
+            <input class="finput" id="ap-chute" type="text" inputmode="decimal" step="0.1"></div>
           <div class="frow"><span class="flabel">Upper Atmosphere</span>
-            <input class="finput" id="ap-upper" type="number" step="0.01"></div>
+            <input class="finput" id="ap-upper" type="text" inputmode="decimal" step="0.01"></div>
           <div class="frow"><span class="flabel">Shockwave Intens.</span>
-            <input class="finput" id="ap-shock" type="number" step="0.05"></div>
+            <input class="finput" id="ap-shock" type="text" inputmode="decimal" step="0.05"></div>
           <div class="frow"><span class="flabel">Min Heat Vel. Mult.</span>
-            <input class="finput" id="ap-mhvm" type="number" step="0.1"></div>
+            <input class="finput" id="ap-mhvm" type="text" inputmode="decimal" step="0.1"></div>
         </div>
       </div>
       <div class="fsec">
@@ -469,9 +469,9 @@
           <div class="tog on" id="av-has" onclick="this.classList.toggle('on');toggleAtmoSection('av-fields','av-has')"></div></div>
         <div id="av-fields">
           <div class="frow"><span class="flabel">Position Z</span>
-            <input class="finput" id="av-pz" type="number" step="500"></div>
+            <input class="finput" id="av-pz" type="text" inputmode="decimal" step="500"></div>
           <div class="frow"><span class="flabel">Height (m)</span>
-            <input class="finput" style="flex:1;min-width:60px" id="av-height" type="number" step="10000"><select class="funit-sel" id="av-height-unit" style="width:52px" onchange="onSimpleKmChange('av-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="av-height" type="text" inputmode="decimal" step="10000"><select class="funit-sel" id="av-height-unit" style="width:52px" onchange="onSimpleKmChange('av-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Texture</span>
             <div class="tpick-wrap" id="tpw-av-tex"><input class="tpick-input" id="av-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-av-tex">✕</button><div class="tpick-dropdown" id="tpd-av-tex"></div></div>
           </div>
@@ -485,9 +485,9 @@
           <div class="frow"><span class="flabel">Texture</span>
             <div class="tpick-wrap" id="tpw-cl-tex"><input class="tpick-input" id="cl-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-cl-tex">✕</button><div class="tpick-dropdown" id="tpd-cl-tex"></div></div></div>
           <div class="frow"><span class="flabel">Start Height</span>
-            <input class="finput" style="flex:1;min-width:60px" id="cl-sh" type="number" step="100" oninput="clWidthAutoSync();syncCloudVel()"><select class="funit-sel" id="cl-sh-unit" style="width:52px" onchange="onSimpleKmChange('cl-sh')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="cl-sh" type="text" inputmode="decimal" step="100" oninput="clWidthAutoSync();syncCloudVel()"><select class="funit-sel" id="cl-sh-unit" style="width:52px" onchange="onSimpleKmChange('cl-sh')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Width</span>
-            <input class="finput" style="flex:1;min-width:60px" id="cl-w" type="number" step="1000" oninput="clWidthAutoSync()"><select class="funit-sel" id="cl-w-unit" style="width:52px" onchange="onSimpleKmChange('cl-w')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="cl-w" type="text" inputmode="decimal" step="1000" oninput="clWidthAutoSync()"><select class="funit-sel" id="cl-w-unit" style="width:52px" onchange="onSimpleKmChange('cl-w')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <!-- Auto-generate width from circumference -->
           <div style="background:var(--bg2);border-radius:5px;padding:6px 8px;margin-bottom:4px;border:1px solid var(--ink5)">
             <div style="font-size:.58rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;margin-bottom:5px;letter-spacing:.05em">
@@ -495,15 +495,15 @@
             </div>
             <div style="display:flex;gap:5px;align-items:center">
               <span style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;white-space:nowrap">N =</span>
-              <input id="cl-w-n" class="finput" type="number" value="100" min="1" step="1"
+              <input id="cl-w-n" class="finput" type="text" inputmode="decimal" value="100" min="1" step="1"
                 style="width:70px" oninput="clWidthAutoSync()" title="Number of cloud repetitions">
             </div>
             <div id="cl-w-preview" style="font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;margin-top:4px;opacity:.85"></div>
           </div>
           <div class="frow"><span class="flabel">Height</span>
-            <input class="finput" style="flex:1;min-width:60px" id="cl-h" type="number" step="1000"><select class="funit-sel" id="cl-h-unit" style="width:52px" onchange="onSimpleKmChange('cl-h')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="cl-h" type="text" inputmode="decimal" step="1000"><select class="funit-sel" id="cl-h-unit" style="width:52px" onchange="onSimpleKmChange('cl-h')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Cloud Alpha</span><span class="fval" id="cl-a-val">—</span><input class="finput" id="cl-a" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('cl-a',0,1)"></div>
+            <div class="frow-s-top"><span class="flabel">Cloud Alpha</span><span class="fval" id="cl-a-val">—</span><input class="finput" id="cl-a" type="text" inputmode="decimal" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('cl-a',0,1)"></div>
             <input class="fslider" id="cl-a-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('cl-a',0,1,2)">
           </div>
           <div class="frow" style="flex-wrap:wrap;gap:4px">
@@ -513,7 +513,7 @@
               <option value="rph">rot/hr</option>
               <option value="rps">rot/s</option>
             </select>
-            <input class="finput" id="cl-v-input" type="number" step="0.001" style="flex:1;min-width:60px" oninput="syncCloudVel()" title="Cloud velocity">
+            <input class="finput" id="cl-v-input" type="text" inputmode="decimal" step="0.001" style="flex:1;min-width:60px" oninput="syncCloudVel()" title="Cloud velocity">
             <input type="hidden" id="cl-v">
             <span id="cl-v-hint" style="flex:0 0 100%;font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;opacity:.7;padding-left:2px"></span>
           </div>
@@ -527,15 +527,15 @@
           <div class="frow"><span class="flabel">Clouds Texture</span>
             <div class="tpick-wrap" id="tpw-fc-tex"><input class="tpick-input" id="fc-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-fc-tex">✕</button><div class="tpick-dropdown" id="tpd-fc-tex"></div></div></div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Cutout</span><span class="fval" id="fc-cut-val">—</span><input class="finput" id="fc-cut" type="number" step="0.01" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('fc-cut',-1,1)"></div>
+            <div class="frow-s-top"><span class="flabel">Cutout</span><span class="fval" id="fc-cut-val">—</span><input class="finput" id="fc-cut" type="text" inputmode="decimal" step="0.01" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('fc-cut',-1,1)"></div>
             <input class="fslider" id="fc-cut-sl" type="range" min="-1" max="1" step="0.01" oninput="syncFromSlider('fc-cut',-1,1,2)">
           </div>
           <div class="frow"><span class="flabel">Fade Zone Ht.</span>
-            <input class="finput" style="flex:1;min-width:60px" id="fc-fzh" type="number" step="1000"><select class="funit-sel" id="fc-fzh-unit" style="width:52px" onchange="onSimpleKmChange('fc-fzh')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="fc-fzh" type="text" inputmode="decimal" step="1000"><select class="funit-sel" id="fc-fzh-unit" style="width:52px" onchange="onSimpleKmChange('fc-fzh')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Height</span>
-            <input class="finput" style="flex:1;min-width:60px" id="fc-h" type="number" step="1000"><select class="funit-sel" id="fc-h-unit" style="width:52px" onchange="onSimpleKmChange('fc-h')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="fc-h" type="text" inputmode="decimal" step="1000"><select class="funit-sel" id="fc-h-unit" style="width:52px" onchange="onSimpleKmChange('fc-h')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Position Z</span>
-            <input class="finput" id="fc-pz" type="number" step="500"></div>
+            <input class="finput" id="fc-pz" type="text" inputmode="decimal" step="500"></div>
           <div class="ftoggle-row"><span class="flabel">Sharpen Alpha</span>
             <div class="tog" id="fc-sa" onclick="this.classList.toggle('on')"></div></div>
         </div>
@@ -562,11 +562,11 @@
         <div class="frow"><span class="flabel">Planet Texture</span>
           <div class="tpick-wrap" id="tpw-tt-pt"><input class="tpick-input" id="tt-pt" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-pt">✕</button><div class="tpick-dropdown" id="tpd-tt-pt"></div></div></div>
         <div class="frow-s">
-          <div class="frow-s-top"><span class="flabel">Tex Cutout</span><span class="fval" id="tt-cut-val">—</span><input class="finput" id="tt-cut" type="number" step="0.001" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-cut',-1,1)"></div>
+          <div class="frow-s-top"><span class="flabel">Tex Cutout</span><span class="fval" id="tt-cut-val">—</span><input class="finput" id="tt-cut" type="text" inputmode="decimal" step="0.001" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-cut',-1,1)"></div>
           <input class="fslider" id="tt-cut-sl" type="range" min="-1" max="1" step="0.001" oninput="syncFromSlider('tt-cut',-1,1,3)">
         </div>
         <div class="frow-s">
-          <div class="frow-s-top"><span class="flabel">Tex Rotation</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="tt-rot-val">—</span><input class="finput" id="tt-rot" type="number" step="0.1" min="-360" max="360" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-rot',-360,360)"></div>
+          <div class="frow-s-top"><span class="flabel">Tex Rotation</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="tt-rot-val">—</span><input class="finput" id="tt-rot" type="text" inputmode="decimal" step="0.1" min="-360" max="360" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-rot',-360,360)"></div>
           <input class="fslider" id="tt-rot-sl" type="range" min="-360" max="360" step="0.1" oninput="syncFromSlider('tt-rot',-360,360,1)">
         </div>
         <div class="ftoggle-row"><span class="flabel">Lock Texture to Surface <span style="color:var(--ink4);font-size:.52rem">(DontDistort)</span></span>
@@ -574,44 +574,44 @@
         <div class="frow"><span class="flabel">Surface Tex A</span>
           <div class="tpick-wrap" id="tpw-tt-sa"><input class="tpick-input" id="tt-sa" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sa">✕</button><div class="tpick-dropdown" id="tpd-tt-sa"></div></div></div>
         <div class="frow"><span class="flabel">Surf Size A (x,y)</span>
-          <input class="finput" id="tt-sax" type="number" step="1" placeholder="x" style="flex:0 0 55px">
-          <input class="finput" id="tt-say" type="number" step="1" placeholder="y" style="flex:0 0 55px">
+          <input class="finput" id="tt-sax" type="text" inputmode="decimal" step="1" placeholder="x" style="flex:0 0 55px">
+          <input class="finput" id="tt-say" type="text" inputmode="decimal" step="1" placeholder="y" style="flex:0 0 55px">
         </div>
         <div class="frow" title="Min screen radius (px) at which Tex A begins fading in. Leave blank for default (80px). Larger = appears only when closer."><span class="flabel">Tex A LOD dist</span>
-          <input class="finput" id="tt-lod-a" type="number" step="1" min="0" placeholder="px (def 80)">
+          <input class="finput" id="tt-lod-a" type="text" inputmode="decimal" step="1" min="0" placeholder="px (def 80)">
         </div>
         <div class="frow"><span class="flabel">Surface Tex B</span>
           <div class="tpick-wrap" id="tpw-tt-sb"><input class="tpick-input" id="tt-sb" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sb">✕</button><div class="tpick-dropdown" id="tpd-tt-sb"></div></div></div>
         <div class="frow"><span class="flabel">Surf Size B (x,y)</span>
-          <input class="finput" id="tt-sbx" type="number" step="1" placeholder="x" style="flex:0 0 55px">
-          <input class="finput" id="tt-sby" type="number" step="1" placeholder="y" style="flex:0 0 55px">
+          <input class="finput" id="tt-sbx" type="text" inputmode="decimal" step="1" placeholder="x" style="flex:0 0 55px">
+          <input class="finput" id="tt-sby" type="text" inputmode="decimal" step="1" placeholder="y" style="flex:0 0 55px">
         </div>
         <div class="frow" title="Min screen radius (px) at which Tex B begins fading in. Leave blank for default (80px)."><span class="flabel">Tex B LOD dist</span>
-          <input class="finput" id="tt-lod-b" type="number" step="1" min="0" placeholder="px (def 80)">
+          <input class="finput" id="tt-lod-b" type="text" inputmode="decimal" step="1" min="0" placeholder="px (def 80)">
         </div>
         <div class="frow"><span class="flabel">Terrain Tex C</span>
           <div class="tpick-wrap" id="tpw-tt-tc"><input class="tpick-input" id="tt-tc" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-tc">✕</button><div class="tpick-dropdown" id="tpd-tt-tc"></div></div></div>
         <div class="frow"><span class="flabel">Terrain Size C</span>
-          <input class="finput" id="tt-tcx" type="number" step="1" placeholder="x" style="flex:0 0 55px">
-          <input class="finput" id="tt-tcy" type="number" step="1" placeholder="y" style="flex:0 0 55px">
+          <input class="finput" id="tt-tcx" type="text" inputmode="decimal" step="1" placeholder="x" style="flex:0 0 55px">
+          <input class="finput" id="tt-tcy" type="text" inputmode="decimal" step="1" placeholder="y" style="flex:0 0 55px">
         </div>
         <div class="frow" title="Min screen radius (px) at which Tex C begins fading in. Leave blank for default (80px)."><span class="flabel">Tex C LOD dist</span>
-          <input class="finput" id="tt-lod-c" type="number" step="1" min="0" placeholder="px (def 80)">
+          <input class="finput" id="tt-lod-c" type="text" inputmode="decimal" step="1" min="0" placeholder="px (def 80)">
         </div>
         <div class="frow"><span class="flabel">Surface Layer Size</span>
-          <input class="finput" id="tt-sls" type="number" step="1"></div>
+          <input class="finput" id="tt-sls" type="text" inputmode="decimal" step="1"></div>
         <div class="frow-s">
-          <div class="frow-s-top"><span class="flabel">Min Fade</span><span class="fval" id="tt-mif-val">—</span><input class="finput" id="tt-mif" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-mif',0,1)"></div>
+          <div class="frow-s-top"><span class="flabel">Min Fade</span><span class="fval" id="tt-mif-val">—</span><input class="finput" id="tt-mif" type="text" inputmode="decimal" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-mif',0,1)"></div>
           <input class="fslider" id="tt-mif-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('tt-mif',0,1,2)">
         </div>
         <div class="frow-s">
-          <div class="frow-s-top"><span class="flabel">Max Fade</span><span class="fval" id="tt-maf-val">—</span><input class="finput" id="tt-maf" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-maf',0,1)"></div>
+          <div class="frow-s-top"><span class="flabel">Max Fade</span><span class="fval" id="tt-maf-val">—</span><input class="finput" id="tt-maf" type="text" inputmode="decimal" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-maf',0,1)"></div>
           <input class="fslider" id="tt-maf-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('tt-maf',0,1,2)">
         </div>
         <div class="frow"><span class="flabel">Shadow Intensity</span>
-          <input class="finput" id="tt-si" type="number" step="0.5"></div>
+          <input class="finput" id="tt-si" type="text" inputmode="decimal" step="0.5"></div>
         <div class="frow"><span class="flabel">Shadow Height</span>
-          <input class="finput" id="tt-sh" type="number" step="1"></div>
+          <input class="finput" id="tt-sh" type="text" inputmode="decimal" step="1"></div>
         </div><!-- end terrain-fields -->
       </div>
     </div>
@@ -681,9 +681,9 @@
             </div>
             <div style="display:flex;gap:4px;align-items:center">
               <span style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;white-space:nowrap">Scale</span>
-              <input id="hm-scale" class="finput" type="number" value="100000" step="10000" style="width:90px">
+              <input id="hm-scale" class="finput" type="text" inputmode="decimal" value="100000" step="10000" style="width:90px">
               <span style="font-size:.6rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;white-space:nowrap">Height (m)</span>
-              <input id="hm-height" class="finput" type="number" value="35" step="5" style="width:70px">
+              <input id="hm-height" class="finput" type="text" inputmode="decimal" value="35" step="5" style="width:70px">
             </div>
             <button onclick="hmAddLine()" style="font-size:.62rem;padding:4px 0;border-radius:4px;background:var(--sky2);color:#000;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:700;width:100%">＋ ADD LAYER TO FORMULA</button>
           </div>
@@ -709,7 +709,7 @@
         <div class="fsec">
           <div class="fsec-title">TERRAIN SETTINGS</div>
           <div class="frow"><span class="flabel">Vertice Size</span>
-            <input class="finput" id="ter-vs" type="number" step="0.5"></div>
+            <input class="finput" id="ter-vs" type="text" inputmode="decimal" step="0.5"></div>
           <div class="ftoggle-row"><span class="flabel">Collider</span>
             <div class="tog on" id="ter-col" onclick="this.classList.toggle('on')"></div></div>
         </div>
@@ -722,19 +722,19 @@
               <option>None</option><option selected>Rock Square</option><option>Rock Round</option>
             </select></div>
           <div class="frow"><span class="flabel">Density</span>
-            <input class="finput" id="rk-den" type="number" step="0.05" min="0" max="1"></div>
+            <input class="finput" id="rk-den" type="text" inputmode="decimal" step="0.05" min="0" max="1"></div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Min Size</span><span class="fval" id="rk-min-val">—</span><input class="finput" id="rk-min" type="number" step="0.1" min="0" max="10" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-min',0,10)"></div>
+            <div class="frow-s-top"><span class="flabel">Min Size</span><span class="fval" id="rk-min-val">—</span><input class="finput" id="rk-min" type="text" inputmode="decimal" step="0.1" min="0" max="10" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-min',0,10)"></div>
             <input class="fslider" id="rk-min-sl" type="range" min="0" max="10" step="0.1" oninput="syncFromSlider('rk-min',0,10,2)">
           </div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Max Size</span><span class="fval" id="rk-max-val">—</span><input class="finput" id="rk-max" type="number" step="0.1" min="0" max="10" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-max',0,10)"></div>
+            <div class="frow-s-top"><span class="flabel">Max Size</span><span class="fval" id="rk-max-val">—</span><input class="finput" id="rk-max" type="text" inputmode="decimal" step="0.1" min="0" max="10" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-max',0,10)"></div>
             <input class="fslider" id="rk-max-sl" type="range" min="0" max="10" step="0.1" oninput="syncFromSlider('rk-max',0,10,2)">
           </div>
           <div class="frow"><span class="flabel">Power Curve</span>
-            <input class="finput" id="rk-pc" type="number" step="0.1"></div>
+            <input class="finput" id="rk-pc" type="text" inputmode="decimal" step="0.1"></div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Max Angle</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="rk-ma-val">—</span><input class="finput" id="rk-ma" type="number" step="1" min="0" max="90" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-ma',0,90)"></div>
+            <div class="frow-s-top"><span class="flabel">Max Angle</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="rk-ma-val">—</span><input class="finput" id="rk-ma" type="text" inputmode="decimal" step="1" min="0" max="90" style="flex:0 0 72px;width:72px" oninput="syncSlider('rk-ma',0,90)"></div>
             <input class="fslider" id="rk-ma-sl" type="range" min="0" max="90" step="1" oninput="syncFromSlider('rk-ma',0,90,0)">
           </div>
         </div>
@@ -752,19 +752,19 @@
           <div class="frow"><span class="flabel">Rings Texture</span>
             <div class="tpick-wrap" id="tpw-rng-tex"><input class="tpick-input" id="rng-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-rng-tex">✕</button><div class="tpick-dropdown" id="tpd-rng-tex"></div></div></div>
           <div class="frow"><span class="flabel">Start Radius</span>
-            <input class="finput" id="rng-sr" type="number" step="50000" oninput="onDistInput('rng-sr','rng-sr-unit','rng-sr-hint','radius')">
+            <input class="finput" id="rng-sr" type="text" inputmode="decimal" step="50000" oninput="onDistInput('rng-sr','rng-sr-unit','rng-sr-hint','radius')">
             <select class="funit-sel" id="rng-sr-unit" onchange="onUnitChange('rng-sr','rng-sr-unit','rng-sr-hint','radius')">
               <option value="m">m</option><option value="km" selected>km</option><option value="Mm">Mm</option><option value="Gm">Gm</option><option value="ly">ly</option><option value="R_earth">R Earth</option><option value="R_sun">R Sun</option><option value="R_jupiter">R Jupiter</option>
             </select></div>
           <div id="rng-sr-hint" class="funit-hint"></div>
           <div class="frow"><span class="flabel">End Radius</span>
-            <input class="finput" id="rng-er" type="number" step="50000" oninput="onDistInput('rng-er','rng-er-unit','rng-er-hint','radius')">
+            <input class="finput" id="rng-er" type="text" inputmode="decimal" step="50000" oninput="onDistInput('rng-er','rng-er-unit','rng-er-hint','radius')">
             <select class="funit-sel" id="rng-er-unit" onchange="onUnitChange('rng-er','rng-er-unit','rng-er-hint','radius')">
               <option value="m">m</option><option value="km" selected>km</option><option value="Mm">Mm</option><option value="Gm">Gm</option><option value="ly">ly</option><option value="R_earth">R Earth</option><option value="R_sun">R Sun</option><option value="R_jupiter">R Jupiter</option>
             </select></div>
           <div id="rng-er-hint" class="funit-hint"></div>
           <div class="frow"><span class="flabel">Position Z</span>
-            <input class="finput" id="rng-pz" type="number" step="500"></div>
+            <input class="finput" id="rng-pz" type="text" inputmode="decimal" step="500"></div>
           <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Map Color</div>
           <div class="cpick-wrap"><span class="flabel">Map Color</span>
             <input type="color" class="cpick-swatch" id="rng-map-pick" oninput="onCpick('rng-map-pick','rng-map-hex','rng-map-r','rng-map-g','rng-map-b')">
@@ -791,13 +791,13 @@
           <div class="ftoggle-row"><span class="flabel">Lower Terrain</span>
             <div class="tog on" id="wt-lt" onclick="this.classList.toggle('on')"></div></div>
           <div class="frow"><span class="flabel">Ocean Depth</span>
-            <input class="finput" style="flex:1;min-width:60px" id="wt-dep" type="number" step="100"><select class="funit-sel" id="wt-dep-unit" style="width:52px" onchange="onSimpleKmChange('wt-dep')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-dep" type="text" inputmode="decimal" step="100"><select class="funit-sel" id="wt-dep-unit" style="width:52px" onchange="onSimpleKmChange('wt-dep')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Surface Opacity</span><span class="fval" id="wt-so-val">—</span><input class="finput" id="wt-so" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-so',0,1)"></div>
+            <div class="frow-s-top"><span class="flabel">Surface Opacity</span><span class="fval" id="wt-so-val">—</span><input class="finput" id="wt-so" type="text" inputmode="decimal" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-so',0,1)"></div>
             <input class="fslider" id="wt-so-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('wt-so',0,1,2)">
           </div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Far Opacity</span><span class="fval" id="wt-fo-val">—</span><input class="finput" id="wt-fo" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-fo',0,1)"></div>
+            <div class="frow-s-top"><span class="flabel">Far Opacity</span><span class="fval" id="wt-fo-val">—</span><input class="finput" id="wt-fo" type="text" inputmode="decimal" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-fo',0,1)"></div>
             <input class="fslider" id="wt-fo-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('wt-fo',0,1,2)">
           </div>
           <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Water Colors</div>
@@ -863,53 +863,53 @@
 
           <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Opacity</div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Full Darkness</span><span class="fval" id="wt-fd-val">—</span><input class="finput" id="wt-fd" type="number" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-fd',0,1)"></div>
+            <div class="frow-s-top"><span class="flabel">Full Darkness</span><span class="fval" id="wt-fd-val">—</span><input class="finput" id="wt-fd" type="text" inputmode="decimal" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('wt-fd',0,1)"></div>
             <input class="fslider" id="wt-fd-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('wt-fd',0,1,2)">
           </div>
 
           <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Visibility Distances</div>
           <div class="frow"><span class="flabel">Surface Vis. Dist.</span>
-            <input class="finput" style="flex:1;min-width:60px" id="wt-svd" type="number" step="10"><select class="funit-sel" id="wt-svd-unit" style="width:52px" onchange="onSimpleKmChange('wt-svd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-svd" type="text" inputmode="decimal" step="10"><select class="funit-sel" id="wt-svd-unit" style="width:52px" onchange="onSimpleKmChange('wt-svd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Full Dark. Depth</span>
-            <input class="finput" style="flex:1;min-width:60px" id="wt-fdd" type="number" step="10"><select class="funit-sel" id="wt-fdd-unit" style="width:52px" onchange="onSimpleKmChange('wt-fdd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-fdd" type="text" inputmode="decimal" step="10"><select class="funit-sel" id="wt-fdd-unit" style="width:52px" onchange="onSimpleKmChange('wt-fdd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Full Dark. Vis. Dist.</span>
-            <input class="finput" style="flex:1;min-width:60px" id="wt-fdvd" type="number" step="10"><select class="funit-sel" id="wt-fdvd-unit" style="width:52px" onchange="onSimpleKmChange('wt-fdvd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="wt-fdvd" type="text" inputmode="decimal" step="10"><select class="funit-sel" id="wt-fdvd-unit" style="width:52px" onchange="onSimpleKmChange('wt-fdvd')"><option value="m">m</option><option value="km" selected>km</option></select></div>
 
           <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Mask Gradient — Water</div>
           <div class="frow"><span class="flabel">Must</span>
-            <input class="finput" id="wt-mgw-must" type="number" step="10"></div>
+            <input class="finput" id="wt-mgw-must" type="text" inputmode="decimal" step="10"></div>
           <div class="frow"><span class="flabel">Cannot</span>
-            <input class="finput" id="wt-mgw-can" type="number" step="10"></div>
+            <input class="finput" id="wt-mgw-can" type="text" inputmode="decimal" step="10"></div>
           <div class="frow"><span class="flabel">Global</span>
-            <input class="finput" id="wt-mgw-glob" type="number" step="10"></div>
+            <input class="finput" id="wt-mgw-glob" type="text" inputmode="decimal" step="10"></div>
           <div class="frow"><span class="flabel">Water Grad. Width ×</span>
-            <input class="finput" id="wt-wgwm" type="number" step="0.1"></div>
+            <input class="finput" id="wt-wgwm" type="text" inputmode="decimal" step="0.1"></div>
 
           <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Mask Gradient — Terrain</div>
           <div class="frow"><span class="flabel">Must</span>
-            <input class="finput" id="wt-mgt-must" type="number" step="1"></div>
+            <input class="finput" id="wt-mgt-must" type="text" inputmode="decimal" step="1"></div>
           <div class="frow"><span class="flabel">Cannot</span>
-            <input class="finput" id="wt-mgt-can" type="number" step="1"></div>
+            <input class="finput" id="wt-mgt-can" type="text" inputmode="decimal" step="1"></div>
           <div class="frow"><span class="flabel">Global</span>
-            <input class="finput" id="wt-mgt-glob" type="number" step="1"></div>
+            <input class="finput" id="wt-mgt-glob" type="text" inputmode="decimal" step="1"></div>
           <div class="frow"><span class="flabel">Sand Grad. Width ×</span>
-            <input class="finput" id="wt-sgwm" type="number" step="0.1"></div>
+            <input class="finput" id="wt-sgwm" type="text" inputmode="decimal" step="0.1"></div>
           <div class="frow"><span class="flabel">Floor Grad. Width ×</span>
-            <input class="finput" id="wt-fgwm" type="number" step="0.1"></div>
+            <input class="finput" id="wt-fgwm" type="text" inputmode="decimal" step="0.1"></div>
 
           <div class="fsec-title" style="font-size:.55rem;margin-top:8px">Noise &amp; Waves</div>
           <div class="frow"><span class="flabel">Shore Noise X</span>
-            <input class="finput" id="wt-snx" type="number" step="100"></div>
+            <input class="finput" id="wt-snx" type="text" inputmode="decimal" step="100"></div>
           <div class="frow"><span class="flabel">Shore Noise Y</span>
-            <input class="finput" id="wt-sny" type="number" step="100"></div>
+            <input class="finput" id="wt-sny" type="text" inputmode="decimal" step="100"></div>
           <div class="frow"><span class="flabel">Sand Noise X</span>
-            <input class="finput" id="wt-dnx" type="number" step="10"></div>
+            <input class="finput" id="wt-dnx" type="text" inputmode="decimal" step="10"></div>
           <div class="frow"><span class="flabel">Sand Noise Y</span>
-            <input class="finput" id="wt-dny" type="number" step="10"></div>
+            <input class="finput" id="wt-dny" type="text" inputmode="decimal" step="10"></div>
           <div class="frow"><span class="flabel">Waves Size X</span>
-            <input class="finput" id="wt-wvx" type="number" step="1"></div>
+            <input class="finput" id="wt-wvx" type="text" inputmode="decimal" step="1"></div>
           <div class="frow"><span class="flabel">Waves Size Y</span>
-            <input class="finput" id="wt-wvy" type="number" step="0.01"></div>
+            <input class="finput" id="wt-wvy" type="text" inputmode="decimal" step="0.01"></div>
 
           </div><!-- end wt-advanced -->
         </div>
@@ -927,25 +927,35 @@
           <div class="frow"><span class="flabel">Parent Body</span>
             <input class="finput" id="or-par" type="text" placeholder="Sun"></div>
           <div class="frow"><span class="flabel">Semi-major Axis</span>
-            <input class="finput" id="or-sma" type="number" step="100000" oninput="onDistInput('or-sma','or-sma-unit','or-sma-hint','sma')">
-            <select class="funit-sel" id="or-sma-unit" onchange="onUnitChange('or-sma','or-sma-unit','or-sma-hint','sma')">
+            <input class="finput" id="or-sma" type="text" inputmode="decimal" step="100000" oninput="onDistInput('or-sma','or-sma-unit','or-sma-hint','sma');updatePeriodFromSMA()">
+            <select class="funit-sel" id="or-sma-unit" onchange="onUnitChange('or-sma','or-sma-unit','or-sma-hint','sma');updatePeriodFromSMA()">
               <option value="m">m</option><option value="km">km</option><option value="Mm">Mm</option>
               <option value="Gm">Gm</option><option value="AU" selected>AU</option><option value="ly">ly</option>
             </select></div>
           <div id="or-sma-hint" class="funit-hint"></div>
+          <div class="frow"><span class="flabel">Orbital Period</span>
+            <input class="finput" id="or-period" type="text" inputmode="decimal" placeholder="—" title="Orbital period — edit to back-calculate SMA">
+            <select class="funit-sel" id="or-period-unit">
+              <option value="s">s</option>
+              <option value="min">min</option>
+              <option value="h" selected>h</option>
+              <option value="d">d</option>
+              <option value="y">y</option>
+            </select></div>
+          <div id="or-period-hint" class="funit-hint"></div>
           <div class="fsec-title" style="font-size:.55rem;margin-top:6px">SMA Difficulty Scale</div>
           <div class="diff-grid">
-            <div><div class="diff-label">Normal</div><input class="finput" id="or-sn" type="number" step="0.01"></div>
-            <div><div class="diff-label">Hard</div><input class="finput" id="or-sh" type="number" step="0.01"></div>
-            <div><div class="diff-label">Realistic</div><input class="finput" id="or-sr" type="number" step="0.01"></div>
+            <div><div class="diff-label">Normal</div><input class="finput" id="or-sn" type="text" inputmode="decimal" step="0.01"></div>
+            <div><div class="diff-label">Hard</div><input class="finput" id="or-sh" type="text" inputmode="decimal" step="0.01"></div>
+            <div><div class="diff-label">Realistic</div><input class="finput" id="or-sr" type="text" inputmode="decimal" step="0.01"></div>
           </div>
         <button type="button" class="default-scale-btn" onclick="setDefaultScale('or-sn','or-sh','or-sr')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Eccentricity</span><span class="fval" id="or-ecc-val">—</span><input class="finput" id="or-ecc" type="number" step="0.001" min="0" max="0.999" style="flex:0 0 72px;width:72px" oninput="syncSlider('or-ecc',0,0.999)"></div>
+            <div class="frow-s-top"><span class="flabel">Eccentricity</span><span class="fval" id="or-ecc-val">—</span><input class="finput" id="or-ecc" type="text" inputmode="decimal" step="0.001" min="0" max="0.999" style="flex:0 0 72px;width:72px" oninput="syncSlider('or-ecc',0,0.999)"></div>
             <input class="fslider" id="or-ecc-sl" type="range" min="0" max="0.999" step="0.001" oninput="syncFromSlider('or-ecc',0,0.999,3)">
           </div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Arg. of Periapsis</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="or-aop-val">—</span><input class="finput" id="or-aop" type="number" step="0.1" min="-360" max="360" style="flex:0 0 56px;width:56px;min-width:0" oninput="syncSlider('or-aop',-360,360)"></div>
+            <div class="frow-s-top"><span class="flabel">Arg. of Periapsis</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="or-aop-val">—</span><input class="finput" id="or-aop" type="text" inputmode="decimal" step="0.1" min="-360" max="360" style="flex:0 0 56px;width:56px;min-width:0" oninput="syncSlider('or-aop',-360,360)"></div>
             <input class="fslider" id="or-aop-sl" type="range" min="-360" max="360" step="0.1" oninput="syncFromSlider('or-aop',-360,360,1)">
           </div>
           <div class="frow"><span class="flabel">Direction</span>
@@ -955,13 +965,13 @@
               <option value="0">0 — Stationary</option>
             </select></div>
           <div class="frow"><span class="flabel">SOI Multiplier</span>
-            <input class="finput" id="or-soi" type="number" step="0.1" oninput="updateSOIDisplay()">
+            <input class="finput" id="or-soi" type="text" inputmode="decimal" step="0.1" oninput="updateSOIDisplay()">
             <span id="or-soi-radius" style="font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;white-space:nowrap;margin-left:4px;opacity:.85"></span></div>
           <div class="fsec-title" style="font-size:.55rem;margin-top:6px">SOI Difficulty Scale</div>
           <div class="diff-grid">
-            <div><div class="diff-label">Normal</div><input class="finput" id="or-soin" type="number" step="0.01"></div>
-            <div><div class="diff-label">Hard</div><input class="finput" id="or-soih" type="number" step="0.01"></div>
-            <div><div class="diff-label">Realistic</div><input class="finput" id="or-soir" type="number" step="0.01"></div>
+            <div><div class="diff-label">Normal</div><input class="finput" id="or-soin" type="text" inputmode="decimal" step="0.01"></div>
+            <div><div class="diff-label">Hard</div><input class="finput" id="or-soih" type="text" inputmode="decimal" step="0.01"></div>
+            <div><div class="diff-label">Realistic</div><input class="finput" id="or-soir" type="text" inputmode="decimal" step="0.01"></div>
           </div>
         <button type="button" class="default-scale-btn" onclick="setDefaultScale('or-soin','or-soih','or-soir')" style="margin-top:4px;width:100%;font-size:.55rem;padding:3px 0;background:var(--ac08);border:1px solid var(--ac18);color:var(--ink3);border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:.06em">Default Scale  1 · 2 · 20</button>
         </div>
@@ -1152,12 +1162,12 @@
       <div class="frow"><span class="flabel">Address (body name)</span>
         <input class="finput" id="sc-address" type="text" value="Earth"></div>
       <div class="frow"><span class="flabel">Angle (°)</span>
-        <input class="finput" id="sc-angle" type="number" step="1" value="90"></div>
+        <input class="finput" id="sc-angle" type="text" inputmode="decimal" step="1" value="90"></div>
       <div class="fsec-title" style="font-size:.55rem;margin-top:6px">Launch Pad Position</div>
       <div class="frow"><span class="flabel">Horizontal Pos.</span>
-        <input class="finput" id="sc-hpos" type="number" step="1" value="365"></div>
+        <input class="finput" id="sc-hpos" type="text" inputmode="decimal" step="1" value="365"></div>
       <div class="frow"><span class="flabel">Height</span>
-        <input class="finput" id="sc-height" type="number" step="0.1" value="56.2"></div>
+        <input class="finput" id="sc-height" type="text" inputmode="decimal" step="0.1" value="56.2"></div>
     </div>
 
     </div><!-- end stab-general-content -->
@@ -1835,11 +1845,11 @@
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.9);letter-spacing:.04em">
           <span>Resolution:</span>
           <span style="color:rgba(220,220,255,.7);font-size:.5rem">W</span>
-          <input type="number" id="ast-res-w" value="512" min="64" max="4096"
+          <input type="text" inputmode="decimal" id="ast-res-w" value="512" min="64" max="4096"
             style="width:68px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);color:rgba(220,220,255,.8);
             font-family:'JetBrains Mono',monospace;font-size:.56rem;padding:4px 6px;text-align:center">
           <span style="color:rgba(220,220,255,.7);font-size:.5rem">H</span>
-          <input type="number" id="ast-res-h" value="160" min="32" max="4096"
+          <input type="text" inputmode="decimal" id="ast-res-h" value="160" min="32" max="4096"
             style="width:68px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);color:rgba(220,220,255,.8);
             font-family:'JetBrains Mono',monospace;font-size:.56rem;padding:4px 6px;text-align:center">
           <button onclick="astApplyRes()" style="flex:0;background:transparent;border:1px solid rgba(90,90,112,.4);
@@ -1911,7 +1921,7 @@
             <input type="range" id="ast-hmap-height" min="-50000" max="50000" value="5000"
               style="flex:1;accent-color:rgba(90,240,192,.8);height:28px"
               oninput="document.getElementById('ast-hmap-height-val').value=this.value;astUpdateApplyPreview()">
-            <input type="number" id="ast-hmap-height-val" value="5000"
+            <input type="text" inputmode="decimal" id="ast-hmap-height-val" value="5000"
               style="width:78px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);
               color:rgba(220,220,255,.8);font-family:'JetBrains Mono',monospace;font-size:.54rem;
               padding:4px 6px;text-align:right;border-radius:2px"
@@ -1920,13 +1930,13 @@
           </div>
           <div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.7)">
             <span>Range:</span>
-            <input type="number" id="ast-height-min" value="-50000" placeholder="min"
+            <input type="text" inputmode="decimal" id="ast-height-min" value="-50000" placeholder="min"
               style="width:70px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.3);
               color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.5rem;
               padding:3px 5px;text-align:center;border-radius:2px"
               oninput="astClampHeightRange()">
             <span>to</span>
-            <input type="number" id="ast-height-max" value="50000" placeholder="max"
+            <input type="text" inputmode="decimal" id="ast-height-max" value="50000" placeholder="max"
               style="width:70px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.3);
               color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.5rem;
               padding:3px 5px;text-align:center;border-radius:2px"
@@ -2642,12 +2652,22 @@ function astApplyToBody() {
   if (!bodyName || !bodies[bodyName]) { alert('Select a target body first.'); return; }
 
   const rawName = (document.getElementById('ast-png-name').value || 'asteroid_heightmap').trim().replace(/\.png$/i,'');
-  const pngName = rawName + '.png';
+  
+  // Auto-increment serial number to ensure unique filenames
+  let uniqueName = rawName;
+  let serial = 1;
+  const existing = (typeof assets !== 'undefined' && assets.heightmaps) ? assets.heightmaps : [];
+  while (existing.some(e => e.name === uniqueName + '.png')) {
+    uniqueName = rawName + '_' + serial;
+    serial++;
+  }
+  
+  const pngName = uniqueName + '.png';
   const height = parseFloat(document.getElementById('ast-hmap-height-val').value) || 5000;
   const circ = astGetCircumference(bodyName);
   if (circ === null) { alert('Could not read body radius.'); return; }
 
-  const formulaLine = `OUTPUT = AddHeightMap(${rawName}.png, ${circ}, ${height})`;
+  const formulaLine = `OUTPUT = AddHeightMap(${uniqueName}.png, ${circ}, ${height})`;
 
   // 1. Save PNG into assets.heightmaps
   const mc = astBuildOffscreenCanvas();
@@ -2659,11 +2679,8 @@ function astApplyToBody() {
     // Store bytes for export
     blob.arrayBuffer().then(ab => { entry.bytes = new Uint8Array(ab); }).catch(()=>{});
 
-    // Remove any existing entry with same name
-    const existing = (typeof assets !== 'undefined') ? assets.heightmaps : null;
+    // Add to heightmaps array (no longer removing existing - now using unique names)
     if (existing) {
-      const idx = existing.findIndex(e => e.name === pngName);
-      if (idx !== -1) existing.splice(idx, 1);
       existing.push(entry);
     }
 
@@ -2681,7 +2698,7 @@ function astApplyToBody() {
     const appendLine = (key) => {
       const cur = (tfd[key] || []);
       // Remove any previous AddHeightMap for this png so we don't duplicate
-      const filtered = cur.filter(l => !l.includes(`AddHeightMap(${rawName}.png`));
+      const filtered = cur.filter(l => !l.includes(`AddHeightMap(${uniqueName}.png`));
       filtered.push(formulaLine);
       tfd[key] = filtered;
     };
@@ -2936,7 +2953,7 @@ document.addEventListener('keydown', function(e){
       <div class="calc-desc">Width of one cloud tile for N tiles covering the full cloud layer circumference.</div>
       <div style="display:flex;align-items:center;gap:10px;margin:12px 0 4px">
         <label style="font-size:.58rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (TILES)</label>
-        <input id="calc-cloud-n" type="number" min="1" step="1" value="8" oninput="calcUpdate()"
+        <input id="calc-cloud-n" type="text" inputmode="decimal" min="1" step="1" value="8" oninput="calcUpdate()"
           style="flex:1;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
           border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
           font-size:.68rem;padding:6px 10px;outline:none;max-width:120px">
@@ -2954,7 +2971,7 @@ document.addEventListener('keydown', function(e){
       <div class="calc-desc">Width covered by one column of a heightmap PNG with N total columns.</div>
       <div style="display:flex;align-items:center;gap:10px;margin:12px 0 4px">
         <label style="font-size:.58rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (COLUMNS)</label>
-        <input id="calc-hm-n" type="number" min="1" step="1" value="1024" oninput="calcUpdate()"
+        <input id="calc-hm-n" type="text" inputmode="decimal" min="1" step="1" value="1024" oninput="calcUpdate()"
           style="flex:1;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
           border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
           font-size:.68rem;padding:6px 10px;outline:none;max-width:120px">

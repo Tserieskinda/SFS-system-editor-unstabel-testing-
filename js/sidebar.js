@@ -26,6 +26,10 @@ function updateBodyIcon(r, g, b, a){
 }
 
 function selectBody(name){
+  // Blur any focused input before switching bodies to prevent data transfer
+  if (document.activeElement && document.activeElement.blur) {
+    document.activeElement.blur();
+  }
   selectedBody = name;
   if (typeof NameGen !== 'undefined') NameGen.clearSession(name);
   document.getElementById('sb-sel').textContent = name;
@@ -104,7 +108,7 @@ function replaceBodyPrompt(){
     if(!preset) return;
     pushUndo();
     const old = bodies[selectedBody];
-    const newData = JSON.parse(JSON.stringify(preset.data));
+    const newData = normalizeDiffScaleKeys(JSON.parse(JSON.stringify(preset.data)));
     if(old.data.ORBIT_DATA) newData.ORBIT_DATA = JSON.parse(JSON.stringify(old.data.ORBIT_DATA));
     else delete newData.ORBIT_DATA;
     bodies[selectedBody] = { data:newData, preset:preset.id, isCenter:old.isCenter, color:preset.color, glow:preset.glow, icon:preset.icon };
@@ -473,14 +477,12 @@ function onGravUnitChange() {
   const input = document.getElementById('b-gravity');
   const unitSel = document.getElementById('b-gravity-unit');
   if (!input || !unitSel) return;
-  // Convert displayed value from previous unit to new unit
+  // Called only from the unit SELECT's onchange — convert displayed value to new unit
   const raw = parseFloat(input.value);
   if (!isNaN(raw) && raw !== 0) {
-    // Store ms2 from old unit, re-express in new unit
-    // We track prev unit via data attribute
     const prevUnit = input.dataset.gravUnit || 'ms2';
     const ms2 = _gravToMs2(raw, prevUnit);
-    input.value = parseFloat(_ms2ToGrav(ms2, unitSel.value).toPrecision(6));
+    input.value = parseFloat(_ms2ToGrav(ms2, unitSel.value).toPrecision(6)).toString();
   }
   input.dataset.gravUnit = unitSel.value;
   if (typeof liveSync === 'function') liveSync();
@@ -498,9 +500,11 @@ function setGravDisplay(ms2) {
   const input = document.getElementById('b-gravity');
   const unitSel = document.getElementById('b-gravity-unit');
   if (!input) return;
+  // Don't overwrite a field the user is actively editing
+  if (document.activeElement === input) return;
   const unit = unitSel?.value || 'ms2';
   const v = _ms2ToGrav(ms2, unit);
-  input.value = ms2 !== 0 ? parseFloat(v.toPrecision(6)) : '';
+  input.value = ms2 !== 0 ? parseFloat(v.toPrecision(6)).toString() : '';
   input.dataset.gravUnit = unit;
 }
 
@@ -522,13 +526,13 @@ function onSimpleKmChange(inputId) {
   const input  = document.getElementById(inputId);
   const unitSel = document.getElementById(inputId + '-unit');
   if (!input || !unitSel) return;
+  if (document.activeElement === input) return;  // don't clobber mid-edit
   const raw = parseFloat(input.value);
   if (isNaN(raw) || raw === 0) return;
   const newUnit = unitSel.value; // 'm' or 'km'
   const prevUnit = newUnit === 'km' ? 'm' : 'km';
-  // Convert displayed value to metres, then to new unit
   const metres = prevUnit === 'km' ? raw * 1000 : raw;
-  input.value = newUnit === 'km' ? parseFloat((metres / 1000).toPrecision(6)) : metres;
+  input.value = (newUnit === 'km' ? parseFloat((metres / 1000).toPrecision(6)) : metres).toString();
   if (typeof liveSync === 'function') liveSync();
 }
 
@@ -669,6 +673,18 @@ function fillSidebar(name){
   const b = bodies[name];
   if(!b){ liveSync._filling = false; return; }
   const d = b.data;
+
+  // If the user is mid-edit in a sidebar input, don't clobber it.
+  // We still run fillSidebar so all OTHER fields stay in sync; setVal/setDistInput
+  // will skip the actively-focused element via this guard.
+  const _fillFocusId = document.activeElement?.closest('#sidebar') ? document.activeElement.id : null;
+  // Temporarily patch setVal to skip the focused field
+  const _origSetVal = window.setVal;
+  window.setVal = function(id, v){
+    if(id && id === _fillFocusId) return;  // user is typing here, leave it alone
+    _origSetVal(id, v);
+  };
+
   // Header
   const nameInput = document.getElementById('sbb-name-input');
   nameInput.value = name;
@@ -677,12 +693,17 @@ function fillSidebar(name){
 
   // BASE
   const BD = d.BASE_DATA||{};
-  setDistInput('b-radius','b-radius-unit','b-radius-hint', BD.radius ?? 0, 'radius');
+  { const _rm = (typeof getRadiusDifficultyMult === 'function') ? getRadiusDifficultyMult(BD) : 1;
+    setDistInput('b-radius','b-radius-unit','b-radius-hint', (BD.radius ?? 0) * _rm, 'radius'); }
   const rds = BD.radiusDifficultyScale||{};
-  setVal('b-radius-n', rds.Normal); setVal('b-radius-h', rds.Hard); setVal('b-radius-r', rds.Realistic);
+  setVal('b-radius-n', rds.Normal  ?? 1);
+  setVal('b-radius-h', rds.Hard    ?? 2);
+  setVal('b-radius-r', rds.Realistic ?? 20);
   setGravDisplay(BD.gravity);
   const gds = BD.gravityDifficultyScale||{};
-  setVal('b-grav-n', gds.Normal); setVal('b-grav-h', gds.Hard); setVal('b-grav-r', gds.Realistic);
+  setVal('b-grav-n', gds.Normal    ?? 1);
+  setVal('b-grav-h', gds.Hard      ?? 2);
+  setVal('b-grav-r', gds.Realistic ?? 20);
   setVal('b-twh', BD.timewarpHeight);
   setVal('b-vah', BD.velocityArrowsHeight);
   const mc = BD.mapColor||{r:1,g:1,b:1,a:1};
@@ -867,15 +888,25 @@ function fillSidebar(name){
 
   const OR = d.ORBIT_DATA||{};
   setVal('or-par',OR.parent);
-  setDistInput('or-sma','or-sma-unit','or-sma-hint', OR.semiMajorAxis ?? 0, 'sma');
-  const sds=OR.smaDifficultyScale||{}; setVal('or-sn',sds.Normal); setVal('or-sh',sds.Hard); setVal('or-sr',sds.Realistic);
+  { const _gm = (typeof _DEF_SMA_SCALE !== 'undefined' && typeof viewDiffKey !== 'undefined')
+      ? (_DEF_SMA_SCALE[viewDiffKey] ?? 1) : 1;
+    setDistInput('or-sma','or-sma-unit','or-sma-hint', (OR.semiMajorAxis ?? 0) * _gm, 'sma'); }
+  const _rawSds=OR.smaDifficultyScale||{};
+  const sds={ Normal: _rawSds.Normal ?? _rawSds.normal, Hard: _rawSds.Hard ?? _rawSds.hard, Realistic: _rawSds.Realistic ?? _rawSds.realistic };
+  setVal('or-sn', sds.Normal    ?? 1);
+  setVal('or-sh', sds.Hard      ?? 1);
+  setVal('or-sr', sds.Realistic ?? 1);
   setSlider('or-ecc', OR.eccentricity, 0, 0.999); setSlider('or-aop', OR.argumentOfPeriapsis, -360, 360);
   initSlider('or-ecc',0,0.999);
   initSlider('or-aop',-360,360);
   setSelectVal('or-dir', String(OR.direction ?? 1));  // ?? not || so 0 is preserved
   setVal('or-soi',OR.multiplierSOI);
-  const ssds=OR.soiDifficultyScale||{}; setVal('or-soin',ssds.Normal); setVal('or-soih',ssds.Hard); setVal('or-soir',ssds.Realistic);
+  const ssds=OR.soiDifficultyScale||{};
+  setVal('or-soin', ssds.Normal    ?? 1);
+  setVal('or-soih', ssds.Hard      ?? 1);
+  setVal('or-soir', ssds.Realistic ?? 1);
   updateSOIDisplay();
+  if (typeof updatePeriodFromSMA === 'function') setTimeout(updatePeriodFromSMA, 0);
   toggleOrbit();
 
   // POST PROCESSING
@@ -884,6 +915,8 @@ function fillSidebar(name){
   // LANDMARKS
   buildLandmarks(d.LANDMARKS||[]);
 
+  // Restore the original setVal now that fill is complete
+  window.setVal = _origSetVal;
   liveSync._filling = false;
 }
 
@@ -900,7 +933,7 @@ function makeFogKey(k,i){
   const alpha = (col.a||0).toFixed(2);
   const d=document.createElement('div'); d.className='pp-key'; d.id='fk-'+i;
   d.innerHTML=`<div class="pp-key-header"><span class="pp-key-title">FOG KEY ${i+1}</span><button class="pp-key-del" onclick="delFogKey(${i})">✕</button></div>
-  <div class="frow"><span class="flabel">Distance</span><input class="finput" id="fk-${i}-d" type="number" step="100" value="${k.distance||0}" oninput="liveSync()"></div>
+  <div class="frow"><span class="flabel">Distance</span><input class="finput" id="fk-${i}-d" type="text" inputmode="decimal" step="100" value="${k.distance||0}" oninput="liveSync()"></div>
   <div class="cpick-wrap"><span class="flabel">Color</span>
     <input type="color" class="cpick-swatch" id="fk-${i}-pick" value="${hex}" oninput="onCpick('fk-${i}-pick','fk-${i}-hex','fk-${i}-r','fk-${i}-g','fk-${i}-b');liveSync()">
     <input type="text" class="cpick-hex" id="fk-${i}-hex" value="${hex}" maxlength="7" oninput="onChex('fk-${i}-hex','fk-${i}-pick','fk-${i}-r','fk-${i}-g','fk-${i}-b');liveSync()">
@@ -927,12 +960,12 @@ function makePPKey(k,i){
   const hex = rgbToHex(k.red||1, k.green||1, k.blue||1);
   const d=document.createElement('div'); d.className='pp-key'; d.id='ppk-'+i;
   d.innerHTML=`<div class="pp-key-header"><span class="pp-key-title">KEY ${i+1}</span><button class="pp-key-del" onclick="delPPKey(${i})">✕</button></div>
-  <div class="frow"><span class="flabel">Height</span><input class="finput" id="ppk-${i}-h" type="number" step="100" value="${k.height||0}"></div>
-  <div class="frow"><span class="flabel">Shadow Intens.</span><input class="finput" id="ppk-${i}-si" type="number" step="0.05" value="${k.shadowIntensity||1}"></div>
-  <div class="frow"><span class="flabel">Star Intens.</span><input class="finput" id="ppk-${i}-sti" type="number" step="0.1" value="${k.starIntensity||0}"></div>
-  <div class="frow"><span class="flabel">Hue Shift</span><input class="finput" id="ppk-${i}-hs" type="number" step="0.1" value="${k.hueShift||0}"></div>
-  <div class="frow"><span class="flabel">Saturation</span><input class="finput" id="ppk-${i}-sat" type="number" step="0.01" value="${k.saturation||1}"></div>
-  <div class="frow"><span class="flabel">Contrast</span><input class="finput" id="ppk-${i}-con" type="number" step="0.01" value="${k.contrast||1}"></div>
+  <div class="frow"><span class="flabel">Height</span><input class="finput" id="ppk-${i}-h" type="text" inputmode="decimal" step="100" value="${k.height||0}"></div>
+  <div class="frow"><span class="flabel">Shadow Intens.</span><input class="finput" id="ppk-${i}-si" type="text" inputmode="decimal" step="0.05" value="${k.shadowIntensity||1}"></div>
+  <div class="frow"><span class="flabel">Star Intens.</span><input class="finput" id="ppk-${i}-sti" type="text" inputmode="decimal" step="0.1" value="${k.starIntensity||0}"></div>
+  <div class="frow"><span class="flabel">Hue Shift</span><input class="finput" id="ppk-${i}-hs" type="text" inputmode="decimal" step="0.1" value="${k.hueShift||0}"></div>
+  <div class="frow"><span class="flabel">Saturation</span><input class="finput" id="ppk-${i}-sat" type="text" inputmode="decimal" step="0.01" value="${k.saturation||1}"></div>
+  <div class="frow"><span class="flabel">Contrast</span><input class="finput" id="ppk-${i}-con" type="text" inputmode="decimal" step="0.01" value="${k.contrast||1}"></div>
   <div class="cpick-wrap"><span class="flabel">RGB Tint</span>
     <input type="color" class="cpick-swatch" id="ppk-${i}-pick" value="${hex}"
       oninput="onCpick('ppk-${i}-pick','ppk-${i}-hex','ppk-${i}-r','ppk-${i}-g','ppk-${i}-b');liveSync()">
@@ -962,7 +995,7 @@ function makeLandmark(l,i){
   <div class="frow" style="flex-direction:column;gap:4px">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <span class="flabel">Start Angle</span>
-      <input type="number" id="lm-${i}-s-num" value="${sa}" min="-360" max="360" step="0.5"
+      <input type="text" inputmode="decimal" id="lm-${i}-s-num" value="${sa}" min="-360" max="360" step="0.5"
         style="width:64px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--sky2);background:var(--bg2);border:1px solid var(--ink5);border-radius:3px;padding:1px 4px;text-align:right"
         oninput="const v=parseFloat(this.value)||0;const sl=document.getElementById('lm-${i}-s');if(sl){sl.value=Math.max(-360,Math.min(360,v));}liveSync()">
     </div>
@@ -972,7 +1005,7 @@ function makeLandmark(l,i){
   <div class="frow" style="flex-direction:column;gap:4px">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <span class="flabel">End Angle</span>
-      <input type="number" id="lm-${i}-e-num" value="${ea}" min="-360" max="360" step="0.5"
+      <input type="text" inputmode="decimal" id="lm-${i}-e-num" value="${ea}" min="-360" max="360" step="0.5"
         style="width:64px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--sky2);background:var(--bg2);border:1px solid var(--ink5);border-radius:3px;padding:1px 4px;text-align:right"
         oninput="const v=parseFloat(this.value)||0;const sl=document.getElementById('lm-${i}-e');if(sl){sl.value=Math.max(-360,Math.min(360,v));}liveSync()">
     </div>
@@ -1098,6 +1131,25 @@ function _liveSyncNow(){
   if(!b) return;
   const d = b.data;
 
+  // When the user is actively typing in a text/number field, that field's current
+  // raw string may be incomplete (e.g. "-", "1.", ""). We must not parse it yet —
+  // instead keep the last committed value for that field.
+  const _focusId = document.activeElement?.id || '';
+
+  // Safe numeric read: if the focused element is this field and its raw value is
+  // unparseable/empty, return the fallback instead of clobbering with 0 or NaN.
+  // For all other fields parse normally with the standard fallback.
+  function _sf(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    if (el.id === _focusId) {
+      const n = parseFloat(el.value);
+      return isNaN(n) ? fallback : n;   // if mid-edit and value invalid, keep last good value
+    }
+    const n = parseFloat(el.value);
+    return isNaN(n) ? fallback : n;
+  }
+
   // Only invalidate terrain cache when a terrain-relevant field triggered the sync.
   // Invalidating on every keystroke (e.g. body name, map color) forces expensive
   // heightmap re-evaluation each frame on weak devices.
@@ -1105,12 +1157,13 @@ function _liveSyncNow(){
 
   // BASE DATA
   d.BASE_DATA = d.BASE_DATA || {};
-  d.BASE_DATA.radius              = getDistMetres('b-radius') || d.BASE_DATA.radius;
+  { const _rm = (typeof getRadiusDifficultyMult === 'function') ? getRadiusDifficultyMult(d.BASE_DATA) : 1;
+    const _rv = getDistMetres('b-radius'); if(_rv) d.BASE_DATA.radius = _rm > 0 ? _rv / _rm : _rv; }
   d.BASE_DATA.radiusDifficultyScale = buildDiffScale('b-radius-n','b-radius-h','b-radius-r');
   d.BASE_DATA.gravity             = getGravMs2() || d.BASE_DATA.gravity;
   d.BASE_DATA.gravityDifficultyScale = buildDiffScale('b-grav-n','b-grav-h','b-grav-r');
-  d.BASE_DATA.timewarpHeight      = parseFloat(val('b-twh'))    || d.BASE_DATA.timewarpHeight;
-  d.BASE_DATA.velocityArrowsHeight= parseFloat(val('b-vah'));
+  d.BASE_DATA.timewarpHeight      = _sf('b-twh', d.BASE_DATA.timewarpHeight);
+  d.BASE_DATA.velocityArrowsHeight= _sf('b-vah', d.BASE_DATA.velocityArrowsHeight ?? 0);
   d.BASE_DATA.mapColor = getCpick('b-cr','b-cg','b-cb','b-ca','b-hdr');
   // Keep sphere icon in sync with map color (picker values are already 0-1 clamped)
   { const _mc = d.BASE_DATA.mapColor;
@@ -1126,20 +1179,20 @@ function _liveSyncNow(){
     // Preserve fields with no UI controls so edits don't wipe per-body difficulty scales
     const _apPrev = d.ATMOSPHERE_PHYSICS_DATA || {};
     d.ATMOSPHERE_PHYSICS_DATA = {
-      height: getSimpleKmMetres('ap-height'), density: parseFloat(val('ap-density'))||0,
-      curve: parseFloat(val('ap-curve'))||0, curveScale: _apPrev.curveScale || {},
-      parachuteMultiplier: parseFloat(val('ap-chute'))||1,
-      upperAtmosphere: parseFloat(val('ap-upper'))||0,
+      height: getSimpleKmMetres('ap-height'), density: _sf('ap-density', 0),
+      curve: _sf('ap-curve', 0), curveScale: _apPrev.curveScale || {},
+      parachuteMultiplier: _sf('ap-chute', 1),
+      upperAtmosphere: _sf('ap-upper', 0),
       heightDifficultyScale: _apPrev.heightDifficultyScale || {},
-      shockwaveIntensity: parseFloat(val('ap-shock'))||0,
-      minHeatingVelocityMultiplier: parseFloat(val('ap-mhvm'))||1
+      shockwaveIntensity: _sf('ap-shock', 0),
+      minHeatingVelocityMultiplier: _sf('ap-mhvm', 1)
     };
   } else delete d.ATMOSPHERE_PHYSICS_DATA;
 
   // ATMO VISUALS
   if(tog('av-has')){
     const cloudsObj = tog('cl-has')
-      ? { texture:val('cl-tex'), startHeight:getSimpleKmMetres('cl-sh'), width:getSimpleKmMetres('cl-w'), height:getSimpleKmMetres('cl-h'), alpha:parseFloat(val('cl-a'))||0, velocity:parseFloat(val('cl-v'))||0 }
+      ? { texture:val('cl-tex'), startHeight:getSimpleKmMetres('cl-sh'), width:getSimpleKmMetres('cl-w'), height:getSimpleKmMetres('cl-h'), alpha:_sf('cl-a', 0), velocity:_sf('cl-v', 0) }
       : { texture:'None', startHeight:0, width:0, height:0, alpha:0, velocity:0 };
     const fogObj = tog('fog-has')
       ? { keys: collectFogKeys() }
@@ -1147,7 +1200,7 @@ function _liveSyncNow(){
     // Preserve heightDifficultyScale on GRADIENT — it has no UI control
     const _gradPrev = d.ATMOSPHERE_VISUALS_DATA?.GRADIENT || {};
     d.ATMOSPHERE_VISUALS_DATA = {
-      GRADIENT: { positionZ:parseInt(val('av-pz'))||0, height:getSimpleKmMetres('av-height'), heightDifficultyScale: _gradPrev.heightDifficultyScale || {}, texture:val('av-tex') },
+      GRADIENT: { positionZ:_sf('av-pz', 0), height:getSimpleKmMetres('av-height'), heightDifficultyScale: _gradPrev.heightDifficultyScale || {}, texture:val('av-tex') },
       CLOUDS: cloudsObj,
       FOG: fogObj
     };
@@ -1156,7 +1209,7 @@ function _liveSyncNow(){
   // FRONT CLOUDS
   if(tog('fc-has')){
     const fctex = val('fc-tex');
-    d.FRONT_CLOUDS_DATA = { cloudsTexture:fctex||'None', cloudTextureCutout:parseFloat(val('fc-cut'))||1, fadeZoneHeight:getSimpleKmMetres('fc-fzh'), height:getSimpleKmMetres('fc-h'), positionZ:parseFloat(val('fc-pz'))||0, sharpenAlpha:tog('fc-sa') };
+    d.FRONT_CLOUDS_DATA = { cloudsTexture:fctex||'None', cloudTextureCutout:_sf('fc-cut', 1), fadeZoneHeight:getSimpleKmMetres('fc-fzh'), height:getSimpleKmMetres('fc-h'), positionZ:_sf('fc-pz', 0), sharpenAlpha:tog('fc-sa') };
   } else delete d.FRONT_CLOUDS_DATA;
 
   // TERRAIN — respect the "Has Terrain Data" toggle
@@ -1174,7 +1227,7 @@ function _liveSyncNow(){
       TERRAIN_TEXTURE_DATA: {
         planetTexture: ptex || 'None',
         planetTextureCutout:_fv(val('tt-cut'),-1),
-        planetTextureRotation:parseFloat(val('tt-rot'))||0, planetTextureDontDistort:!tog('tt-nd'),
+        planetTextureRotation:_sf('tt-rot', 0), planetTextureDontDistort:!tog('tt-nd'),
         surfaceTexture_A:val('tt-sa'), surfaceTextureSize_A:{x:_fv(val('tt-sax'),-1), y:_fv(val('tt-say'),-1)},
         surfaceLOD_A: _fv(val('tt-lod-a'), -1),
         surfaceTexture_B:val('tt-sb'), surfaceTextureSize_B:{x:_fv(val('tt-sbx'),-1), y:_fv(val('tt-sby'),-1)},
@@ -1188,14 +1241,14 @@ function _liveSyncNow(){
       textureFormula: document.getElementById('tf-texture').value.trim()
         ? document.getElementById('tf-texture').value.trim().split('\n').map(s=>s.trim()).filter(Boolean)
         : [],
-      verticeSize:parseFloat(val('ter-vs'))||2,
+      verticeSize:_sf('ter-vs', 2),
       collider:tog('ter-col'),
       flatZones: collectFlatZones(),
       flatZonesDifficulties: (bodies[selectedBody]?.data?.TERRAIN_DATA?.flatZonesDifficulties) || {}
     };
     const rktype = val('rk-type');
     if(rktype && rktype !== 'None'){
-      d.TERRAIN_DATA.rocks = { rockType:rktype, rockDensity:parseFloat(val('rk-den'))||0.5, minSize:parseFloat(val('rk-min'))||0.2, maxSize:parseFloat(val('rk-max'))||0.8, powerCurve:parseFloat(val('rk-pc'))||2, maxAngle:parseFloat(val('rk-ma'))||25 };
+      d.TERRAIN_DATA.rocks = { rockType:rktype, rockDensity:_sf('rk-den', 0.5), minSize:_sf('rk-min', 0.2), maxSize:_sf('rk-max', 0.8), powerCurve:_sf('rk-pc', 2), maxAngle:_sf('rk-ma', 25) };
     }
     // Invalidate cloud/water/atmo caches when texture changes
     if(drawViewport._cloudCache) drawViewport._cloudCache = {};
@@ -1216,7 +1269,7 @@ function _liveSyncNow(){
   // RINGS
   if(tog('rng-has')){
     const rngMap = getCpick('rng-map-r','rng-map-g','rng-map-b','rng-map-a');
-    d.RINGS_DATA = { ringsTexture:val('rng-tex'), startRadius:getDistMetres('rng-sr'), endRadius:getDistMetres('rng-er'), positionZ:parseFloat(val('rng-pz'))||0, mapColor:{r:rngMap.r,g:rngMap.g,b:rngMap.b,a:rngMap.a} };
+    d.RINGS_DATA = { ringsTexture:val('rng-tex'), startRadius:getDistMetres('rng-sr'), endRadius:getDistMetres('rng-er'), positionZ:_sf('rng-pz', 0), mapColor:{r:rngMap.r,g:rngMap.g,b:rngMap.b,a:rngMap.a} };
     // Rings visually affect body size on canvas
     b.hasRings = true;
     b.ringsInner = getDistMetres('rng-sr');
@@ -1236,25 +1289,25 @@ function _liveSyncNow(){
     d.WATER_DATA = {
       oceanMaskTexture: val('wt-tex'),
       lowerTerrain: tog('wt-lt'),
-      oceanDepth: getSimpleKmMetres('wt-dep')||5000,
+      oceanDepth: getSimpleKmMetres('wt-dep') || 5000,
       sand:    { r:wSand.r,  g:wSand.g,  b:wSand.b,  a:wSand.a  },
       floor:   { r:wFloor.r, g:wFloor.g, b:wFloor.b, a:wFloor.a },
       shallow: { r:wShal.r,  g:wShal.g,  b:wShal.b,  a:wShal.a  },
       deep:    { r:wDeep.r,  g:wDeep.g,  b:wDeep.b,  a:wDeep.a  },
-      maskGradient_Water:  { must:parseFloat(val('wt-mgw-must'))||1000, cannot:parseFloat(val('wt-mgw-can'))||700,  global:parseFloat(val('wt-mgw-glob'))||2000 },
-      waterGradientWidthMultiplier: parseFloat(val('wt-wgwm'))||0.5,
-      maskGradient_Terrain: { must:parseFloat(val('wt-mgt-must'))||25, cannot:parseFloat(val('wt-mgt-can'))||25, global:parseFloat(val('wt-mgt-glob'))||50 },
-      sandGradientWidthMultiplier:  parseFloat(val('wt-sgwm'))||2.0,
-      floorGradientWidthMultiplier: parseFloat(val('wt-fgwm'))||10.0,
-      shoreNoiseSize: { x:parseFloat(val('wt-snx'))||3000, y:parseFloat(val('wt-sny'))||1000 },
-      sandNoiseSize:  { x:parseFloat(val('wt-dnx'))||500,  y:parseFloat(val('wt-dny'))||100  },
-      wavesSize:      { x:parseFloat(val('wt-wvx'))||16,   y:parseFloat(val('wt-wvy'))||0.3  },
-      opacity_Surface: parseFloat(val('wt-so'))||0.8,
-      opacity_Far: parseFloat(val('wt-fo'))||1,
-      opacity_FullDarkness: parseFloat(val('wt-fd'))??0.95,
-      surfaceVisibilityDistance: getSimpleKmMetres('wt-svd')||1200,
-      fullDarknessDepth: getSimpleKmMetres('wt-fdd')||500,
-      fullDarknessVisibilityDistance: getSimpleKmMetres('wt-fdvd')||300,
+      maskGradient_Water:  { must:_sf('wt-mgw-must', 1000), cannot:_sf('wt-mgw-can', 700),  global:_sf('wt-mgw-glob', 2000) },
+      waterGradientWidthMultiplier: _sf('wt-wgwm', 0.5),
+      maskGradient_Terrain: { must:_sf('wt-mgt-must', 25), cannot:_sf('wt-mgt-can', 25), global:_sf('wt-mgt-glob', 50) },
+      sandGradientWidthMultiplier:  _sf('wt-sgwm', 2.0),
+      floorGradientWidthMultiplier: _sf('wt-fgwm', 10.0),
+      shoreNoiseSize: { x:_sf('wt-snx', 3000), y:_sf('wt-sny', 1000) },
+      sandNoiseSize:  { x:_sf('wt-dnx', 500),  y:_sf('wt-dny', 100)  },
+      wavesSize:      { x:_sf('wt-wvx', 16),   y:_sf('wt-wvy', 0.3)  },
+      opacity_Surface: _sf('wt-so', 0.8),
+      opacity_Far: _sf('wt-fo', 1),
+      opacity_FullDarkness: _sf('wt-fd', 0.95),
+      surfaceVisibilityDistance: getSimpleKmMetres('wt-svd') || 1200,
+      fullDarknessDepth: getSimpleKmMetres('wt-fdd') || 500,
+      fullDarknessVisibilityDistance: getSimpleKmMetres('wt-fdvd') || 300,
       mapColor: { r:wMap.r, g:wMap.g, b:wMap.b, a:wMap.a }
     };
   } else delete d.WATER_DATA;
@@ -1271,12 +1324,12 @@ function _liveSyncNow(){
     const dirRaw = document.getElementById('or-dir').value;
     d.ORBIT_DATA = {
       parent:             val('or-par') || 'Sun',
-      semiMajorAxis:      getDistMetres('or-sma'),
+      semiMajorAxis:      (() => { const gm = (typeof _DEF_SMA_SCALE !== 'undefined' && typeof viewDiffKey !== 'undefined') ? (_DEF_SMA_SCALE[viewDiffKey] ?? 1) : 1; const raw = getDistMetres('or-sma'); return gm > 0 ? raw / gm : raw; })(),
       smaDifficultyScale: buildDiffScale('or-sn','or-sh','or-sr'),
-      eccentricity:       Math.min(parseFloat(val('or-ecc')) || 0, 0.999),
-      argumentOfPeriapsis:parseFloat(val('or-aop')) || 0,
+      eccentricity:       Math.min(_sf('or-ecc', 0), 0.999),
+      argumentOfPeriapsis:_sf('or-aop', 0),
       direction:          parseInt(dirRaw),   // parseInt('0') = 0 correctly
-      multiplierSOI:      parseFloat(val('or-soi')) || 2.5,
+      multiplierSOI:      _sf('or-soi', 2.5),
       soiDifficultyScale: buildDiffScale('or-soin','or-soih','or-soir')
     };
   } else delete d.ORBIT_DATA;
@@ -1292,6 +1345,9 @@ function _liveSyncNow(){
   // Update sidebar header to reflect current body state
   document.getElementById('sbb-type').textContent = b.isCenter ? 'System Center' : (d.ORBIT_DATA ? `orbiting ${d.ORBIT_DATA.parent}` : '');
 
+  // Refresh orbital period display whenever SMA / parent / diff scale may have changed
+  if (typeof updatePeriodFromSMA === 'function') updatePeriodFromSMA();
+
   // Invalidate cloud canvas cache so any atmosphere/texture change renders immediately
   if(drawViewport._cloudCache) drawViewport._cloudCache = {};
 
@@ -1304,6 +1360,8 @@ function _liveSyncNow(){
 document.getElementById('sidebar').addEventListener('input',  e => {
   // bsearch-input is a search filter, not a body-data field — don't trigger liveSync
   if(e.target.id === 'bsearch-input') return;
+  // or-period / or-period-unit: handled by updateSMAFromPeriod / attachPeriodParser — skip here
+  if(e.target.id === 'or-period' || e.target.id === 'or-period-unit') return;
   // hm-raw-view: live sync — push raw text into the hidden textarea then refresh
   if(e.target.id === 'hm-raw-view'){
     const lines = e.target.value.split('\n').filter(l => l.trim());
@@ -1319,13 +1377,22 @@ document.getElementById('sidebar').addEventListener('input',  e => {
     if(!liveSync._filling) liveSync();
     return;
   }
+  // Defer liveSync on text inputs to blur event — prevents lag while typing
+  if(e.target.type === 'text') return;
   if(!liveSync._filling) liveSync();
 });
 document.getElementById('sidebar').addEventListener('change', e => {
   if(e.target.id === 'bsearch-input') return;
   if(e.target.id === 'hm-raw-view') return;
+  if(e.target.id === 'or-period-unit') return;  // handled by attachPeriodParser
   if(!liveSync._filling) liveSync();
 });
+// Catch blur on text inputs to trigger liveSync after typing is done
+document.getElementById('sidebar').addEventListener('blur', e => {
+  if(e.target.type === 'text' && e.target.id !== 'bsearch-input' && e.target.id !== 'hm-raw-view'){
+    if(!liveSync._filling) liveSync();
+  }
+}, true);  // use capture to catch blur events
 // Delegated click on all toggles — fires after their own onclick toggles the class
 document.getElementById('sidebar').addEventListener('click', e => {
   if(e.target.classList.contains('tog')) setTimeout(liveSync, 0);

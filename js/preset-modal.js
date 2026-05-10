@@ -283,7 +283,8 @@ function confirmPreset(){
       // Start from 0.01 AU minimum; push out beyond the farthest sibling if any.
       const minForCenter = Math.max(parentRadius * 80, HARD_FLOOR);
       if(siblings.length > 0){
-        const maxSibSMA = Math.max(...siblings.map(b => effectiveSMA(b.data.ORBIT_DATA)));
+        // Use raw stored SMA, not viewport-scaled effectiveSMA
+        const maxSibSMA = Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0));
         defaultSMA = Math.max(maxSibSMA * 1.5, minForCenter);
       } else {
         defaultSMA = minForCenter;
@@ -299,7 +300,8 @@ function confirmPreset(){
       const soiSafe = parentSOI_m * 0.80;   // stay within 80 % of SOI to avoid edge instability
 
       if(siblings.length > 0){
-        const maxSibSMA = Math.max(...siblings.map(b => effectiveSMA(b.data.ORBIT_DATA)));
+        // Use raw stored SMA, not viewport-scaled effectiveSMA
+        const maxSibSMA = Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0));
         const candidate = maxSibSMA * 1.5;
         if(candidate <= soiSafe){
           // Fits comfortably inside SOI

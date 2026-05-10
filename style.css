@@ -1172,6 +1172,7 @@ body {
   display: none; letter-spacing: .02em;
 }
 .funit-hint.show { display: block; }
+.funit-hint.warn { color: #f5a623; opacity: 1; }
 .ftoggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
 .ftoggle-row .flabel { flex: 1; }
 .tog {
