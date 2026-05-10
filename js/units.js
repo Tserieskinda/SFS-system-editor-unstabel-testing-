@@ -19,10 +19,6 @@ const UNIT_TO_M = {
 // Unstable warning threshold: 700 Megametres
 const UNSTABLE_RADIUS_M = 700e6;
 
-// SMA difficulty: raw stored value × mult = in-game distance at that difficulty
-// Normal=1:20, Hard=1:10, Realistic=1:1
-const SMA_DIFF_MULT = { Normal: 1/20, Hard: 1/10, Realistic: 1 };
-
 // ── Formatting helpers ─────────────────────────────────────────────────────────
 function _fmt(v) {
   if (v === 0) return '0';
@@ -234,20 +230,26 @@ function _updateHint(metres, unitSelId, hintId, mode) {
   const lines = [];
 
   if (mode === 'sma') {
-    // Show per-difficulty actual in-game distances, including per-body scales
-    let perBodyScales = { Normal: 1, Hard: 1, Realistic: 1 };
+    // Show per-difficulty actual in-game distances using the same logic as effectiveSMA().
+    // Per-body smaDifficultyScale replaces the global default (1, 2, 20) entirely when present.
+    const _defSMA = { Normal: 1, Hard: 2, Realistic: 20 };
+    let smaScales = { Normal: _defSMA.Normal, Hard: _defSMA.Hard, Realistic: _defSMA.Realistic };
     if (typeof selectedBody !== 'undefined' && selectedBody && typeof bodies !== 'undefined') {
       const od = bodies[selectedBody]?.data?.ORBIT_DATA;
       if (od && od.smaDifficultyScale) {
         const rawScales = od.smaDifficultyScale;
-        perBodyScales.Normal    = rawScales.Normal    ?? rawScales.normal    ?? 1;
-        perBodyScales.Hard      = rawScales.Hard      ?? rawScales.hard      ?? 1;
-        perBodyScales.Realistic = rawScales.Realistic ?? rawScales.realistic ?? 1;
+        // Only override each difficulty if the body has an explicit value for it
+        if (rawScales.Normal    != null) smaScales.Normal    = rawScales.Normal;
+        else if (rawScales.normal != null) smaScales.Normal  = rawScales.normal;
+        if (rawScales.Hard      != null) smaScales.Hard      = rawScales.Hard;
+        else if (rawScales.hard != null) smaScales.Hard      = rawScales.hard;
+        if (rawScales.Realistic != null) smaScales.Realistic = rawScales.Realistic;
+        else if (rawScales.realistic != null) smaScales.Realistic = rawScales.realistic;
       }
     }
-    const n = metres * SMA_DIFF_MULT.Normal    * perBodyScales.Normal;
-    const h = metres * SMA_DIFF_MULT.Hard      * perBodyScales.Hard;
-    const r = metres * SMA_DIFF_MULT.Realistic * perBodyScales.Realistic;
+    const n = metres * smaScales.Normal;
+    const h = metres * smaScales.Hard;
+    const r = metres * smaScales.Realistic;
     lines.push(
       'N\u202f' + _fmtHint(n, unit) +
       '  H\u202f' + _fmtHint(h, unit) +
