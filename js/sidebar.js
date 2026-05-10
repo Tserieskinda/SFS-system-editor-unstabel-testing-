@@ -696,14 +696,15 @@ function fillSidebar(name){
   { const _rm = (typeof getRadiusDifficultyMult === 'function') ? getRadiusDifficultyMult(BD) : 1;
     setDistInput('b-radius','b-radius-unit','b-radius-hint', (BD.radius ?? 0) * _rm, 'radius'); }
   const rds = BD.radiusDifficultyScale||{};
-  setVal('b-radius-n', rds.Normal  ?? 1);
-  setVal('b-radius-h', rds.Hard    ?? 2);
-  setVal('b-radius-r', rds.Realistic ?? 20);
+  // Empty string when not set — prevents baking defaults into the file on every liveSync.
+  setVal('b-radius-n', rds.Normal    ?? '');
+  setVal('b-radius-h', rds.Hard      ?? '');
+  setVal('b-radius-r', rds.Realistic ?? '');
   setGravDisplay(BD.gravity);
   const gds = BD.gravityDifficultyScale||{};
-  setVal('b-grav-n', gds.Normal    ?? 1);
-  setVal('b-grav-h', gds.Hard      ?? 2);
-  setVal('b-grav-r', gds.Realistic ?? 20);
+  setVal('b-grav-n', gds.Normal    ?? '');
+  setVal('b-grav-h', gds.Hard      ?? '');
+  setVal('b-grav-r', gds.Realistic ?? '');
   setVal('b-twh', BD.timewarpHeight);
   setVal('b-vah', BD.velocityArrowsHeight);
   const mc = BD.mapColor||{r:1,g:1,b:1,a:1};
@@ -897,18 +898,23 @@ function fillSidebar(name){
     setDistInput('or-sma','or-sma-unit','or-sma-hint', (OR.semiMajorAxis ?? 0) * _gm, 'sma'); }
   const _rawSds=OR.smaDifficultyScale||{};
   const sds={ Normal: _rawSds.Normal ?? _rawSds.normal, Hard: _rawSds.Hard ?? _rawSds.hard, Realistic: _rawSds.Realistic ?? _rawSds.realistic };
-  setVal('or-sn', sds.Normal    ?? 1);
-  setVal('or-sh', sds.Hard      ?? 1);
-  setVal('or-sr', sds.Realistic ?? 1);
+  // Use empty string (not 1) when no per-body scale is set.
+  // This way liveSync's buildDiffScale() sees NaN for empty fields and skips them,
+  // preserving an empty smaDifficultyScale instead of baking in {1,1,1} which would
+  // override the game's global defaults (1,2,20) every time any field is touched.
+  setVal('or-sn', sds.Normal    ?? '');
+  setVal('or-sh', sds.Hard      ?? '');
+  setVal('or-sr', sds.Realistic ?? '');
   setSlider('or-ecc', OR.eccentricity, 0, 0.999); setSlider('or-aop', OR.argumentOfPeriapsis, -360, 360);
   initSlider('or-ecc',0,0.999);
   initSlider('or-aop',-360,360);
   setSelectVal('or-dir', String(OR.direction ?? 1));  // ?? not || so 0 is preserved
   setVal('or-soi',OR.multiplierSOI);
   const ssds=OR.soiDifficultyScale||{};
-  setVal('or-soin', ssds.Normal    ?? 1);
-  setVal('or-soih', ssds.Hard      ?? 1);
-  setVal('or-soir', ssds.Realistic ?? 1);
+  // Same empty-string treatment as smaDifficultyScale above.
+  setVal('or-soin', ssds.Normal    ?? '');
+  setVal('or-soih', ssds.Hard      ?? '');
+  setVal('or-soir', ssds.Realistic ?? '');
   updateSOIDisplay();
   if (typeof updatePeriodFromSMA === 'function') setTimeout(updatePeriodFromSMA, 0);
   toggleOrbit();
