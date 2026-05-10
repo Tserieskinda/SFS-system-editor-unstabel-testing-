@@ -552,7 +552,13 @@ function _snapshotNewAssets(texBefore, presetsBefore, hmBefore){
   dpv.slice(presetsBefore.vanilla).forEach(k => { presets.vanilla[k] = dynamicPresets.vanilla[k]; });
   dpc.slice(presetsBefore.custom ).forEach(k => { presets.custom[k]  = dynamicPresets.custom[k];  });
 
-  return { textures, presets, heightmaps, namedSources:{} };
+  // Snapshot named preset sources added during this load
+  const namedSources = {};
+  for(const [label, src] of Object.entries(dynamicPresetSources)){
+    namedSources[label] = src;
+  }
+
+  return { textures, presets, heightmaps, namedSources };
 }
 
 // ── Main autoload (with IDB cache) ───────────────────────────────────────────
@@ -594,17 +600,23 @@ async function autoLoadRemoteAssets(){
 
       // ── 2. Check IDB for a valid cached entry ──────────────────────────────
       const cached = await idbCacheRead(url);
-      if(cached && cached.textures && cached.textures.length > 0 &&
-         freshEtag && cached.etag === freshEtag){
-        // Cache hit — replay instantly
-        setBar1(50, 'FROM CACHE');
-        const r = await _replayFromCache(cached);
-        totalTextures += r.totalTextures;
-        totalPresets  += r.totalPresets;
-        setBar1(100, 'FROM CACHE ✓');
-        console.log(`[SFS|IDB] Cache hit for "${fname}" — skipped download`);
-        await _yield();
-        continue;
+      if(cached && cached.textures && cached.textures.length > 0){
+        // If we couldn't get a fresh ETag (CORS/offline/server omits it), trust
+        // the cache — we have no better data to serve.  If we did get an ETag,
+        // only use the cache when it matches (stale-check).
+        const etagMatch = !freshEtag || cached.etag === freshEtag;
+        if(etagMatch){
+          // Cache hit — replay instantly
+          setBar1(50, 'FROM CACHE');
+          const r = await _replayFromCache(cached);
+          totalTextures += r.totalTextures;
+          totalPresets  += r.totalPresets;
+          setBar1(100, 'FROM CACHE ✓');
+          console.log(`[SFS|IDB] Cache hit for "${fname}" — skipped download (etag=${freshEtag||'unavailable'})`);
+          await _yield();
+          continue;
+        }
+        console.log(`[SFS|IDB] Cache stale for "${fname}" — etag changed (${cached.etag} → ${freshEtag})`);
       }
 
       // ── 3. Cache miss or stale — fetch zip normally ────────────────────────

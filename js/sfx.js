@@ -76,15 +76,23 @@ const SFX = (() => {
   const testPositive = () => { _lastPositive = 0; _positive(); };
 
   // ── Non-destructive function patcher ─────────────────────────────
+  // _pendingPatch tracks names that already have a queued retry so a second
+  // _wire() call (DOMContentLoaded race) never schedules a duplicate setTimeout,
+  // which would cause the patched function to fire twice per click.
+  const _pendingPatch = new Set();
   function patch(name, sfxFn) {
     function _apply() {
+      _pendingPatch.delete(name);
       const fn = window[name];
       if (typeof fn !== 'function' || fn._sfxPatched) return false;
       window[name] = function (...a) { try { sfxFn(); } catch(_){} return fn.apply(this, a); };
       window[name]._sfxPatched = true;
       return true;
     }
-    if (!_apply()) setTimeout(_apply, 600); // retry once for late-loaded scripts
+    if (!_apply() && !_pendingPatch.has(name)) {
+      _pendingPatch.add(name);
+      setTimeout(_apply, 600); // retry once for late-loaded scripts
+    }
   }
 
   // ── Wire every button ────────────────────────────────────────────

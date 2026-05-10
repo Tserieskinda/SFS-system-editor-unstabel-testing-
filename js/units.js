@@ -387,55 +387,47 @@ function _parentGM() {
   return g * r * r;
 }
 
-// Compute period (seconds) from stored SMA metres + current difficulty
+// Compute period (seconds) from stored SMA metres + current difficulty.
+// Uses the same logic as effectiveSMA() in viewport.js so periods always
+// agree with the visual orbit display.
+// _DEF_SMA_SCALE: Normal=1, Hard=2, Realistic=20 (files store Normal-mode SMA).
+// Per-body smaDifficultyScale replaces the default entirely when present.
+const _DEF_SMA_SCALE_UNITS = { Normal: 1, Hard: 2, Realistic: 20 };
+function _effectiveSMAForPeriod(smaMetres) {
+  const vdk = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
+  const od  = (typeof selectedBody !== 'undefined' && selectedBody && typeof bodies !== 'undefined')
+              ? bodies[selectedBody]?.data?.ORBIT_DATA : null;
+  const scale  = od?.smaDifficultyScale;
+  const mult   = (scale && scale[vdk] != null) ? scale[vdk] : (_DEF_SMA_SCALE_UNITS[vdk] ?? 1);
+  return smaMetres * mult;
+}
 function _periodFromSMA(smaMetres) {
   const GM = _parentGM();
   if (GM == null || GM <= 0) return null;
-
-  // Apply SMA difficulty scale to get the effective in-game SMA.
-  // Global default (Normal=1/20, Hard=1/10, Realistic=1) always applies;
-  // per-body smaDifficultyScale is an additional multiplier on top.
-  let a = smaMetres;
-  if (typeof selectedBody !== 'undefined' && selectedBody && typeof bodies !== 'undefined') {
-    const od = bodies[selectedBody]?.data?.ORBIT_DATA;
-    if (od) {
-      const vdk        = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
-      const globalMult = SMA_DIFF_MULT[vdk] ?? 1;
-      const scale      = od.smaDifficultyScale;
-      const perBody    = (scale && scale[vdk] != null) ? scale[vdk] : 1;
-      a = smaMetres * globalMult * perBody;
-    }
-  }
-
+  const a = _effectiveSMAForPeriod(smaMetres);
   if (a <= 0) return null;
   return 2 * Math.PI * Math.sqrt((a * a * a) / GM);
 }
 
-// Compute SMA (metres) from a period (seconds), un-scaling difficulty
+// Compute SMA (metres) from a period (seconds), un-scaling difficulty.
+// Inverse of _periodFromSMA — uses the same _effectiveSMAForPeriod multiplier.
 function _smaFromPeriod(periodS) {
   const GM = _parentGM();
   if (GM == null || GM <= 0) return null;
   if (periodS <= 0) return null;
 
-  // a_eff = (T/(2π))^(2/3) × GM^(1/3)
+  // a_eff = (T / 2π)^(2/3) × GM^(1/3)
   const ratio = periodS / (2 * Math.PI);
   const a_eff = Math.pow(ratio * ratio * GM, 1/3);
 
-  // Un-apply SMA difficulty scale to get stored SMA.
-  // Total effective multiplier = globalDefault * perBody (same as effectiveSMA / _periodFromSMA).
-  let diffMult = 1;
-  if (typeof selectedBody !== 'undefined' && selectedBody && typeof bodies !== 'undefined') {
-    const od = bodies[selectedBody]?.data?.ORBIT_DATA;
-    if (od) {
-      const vdk        = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
-      const globalMult = SMA_DIFF_MULT[vdk] ?? 1;
-      const scale      = od.smaDifficultyScale;
-      const perBody    = (scale && scale[vdk] != null) ? scale[vdk] : 1;
-      diffMult = globalMult * perBody;
-    }
-  }
-  if (diffMult <= 0) diffMult = 1;
-  return a_eff / diffMult;
+  // Recover stored SMA by dividing out the same difficulty multiplier used in _periodFromSMA.
+  const vdk    = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
+  const od     = (typeof selectedBody !== 'undefined' && selectedBody && typeof bodies !== 'undefined')
+                 ? bodies[selectedBody]?.data?.ORBIT_DATA : null;
+  const scale  = od?.smaDifficultyScale;
+  const mult   = (scale && scale[vdk] != null) ? scale[vdk] : (_DEF_SMA_SCALE_UNITS[vdk] ?? 1);
+  if (mult <= 0) return a_eff;
+  return a_eff / mult;
 }
 
 // Update the period display from the current SMA — called after SMA changes
@@ -545,13 +537,13 @@ function _updatePeriodHint(periodS, unitSelId, hintId) {
       const diffs = ['Normal', 'Hard', 'Realistic'];
       const labels = ['N', 'H', 'R'];
       const parts = diffs.map((dk, i) => {
-        const globalMult = SMA_DIFF_MULT[dk] ?? 1;
-        const scale      = od.smaDifficultyScale;
-        const perBody    = (scale && scale[dk] != null) ? scale[dk] : 1;
-        const a_eff = smaMetres * globalMult * perBody;
+        // Use same multiplier logic as effectiveSMA() / _effectiveSMAForPeriod()
+        const scale   = od.smaDifficultyScale;
+        const mult    = (scale && scale[dk] != null) ? scale[dk] : (_DEF_SMA_SCALE_UNITS[dk] ?? 1);
+        const a_eff = smaMetres * mult;
         if (a_eff <= 0) return null;
         const T_diff = 2 * Math.PI * Math.sqrt((a_eff * a_eff * a_eff) / GM);
-        return labels[i] + '\u202f' + _fmtTime(T_diff, unit) + '\u202f' + unit;
+        return labels[i] + ' ' + _fmtTime(T_diff, unit) + ' ' + unit;
       }).filter(Boolean);
       if (parts.length) lines.push(parts.join('  '));
     }

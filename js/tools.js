@@ -654,6 +654,31 @@ vp.addEventListener('touchend', e => {
 }, {passive: false});
 
 function renderBody(name){ drawViewport(); }
+// ── touchcancel: treat as all-fingers-up to prevent phantom stuck touches ────
+// Fires when the OS interrupts touches (notifications, app switch, edge swipe,
+// scroll takeover). Without this, cancelled touch identifiers stay in _touches
+// permanently, making the next single-finger pan behave like a pinch-zoom.
+vp.addEventListener('touchcancel', e => {
+  // Remove every cancelled touch from our tracking map
+  Array.from(e.changedTouches).forEach(t => { delete _touches[t.identifier]; });
+  // If all touches are gone (most common case), do a full state reset
+  if(Object.keys(_touches).length === 0){
+    _pinchStartDist = null; _pinchStartZ = null; _lastPinchDist = null;
+    _wasPinching = false; _pinchMoved = false;
+    if(dragOrbitMode && _dob_active){
+      _dob_active = false; _dob_body = null;
+      _dob_frozenScale = null; _dob_frozenParentSP = null; _dob_frozenVpZ = null;
+      _cachedSMAScale = null;
+    }
+    drawViewport();
+  } else {
+    // Some fingers still active — reset pinch state if we dropped below 2
+    if(Object.keys(_touches).length < 2){
+      _pinchStartDist = null; _pinchStartZ = null; _lastPinchDist = null;
+    }
+  }
+}, {passive: false});
+
 function updateBodyVisual(name){ drawViewport(); }
 
 function updateStatusBar(){
