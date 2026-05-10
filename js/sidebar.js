@@ -888,8 +888,12 @@ function fillSidebar(name){
 
   const OR = d.ORBIT_DATA||{};
   setVal('or-par',OR.parent);
-  { const _gm = (typeof _DEF_SMA_SCALE !== 'undefined' && typeof viewDiffKey !== 'undefined')
-      ? (_DEF_SMA_SCALE[viewDiffKey] ?? 1) : 1;
+  { // Use effective scale: per-body override if present, else global default.
+    // Mirrors the game's SmaScale() — per-body replaces global entirely.
+    const _sds = OR.smaDifficultyScale || {};
+    const _vdk = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
+    const _defS = (typeof _DEF_SMA_SCALE !== 'undefined') ? _DEF_SMA_SCALE : {Normal:1,Hard:2,Realistic:20};
+    const _gm = (_sds[_vdk] != null) ? _sds[_vdk] : (_defS[_vdk] ?? 1);
     setDistInput('or-sma','or-sma-unit','or-sma-hint', (OR.semiMajorAxis ?? 0) * _gm, 'sma'); }
   const _rawSds=OR.smaDifficultyScale||{};
   const sds={ Normal: _rawSds.Normal ?? _rawSds.normal, Hard: _rawSds.Hard ?? _rawSds.hard, Realistic: _rawSds.Realistic ?? _rawSds.realistic };
@@ -1324,7 +1328,16 @@ function _liveSyncNow(){
     const dirRaw = document.getElementById('or-dir').value;
     d.ORBIT_DATA = {
       parent:             val('or-par') || 'Sun',
-      semiMajorAxis:      (() => { const gm = (typeof _DEF_SMA_SCALE !== 'undefined' && typeof viewDiffKey !== 'undefined') ? (_DEF_SMA_SCALE[viewDiffKey] ?? 1) : 1; const raw = getDistMetres('or-sma'); return gm > 0 ? raw / gm : raw; })(),
+      semiMajorAxis:      (() => {
+        // Recover stored SMA by dividing out the same effective scale used in fillSidebar.
+        // Per-body smaDifficultyScale replaces global default entirely (mirrors game SmaScale()).
+        const _sds  = buildDiffScale('or-sn','or-sh','or-sr');
+        const _vdk  = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
+        const _defS = (typeof _DEF_SMA_SCALE !== 'undefined') ? _DEF_SMA_SCALE : {Normal:1,Hard:2,Realistic:20};
+        const gm    = (_sds[_vdk] != null) ? _sds[_vdk] : (_defS[_vdk] ?? 1);
+        const raw   = getDistMetres('or-sma');
+        return gm > 0 ? raw / gm : raw;
+      })(),
       smaDifficultyScale: buildDiffScale('or-sn','or-sh','or-sr'),
       eccentricity:       Math.min(_sf('or-ecc', 0), 0.999),
       argumentOfPeriapsis:_sf('or-aop', 0),
