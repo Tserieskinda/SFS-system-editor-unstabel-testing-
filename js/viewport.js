@@ -2275,6 +2275,11 @@ function _drawViewportNow(){
     });
     ctx2.restore();
   }
+
+  // ── Image overlays — drawn on top of everything ──
+  if(typeof imgDrawOverlays === 'function'){
+    imgDrawOverlays(ctx2, vpZ, vpOffX, vpOffY, vp.width, vp.height);
+  }
 }
 
 function shadeHex(hex, amt){

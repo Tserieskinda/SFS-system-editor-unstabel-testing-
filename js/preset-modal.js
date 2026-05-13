@@ -3,6 +3,279 @@
 let _prsTab = 'all';       // 'all' | 'vanilla' | 'custom' | 'system'
 let _prsSearch = '';
 
+// SMA / parent state for the modal controls
+let _prsSmaMetres = 0;        // current SMA in metres (raw, Normal-scale)
+let _prsSmaUserPicked = false; // true once user has manually changed SMA
+let _prsParentName = '';       // currently selected parent body name
+
+// ── SMA unit helpers (mirrors units.js logic but self-contained for the modal) ─
+
+const _PRS_UNIT_TO_M = {
+  m: 1, km: 1e3, Mm: 1e6, Gm: 1e9,
+  AU: 1.495978707e11, ly: 9.4607304725808e15
+};
+
+function _prsFmt(v) {
+  if (v === 0) return '0';
+  const abs = Math.abs(v);
+  if (abs >= 1e9)  return parseFloat(v.toPrecision(6)).toExponential(3);
+  if (abs >= 100)  return parseFloat(v.toPrecision(6)).toString();
+  return parseFloat(v.toPrecision(5)).toString();
+}
+
+function _prsBestUnit(m) {
+  const abs = Math.abs(m);
+  if (abs === 0)    return 'AU';
+  if (abs < 1e6)    return 'km';
+  if (abs < 1e9)    return 'Mm';
+  if (abs < 5e12)   return 'AU';
+  return 'ly';
+}
+
+function _prsMetresToDisplay(metres, unit) {
+  const f = _PRS_UNIT_TO_M[unit] || 1;
+  const v = metres / f;
+  if (Math.abs(v) >= 1e9) return parseFloat(v.toPrecision(6)).toExponential(3);
+  if (Math.abs(v) >= 100) return parseFloat(v.toPrecision(6)).toString();
+  return parseFloat(v.toPrecision(6)).toString();
+}
+
+function _prsSetSmaDisplay(metres) {
+  _prsSmaMetres = metres;
+  const unitSel = document.getElementById('prs-sma-unit');
+  const input   = document.getElementById('prs-sma-input');
+  if (!input || !unitSel) return;
+  if (!_prsSmaUserPicked) {
+    unitSel.value = _prsBestUnit(metres);
+  }
+  input.value = metres > 0 ? _prsMetresToDisplay(metres, unitSel.value) : '';
+  _prsUpdateSOI();
+}
+
+function _prsParseUnit(raw) {
+  const aliases = { m:'m', km:'km', mm:'Mm', megameter:'Mm', gm:'Gm', gigameter:'Gm', au:'AU', ly:'ly' };
+  const lc = (raw || '').toLowerCase().trim();
+  return aliases[lc] || null;
+}
+
+function prsOnSmaInput() {
+  const input   = document.getElementById('prs-sma-input');
+  const unitSel = document.getElementById('prs-sma-unit');
+  if (!input || !unitSel) return;
+  const raw = input.value.trim();
+  const m = raw.match(/^([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*([a-zA-Z_]*)$/);
+  if (!m) return;
+  let metres;
+  if (m[2]) {
+    const resolved = _prsParseUnit(m[2]);
+    metres = parseFloat(m[1]) * (_PRS_UNIT_TO_M[resolved || unitSel.value] || 1);
+    if (resolved && resolved !== unitSel.value) { unitSel.value = resolved; _prsSmaUserPicked = true; }
+  } else {
+    metres = parseFloat(m[1]) * (_PRS_UNIT_TO_M[unitSel.value] || 1);
+  }
+  _prsSmaMetres = metres;
+  _prsUpdateSOI();
+}
+
+function prsOnSmaBlur() {
+  const input   = document.getElementById('prs-sma-input');
+  const unitSel = document.getElementById('prs-sma-unit');
+  if (!input || !unitSel) return;
+  // Re-normalise display
+  const raw = input.value.trim();
+  const m = raw.match(/^([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*([a-zA-Z_]*)$/);
+  if (m) {
+    let metres;
+    if (m[2]) {
+      const resolved = _prsParseUnit(m[2]);
+      metres = parseFloat(m[1]) * (_PRS_UNIT_TO_M[resolved || unitSel.value] || 1);
+      if (resolved) { unitSel.value = resolved; _prsSmaUserPicked = true; }
+    } else {
+      metres = parseFloat(m[1]) * (_PRS_UNIT_TO_M[unitSel.value] || 1);
+    }
+    _prsSmaMetres = metres;
+    input.value = _prsMetresToDisplay(metres, unitSel.value);
+  }
+  _prsUpdateSOI();
+}
+
+function prsOnSmaUnitChange() {
+  const unitSel = document.getElementById('prs-sma-unit');
+  const input   = document.getElementById('prs-sma-input');
+  if (!unitSel || !input) return;
+  _prsSmaUserPicked = true;
+  input.value = _prsMetresToDisplay(_prsSmaMetres, unitSel.value);
+}
+
+// ── SOI display beneath SMA field ─────────────────────────────────────────────
+function _prsUpdateSOI() {
+  const el = document.getElementById('prs-soi-display');
+  if (!el) return;
+  const parent = _prsParentName && bodies[_prsParentName];
+  if (!parent) { el.textContent = ''; return; }
+
+  if (parent.isCenter) {
+    el.textContent = 'SOI: ∞  (system center)';
+    el.style.color = 'var(--ink4)';
+    return;
+  }
+
+  const soiM = computeSOI_m(_prsParentName);
+  if (soiM == null) {
+    el.textContent = 'SOI: —';
+    el.style.color = 'var(--ink4)';
+    return;
+  }
+
+  // Format SOI
+  let soiStr;
+  if (soiM >= 1e9)      soiStr = (soiM/1e9).toFixed(3) + ' Gm';
+  else if (soiM >= 1e6) soiStr = (soiM/1e6).toFixed(3) + ' Mm';
+  else if (soiM >= 1e3) soiStr = (soiM/1e3).toFixed(1) + ' km';
+  else                  soiStr = soiM.toFixed(0) + ' m';
+
+  // Also show in AU if large enough
+  const soiAU = soiM / 1.495978707e11;
+  const auStr = soiAU >= 0.001 ? `  ·  ${soiAU.toPrecision(3)} AU` : '';
+
+  // Warn if SMA is outside SOI
+  const warn = _prsSmaMetres > soiM * 0.95;
+  el.textContent = `SOI: ${soiStr}${auStr}` + (warn ? '  ⚠ outside SOI' : '');
+  el.style.color = warn ? 'var(--amber)' : 'var(--ink4)';
+}
+
+// ── Parent body selector ───────────────────────────────────────────────────────
+function _prsBuildParentSelector() {
+  const sel = document.getElementById('prs-parent-sel');
+  if (!sel) return;
+
+  // Collect all candidate parents (all bodies except the ones with no data)
+  const candidates = Object.keys(bodies).filter(n => bodies[n] && n !== '');
+
+  // Sort: center first, then by SMA ascending (nearest to farthest)
+  candidates.sort((a, b) => {
+    const ba = bodies[a], bb = bodies[b];
+    if (ba.isCenter && !bb.isCenter) return -1;
+    if (!ba.isCenter && bb.isCenter) return 1;
+    const smaA = ba.data?.ORBIT_DATA?.semiMajorAxis || 0;
+    const smaB = bb.data?.ORBIT_DATA?.semiMajorAxis || 0;
+    return smaA - smaB;
+  });
+
+  sel.innerHTML = '';
+  candidates.forEach(name => {
+    const b = bodies[name];
+    const opt = document.createElement('option');
+    opt.value = name;
+    // Label with distance hint
+    const sma = b.data?.ORBIT_DATA?.semiMajorAxis;
+    let distStr = '';
+    if (b.isCenter) {
+      distStr = ' [center]';
+    } else if (sma) {
+      const AU = 1.495978707e11;
+      if (sma >= AU * 0.001) distStr = ` · ${(sma/AU).toPrecision(3)} AU`;
+      else if (sma >= 1e6)   distStr = ` · ${(sma/1e6).toFixed(1)} Mm`;
+      else if (sma >= 1e3)   distStr = ` · ${(sma/1e3).toFixed(0)} km`;
+    }
+    opt.textContent = name + distStr;
+    if (name === _prsParentName) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function prsOnParentChange(reset) {
+  const sel = document.getElementById('prs-parent-sel');
+  if (reset || !sel) {
+    // revert to default parent
+    const centerName = Object.keys(bodies).find(n => bodies[n].isCenter) || '';
+    _prsParentName = (selectedBody && bodies[selectedBody] && !bodies[selectedBody].isCenter)
+      ? selectedBody : centerName;
+    if (sel) sel.value = _prsParentName;
+  } else {
+    _prsParentName = sel.value;
+  }
+
+  // Recalculate default SMA for new parent (only if user hasn't manually set it)
+  if (!_prsSmaUserPicked) {
+    _prsRecalcDefaultSMA();
+  }
+  _prsUpdateSOI();
+}
+
+function _prsRecalcDefaultSMA() {
+  // Reuse the same logic as confirmPreset but just compute defaultSMA for display
+  const parentName = _prsParentName;
+  const parentBody = bodies[parentName];
+  if (!parentName || !parentBody) { _prsSetSmaDisplay(0); return; }
+
+  const centerBodyEntry = bodies[Object.keys(bodies).find(n => bodies[n].isCenter)];
+  const centerRadius = (centerBodyEntry?.data?.BASE_DATA?.radius) || 34817000;
+  const parentRadius = (parentBody?.data?.BASE_DATA?.radius) || centerRadius;
+
+  const siblings = Object.values(bodies).filter(b =>
+    b.data?.ORBIT_DATA && b.data.ORBIT_DATA.parent === parentName
+  );
+
+  const AU = 1.495978707e11;
+
+  function _getParentSOI_m(pName) {
+    const pb = bodies[pName];
+    if (!pb) return null;
+    if (pb.isCenter) return null;
+    return computeSOI_m(pName);
+  }
+
+  const parentSOI_m = _getParentSOI_m(parentName);
+  const MIN_CLEAR   = parentRadius * 5;
+  const HARD_FLOOR  = 0.01 * AU;
+
+  let defaultSMA;
+
+  if (parentSOI_m === null) {
+    const minForCenter = Math.max(parentRadius * 80, HARD_FLOOR);
+    if (siblings.length > 0) {
+      const maxSibSMA = Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0));
+      defaultSMA = Math.max(maxSibSMA * 1.5, minForCenter);
+    } else {
+      defaultSMA = minForCenter;
+    }
+  } else if (parentSOI_m <= parentRadius) {
+    defaultSMA = parentRadius * 80;
+  } else {
+    const soiSafe = parentSOI_m * 0.80;
+    if (siblings.length > 0) {
+      const maxSibSMA = Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0));
+      const candidate = maxSibSMA * 1.5;
+      if (candidate <= soiSafe) {
+        defaultSMA = candidate;
+      } else if (maxSibSMA < soiSafe) {
+        defaultSMA = maxSibSMA + (soiSafe - maxSibSMA) * 0.5;
+      } else {
+        defaultSMA = soiSafe * 0.5;
+      }
+    } else {
+      defaultSMA = soiSafe * 0.33;
+    }
+    defaultSMA = Math.min(defaultSMA, soiSafe);
+    defaultSMA = Math.max(defaultSMA, MIN_CLEAR);
+    if (MIN_CLEAR >= soiSafe) {
+      defaultSMA = (parentRadius + soiSafe) * 0.5;
+    }
+  }
+
+  defaultSMA = Math.max(defaultSMA, parentRadius * 5);
+  _prsSetSmaDisplay(defaultSMA);
+}
+
+// ── NEXT button (multi-body flow placeholder) ──────────────────────────────────
+function prsNext() {
+  // Confirm current preset and re-open for another body
+  confirmPreset();
+  // Re-open the modal for adding another body
+  setTimeout(() => openPreset(false), 80);
+}
+
 function prsSetTab(tab, btn){
   _prsTab = tab;
   document.querySelectorAll('.prs-tab').forEach(t => t.classList.remove('on'));
@@ -173,6 +446,7 @@ function openPreset(forCenter){
   selectedPresetKey = forCenter ? 'Sun' : 'Earth';
   _prsTab = 'all';
   _prsSearch = '';
+  _prsSmaUserPicked = false;
 
   // Inject named import tabs, then reset all tabs so ALL is active
   try { prsRefreshNamedTabs(); } catch(_){}
@@ -180,13 +454,29 @@ function openPreset(forCenter){
   const searchEl = document.getElementById('prs-search');
   if(searchEl) searchEl.value = '';
 
+  // Show/hide orbit controls and NEXT button
+  const orbitCtrl = document.getElementById('prs-orbit-controls');
+  const nextBtn   = document.getElementById('prs-next-btn');
+  if(orbitCtrl) orbitCtrl.style.display = forCenter ? 'none' : '';
+  if(nextBtn)   nextBtn.style.display   = forCenter ? 'none' : '';
+
   let desc;
   if(forCenter){
     desc = 'Choose your system center — no orbital data needed';
   } else {
-    const parentName = (selectedBody && bodies[selectedBody]) ? selectedBody
-      : (Object.keys(bodies).find(n => bodies[n].isCenter) || 'the center');
-    desc = `New body will orbit <strong style="color:var(--sky2)">${parentName}</strong> — all properties editable after`;
+    // Determine default parent
+    const centerName = Object.keys(bodies).find(n => bodies[n].isCenter) || '';
+    _prsParentName = (selectedBody && bodies[selectedBody] && !bodies[selectedBody].isCenter)
+      ? selectedBody : centerName;
+
+    // Populate parent selector sorted nearest→farthest
+    _prsBuildParentSelector();
+
+    // Compute default SMA for this parent
+    _prsRecalcDefaultSMA();
+
+    const parentDisplay = _prsParentName || 'the center';
+    desc = `New body will orbit <strong style="color:var(--sky2)">${parentDisplay}</strong> — all properties editable after`;
   }
   document.getElementById('mp-desc').innerHTML = desc;
   document.getElementById('prs-confirm-btn').textContent = forCenter ? 'ADD CENTER →' : 'ADD BODY →';
@@ -242,94 +532,55 @@ function confirmPreset(){
     delete data.ORBIT_DATA;
   } else {
     const centerName = Object.keys(bodies).find(n => bodies[n].isCenter) || 'Sun';
-    const parentName = (selectedBody && bodies[selectedBody]) ? selectedBody : centerName;
-    const parentBody = bodies[parentName];
-    const centerBodyEntry = bodies[Object.keys(bodies).find(n => bodies[n].isCenter)];
-    const centerRadius = (centerBodyEntry?.data?.BASE_DATA?.radius) || 34817000;
-    const parentRadius = (parentBody?.data?.BASE_DATA?.radius) || centerRadius;
+    // Use parent from modal selector; fall back to selected/center
+    const parentName = (_prsParentName && bodies[_prsParentName]) ? _prsParentName
+      : ((selectedBody && bodies[selectedBody]) ? selectedBody : centerName);
 
-    const siblings = Object.values(bodies).filter(b =>
-      b.data.ORBIT_DATA && b.data.ORBIT_DATA.parent === parentName
-    );
-
-    const AU = 1.496e11; // 1 Astronomical Unit in metres
-
-    // ── Smart SOI-aware SMA placement ────────────────────────────────────────
-    // Strategy:
-    //  1. Compute the parent's SOI radius (or use a sensible bound for center/large SOIs)
-    //  2. Find the outermost sibling orbit
-    //  3. Try to place the new body inside the SOI at 1.5× the outermost sibling
-    //     (or at a fraction of the SOI if no siblings)
-    //  4. If the result exceeds the SOI, use a fallback fraction of the SOI
-    //  5. The system center has infinite SOI — start at 0.01 AU minimum
-    //  6. Always respect a floor of parentRadius × 5 (clear the body's surface)
-
-    function _getParentSOI_m(pName){
-      // System centre: infinite SOI → return null
-      const pb = bodies[pName];
-      if(!pb) return null;
-      if(pb.isCenter) return null;
-      return computeSOI_m(pName);  // may also return null if uncomputable
-    }
-
-    const parentSOI_m = _getParentSOI_m(parentName);
-    const MIN_CLEAR   = parentRadius * 5;            // must clear parent surface
-    const HARD_FLOOR  = 0.01 * AU;                   // absolute minimum (system center)
-
-    let defaultSMA;
-
-    if(parentSOI_m === null){
-      // ── Case A: system center (infinite SOI) ─────────────────────────────
-      // Start from 0.01 AU minimum; push out beyond the farthest sibling if any.
-      const minForCenter = Math.max(parentRadius * 80, HARD_FLOOR);
-      if(siblings.length > 0){
-        // Use raw stored SMA, not viewport-scaled effectiveSMA
-        const maxSibSMA = Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0));
-        defaultSMA = Math.max(maxSibSMA * 1.5, minForCenter);
-      } else {
-        defaultSMA = minForCenter;
+    // Use SMA from modal input if set and valid; otherwise recalc
+    let defaultSMA = _prsSmaMetres;
+    if (!defaultSMA || defaultSMA <= 0) {
+      // fallback: recalc same way as before
+      const parentBody = bodies[parentName];
+      const centerBodyEntry = bodies[Object.keys(bodies).find(n => bodies[n].isCenter)];
+      const centerRadius = (centerBodyEntry?.data?.BASE_DATA?.radius) || 34817000;
+      const parentRadius = (parentBody?.data?.BASE_DATA?.radius) || centerRadius;
+      const siblings = Object.values(bodies).filter(b =>
+        b.data.ORBIT_DATA && b.data.ORBIT_DATA.parent === parentName
+      );
+      const AU = 1.496e11;
+      function _getParentSOI_m2(pName){
+        const pb = bodies[pName];
+        if(!pb) return null;
+        if(pb.isCenter) return null;
+        return computeSOI_m(pName);
       }
-
-    } else if(parentSOI_m <= parentRadius){
-      // ── Case B: degenerate SOI (SOI is inside the body radius) ───────────
-      // Fallback: place at parentRadius × 80 (classic heuristic); user can adjust.
-      defaultSMA = parentRadius * 80;
-
-    } else {
-      // ── Case C: normal body with a finite, usable SOI ────────────────────
-      const soiSafe = parentSOI_m * 0.80;   // stay within 80 % of SOI to avoid edge instability
-
-      if(siblings.length > 0){
-        // Use raw stored SMA, not viewport-scaled effectiveSMA
-        const maxSibSMA = Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0));
-        const candidate = maxSibSMA * 1.5;
-        if(candidate <= soiSafe){
-          // Fits comfortably inside SOI
-          defaultSMA = candidate;
-        } else if(maxSibSMA < soiSafe){
-          // Siblings exist and farthest is inside SOI; squeeze new body between farthest sibling and SOI edge
-          defaultSMA = maxSibSMA + (soiSafe - maxSibSMA) * 0.5;
+      const parentSOI_m = _getParentSOI_m2(parentName);
+      const MIN_CLEAR   = parentRadius * 5;
+      const HARD_FLOOR  = 0.01 * AU;
+      if(parentSOI_m === null){
+        const minForCenter = Math.max(parentRadius * 80, HARD_FLOOR);
+        defaultSMA = siblings.length > 0
+          ? Math.max(Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0)) * 1.5, minForCenter)
+          : minForCenter;
+      } else if(parentSOI_m <= parentRadius){
+        defaultSMA = parentRadius * 80;
+      } else {
+        const soiSafe = parentSOI_m * 0.80;
+        if(siblings.length > 0){
+          const maxSibSMA = Math.max(...siblings.map(b => b.data.ORBIT_DATA.semiMajorAxis || 0));
+          const candidate = maxSibSMA * 1.5;
+          if(candidate <= soiSafe) defaultSMA = candidate;
+          else if(maxSibSMA < soiSafe) defaultSMA = maxSibSMA + (soiSafe - maxSibSMA) * 0.5;
+          else defaultSMA = soiSafe * 0.5;
         } else {
-          // Siblings already spill beyond SOI; use 50 % of SOI as best guess
-          defaultSMA = soiSafe * 0.5;
+          defaultSMA = soiSafe * 0.33;
         }
-      } else {
-        // No siblings — place at 33 % of SOI (a resonant inner orbit feel)
-        defaultSMA = soiSafe * 0.33;
+        defaultSMA = Math.min(defaultSMA, soiSafe);
+        defaultSMA = Math.max(defaultSMA, MIN_CLEAR);
+        if(MIN_CLEAR >= soiSafe) defaultSMA = (parentRadius + soiSafe) * 0.5;
       }
-
-      // Clamp: must fit inside SOI and clear the surface
-      defaultSMA = Math.min(defaultSMA, soiSafe);
-      defaultSMA = Math.max(defaultSMA, MIN_CLEAR);
-
-      // If even MIN_CLEAR is outside the SOI, fall back to midpoint between surface and SOI
-      if(MIN_CLEAR >= soiSafe){
-        defaultSMA = (parentRadius + soiSafe) * 0.5;
-      }
+      defaultSMA = Math.max(defaultSMA, parentRadius * 5);
     }
-
-    // Final absolute floor
-    defaultSMA = Math.max(defaultSMA, parentRadius * 5);
 
     data.ORBIT_DATA = {
       parent: parentName,

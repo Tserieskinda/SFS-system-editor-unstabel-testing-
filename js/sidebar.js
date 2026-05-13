@@ -995,37 +995,125 @@ function buildLandmarks(lms){
   const el=document.getElementById('lm-list'); el.innerHTML='';
   lms.forEach((l,i)=>el.appendChild(makeLandmark(l,i)));
 }
-function makeLandmark(l,i){
-  const d=document.createElement('div'); d.className='lm-item'; d.id='lm-'+i;
-  const sa = l.startAngle||0, ea = l.endAngle||0;
-  // Slider + synced number input for precision entry.
-  // The number input accepts any value in [-360,360] typed directly; slider stays in sync.
-  d.innerHTML=`<div class="pp-key-header"><span class="pp-key-title">LANDMARK ${i+1}</span><button class="lm-del" onclick="delLandmark(${i})">✕</button></div>
-  <div class="frow"><span class="flabel">Name</span><input class="finput" id="lm-${i}-n" type="text" value="${l.name||''}" onblur="liveSync()"></div>
-  <div class="frow" style="flex-direction:column;gap:4px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span class="flabel">Start Angle</span>
-      <input type="text" inputmode="decimal" id="lm-${i}-s-num" value="${sa}" min="-360" max="360" step="0.5"
-        style="width:64px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--sky2);background:var(--bg2);border:1px solid var(--ink5);border-radius:3px;padding:1px 4px;text-align:right"
-        oninput="const v=parseFloat(this.value)||0;const sl=document.getElementById('lm-${i}-s');if(sl){sl.value=Math.max(-360,Math.min(360,v));}liveSync()">
+
+// Draws a mini arc SVG showing where on a 360° circle the landmark sits.
+// centre and width are in degrees.
+function _lmArcSVG(centre, width){
+  const R=34, cx=44, cy=44, size=88;
+  // Convert SFS angle convention to SVG arc: SFS 0° = top (like a compass).
+  // SVG 0° = right, so offset by -90°.
+  const startDeg = centre - width/2;
+  const endDeg   = centre + width/2;
+  const toRad = d => (d - 90) * Math.PI / 180;
+  const sx = cx + R * Math.cos(toRad(startDeg));
+  const sy = cy + R * Math.sin(toRad(startDeg));
+  const ex = cx + R * Math.cos(toRad(endDeg));
+  const ey = cy + R * Math.sin(toRad(endDeg));
+  const largeArc = (width % 360) > 180 ? 1 : 0;
+  // Centre tick
+  const tickAngle = toRad(centre);
+  const tx1 = cx + (R-7) * Math.cos(tickAngle);
+  const ty1 = cy + (R-7) * Math.sin(tickAngle);
+  const tx2 = cx + (R+7) * Math.cos(tickAngle);
+  const ty2 = cy + (R+7) * Math.sin(tickAngle);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="flex-shrink:0">
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="rgba(100,150,220,.18)" stroke-width="6"/>
+    <path d="M${sx.toFixed(1)},${sy.toFixed(1)} A${R},${R} 0 ${largeArc},1 ${ex.toFixed(1)},${ey.toFixed(1)}"
+      fill="none" stroke="rgba(100,220,180,.75)" stroke-width="7" stroke-linecap="round"/>
+    <line x1="${tx1.toFixed(1)}" y1="${ty1.toFixed(1)}" x2="${tx2.toFixed(1)}" y2="${ty2.toFixed(1)}"
+      stroke="rgba(255,210,80,.9)" stroke-width="2" stroke-linecap="round"/>
+    <text x="${cx}" y="${cy+4}" text-anchor="middle" font-family="'JetBrains Mono',monospace"
+      font-size="8" fill="rgba(180,200,255,.6)">${Math.round(centre)}°</text>
+  </svg>`;
+}
+
+function _lmSyncArc(i){
+  const cEl = document.getElementById(`lm-${i}-c`);
+  const wEl = document.getElementById(`lm-${i}-w`);
+  if(!cEl || !wEl) return;
+  const centre = parseFloat(cEl.value) || 0;
+  const width  = parseFloat(wEl.value) || 10;
+  const arc = document.getElementById(`lm-${i}-arc`);
+  if(arc) arc.innerHTML = _lmArcSVG(centre, width);
+  // Update read-only startAngle / endAngle display
+  const sa = document.getElementById(`lm-${i}-sa`);
+  const ea = document.getElementById(`lm-${i}-ea`);
+  if(sa) sa.textContent = (centre - width/2).toFixed(1) + '°';
+  if(ea) ea.textContent = (centre + width/2).toFixed(1) + '°';
+}
+
+function makeLandmark(l, i){
+  const d = document.createElement('div');
+  d.className = 'lm-item'; d.id = 'lm-' + i;
+
+  const sa = typeof l.startAngle === 'number' ? l.startAngle : 0;
+  const ea = typeof l.endAngle   === 'number' ? l.endAngle   : 10;
+  const centre = (sa + ea) / 2;
+  const width  = Math.abs(ea - sa) || 10;
+
+  d.innerHTML = `
+    <div class="pp-key-header">
+      <span class="pp-key-title">LANDMARK ${i+1}</span>
+      <button class="lm-del" onclick="delLandmark(${i})">✕</button>
     </div>
-    <input type="range" class="finput" id="lm-${i}-s" min="-360" max="360" step="0.5" value="${sa}" style="padding:0;height:6px;cursor:pointer"
-      oninput="const num=document.getElementById('lm-${i}-s-num');if(num)num.value=parseFloat(this.value).toFixed(1);liveSync()">
-  </div>
-  <div class="frow" style="flex-direction:column;gap:4px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span class="flabel">End Angle</span>
-      <input type="text" inputmode="decimal" id="lm-${i}-e-num" value="${ea}" min="-360" max="360" step="0.5"
-        style="width:64px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--sky2);background:var(--bg2);border:1px solid var(--ink5);border-radius:3px;padding:1px 4px;text-align:right"
-        oninput="const v=parseFloat(this.value)||0;const sl=document.getElementById('lm-${i}-e');if(sl){sl.value=Math.max(-360,Math.min(360,v));}liveSync()">
+
+    <div class="frow">
+      <span class="flabel">Name</span>
+      <input class="finput" id="lm-${i}-n" type="text" value="${(l.name||'').replace(/"/g,'&quot;')}"
+        oninput="liveSync()">
     </div>
-    <input type="range" class="finput" id="lm-${i}-e" min="-360" max="360" step="0.5" value="${ea}" style="padding:0;height:6px;cursor:pointer"
-      oninput="const num=document.getElementById('lm-${i}-e-num');if(num)num.value=parseFloat(this.value).toFixed(1);liveSync()">
-  </div>`;
+
+    <!-- Arc visualiser + computed start/end readout -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:6px 8px;
+      background:rgba(10,16,36,.6);border-radius:6px;border:1px solid rgba(100,220,180,.1)">
+      <div id="lm-${i}-arc">${_lmArcSVG(centre, width)}</div>
+      <div style="flex:1;font-family:'JetBrains Mono',monospace;font-size:.58rem">
+        <div style="color:var(--ink4);margin-bottom:3px">START → <span id="lm-${i}-sa" style="color:var(--sky2)">${sa.toFixed(1)}°</span></div>
+        <div style="color:var(--ink4)">END &nbsp; → <span id="lm-${i}-ea" style="color:var(--sky2)">${ea.toFixed(1)}°</span></div>
+        <div style="color:rgba(100,220,180,.35);margin-top:6px;font-size:.52rem">Width: <span id="lm-${i}-wd" style="color:rgba(100,220,180,.7)">${width.toFixed(1)}°</span></div>
+      </div>
+    </div>
+
+    <!-- Centre slider -->
+    <div class="frow" style="flex-direction:column;gap:3px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="flabel" style="font-size:.62rem">POSITION (centre)</span>
+        <input type="number" inputmode="decimal" id="lm-${i}-c-num"
+          value="${centre.toFixed(1)}" min="0" max="360" step="0.5"
+          style="width:62px;font-family:'JetBrains Mono',monospace;font-size:.66rem;
+            color:var(--sky2);background:rgba(10,16,36,.8);border:1px solid rgba(100,150,220,.3);
+            border-radius:3px;padding:2px 5px;text-align:right;outline:none"
+          oninput="const sl=document.getElementById('lm-${i}-c');if(sl)sl.value=this.value;_lmSyncArc(${i});liveSync()">
+      </div>
+      <input type="range" id="lm-${i}-c" min="0" max="360" step="0.5" value="${centre.toFixed(1)}"
+        class="lm-slider lm-slider-pos"
+        oninput="const n=document.getElementById('lm-${i}-c-num');if(n)n.value=parseFloat(this.value).toFixed(1);_lmSyncArc(${i});liveSync()">
+    </div>
+
+    <!-- Width slider -->
+    <div class="frow" style="flex-direction:column;gap:3px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="flabel" style="font-size:.62rem">WIDTH (angular span)</span>
+        <input type="number" inputmode="decimal" id="lm-${i}-w-num"
+          value="${width.toFixed(1)}" min="0.5" max="180" step="0.5"
+          style="width:62px;font-family:'JetBrains Mono',monospace;font-size:.66rem;
+            color:rgba(100,220,180,.9);background:rgba(10,16,36,.8);border:1px solid rgba(100,220,180,.25);
+            border-radius:3px;padding:2px 5px;text-align:right;outline:none"
+          oninput="const sl=document.getElementById('lm-${i}-w');if(sl)sl.value=this.value;const wd=document.getElementById('lm-${i}-wd');if(wd)wd.textContent=parseFloat(this.value).toFixed(1)+'°';_lmSyncArc(${i});liveSync()">
+      </div>
+      <input type="range" id="lm-${i}-w" min="0.5" max="180" step="0.5" value="${width.toFixed(1)}"
+        class="lm-slider lm-slider-wid"
+        oninput="const n=document.getElementById('lm-${i}-w-num');if(n)n.value=parseFloat(this.value).toFixed(1);const wd=document.getElementById('lm-${i}-wd');if(wd)wd.textContent=parseFloat(this.value).toFixed(1)+'°';_lmSyncArc(${i});liveSync()">
+    </div>`;
   return d;
 }
-function addLandmark(){ const l=document.getElementById('lm-list'); const i=l.children.length; l.appendChild(makeLandmark({name:'',startAngle:-5,endAngle:5},i)); }
-function delLandmark(i){ document.getElementById('lm-'+i)?.remove(); }
+
+function addLandmark(){
+  const l = document.getElementById('lm-list');
+  const i = l.children.length;
+  l.appendChild(makeLandmark({name:'', startAngle:175, endAngle:185}, i));
+}
+function delLandmark(i){ document.getElementById('lm-'+i)?.remove(); liveSync(); }
 
 // Auto-save: any text/number input in the sidebar triggers liveSync on blur
 // ── Colour picker helpers ──
@@ -1161,9 +1249,12 @@ function _liveSyncNow(){
   }
 
   // Only invalidate terrain cache when a terrain-relevant field triggered the sync.
-  // Invalidating on every keystroke (e.g. body name, map color) forces expensive
-  // heightmap re-evaluation each frame on weak devices.
-  if(typeof invalidateTerrainCache === 'function') invalidateTerrainCache(selectedBody);
+  // Orbit fields (SMA, eccentricity, AoP, direction) never affect terrain geometry —
+  // skipping the invalidation prevents a full terrain re-sample every slider tick on mobile.
+  const _orbitOnlyIds = new Set(['or-ecc','or-ecc-sl','or-aop','or-aop-sl','or-sma','or-sma-unit','or-dir','or-period','or-period-unit']);
+  if(typeof invalidateTerrainCache === 'function' && !_orbitOnlyIds.has(_focusId)){
+    invalidateTerrainCache(selectedBody);
+  }
 
   // BASE DATA
   d.BASE_DATA = d.BASE_DATA || {};
@@ -1644,11 +1735,15 @@ function collectPPKeys(){
 function collectLandmarks(){
   const lms=[]; let i=0;
   while(document.getElementById('lm-'+i)){
-    const n=val('lm-'+i+'-n');
-    // Read from number inputs (precise); fall back to range slider if not present
-    const lmS = parseFloat(document.getElementById('lm-'+i+'-s-num')?.value ?? val('lm-'+i+'-s')) || 0;
-    const lmE = parseFloat(document.getElementById('lm-'+i+'-e-num')?.value ?? val('lm-'+i+'-e')) || 0;
-    if(n) lms.push({name:n, startAngle:lmS, endAngle:lmE});
+    const name = document.getElementById(`lm-${i}-n`)?.value?.trim() || '';
+    // Read centre and width from number inputs (precise), fall back to range slider
+    const centre = parseFloat(document.getElementById(`lm-${i}-c-num`)?.value
+                ?? document.getElementById(`lm-${i}-c`)?.value) || 0;
+    const width  = parseFloat(document.getElementById(`lm-${i}-w-num`)?.value
+                ?? document.getElementById(`lm-${i}-w`)?.value) || 10;
+    const startAngle = parseFloat((centre - width/2).toFixed(4));
+    const endAngle   = parseFloat((centre + width/2).toFixed(4));
+    if(name) lms.push({ name, startAngle, endAngle });
     i++;
   }
   return lms;

@@ -14,7 +14,7 @@
 <div class="screen" id="s-start">
   <div class="logo-wrap">
     <h1 class="logo-main">SFS <em>SYSTEM</em><br>EDITOR</h1>
-    <p class="logo-eyebrow">v5.5</p>
+    <p class="logo-eyebrow">v5.6</p>
   </div>
 
   <!-- ── Main navigation ── -->
@@ -169,12 +169,16 @@
       </small>
     </div>
     <button class="mf-btn ok" style="width:100%;margin-top:12px" onclick="goNewFromOpen()">START WITH EMPTY SYSTEM</button>
+    <button class="mf-btn" style="width:100%;margin-top:8px;border-color:rgba(160,100,255,.45);color:rgba(190,140,255,.9);background:rgba(160,100,255,.07)" onclick="openImportSystemModal()" id="btn-import-system">
+      <span style="margin-right:6px">🔀</span>IMPORT SYSTEM
+    </button>
     <button class="mf-btn" style="width:100%;margin-top:8px;border-color:var(--sky);color:var(--sky2);background:rgba(85,136,204,.08)" onclick="goFeatured()">
       <span style="margin-right:6px">⭐</span>FEATURED SYSTEMS
     </button>
   </div>
 </div>
 <input type="file" id="fi-zip" accept=".zip" style="display:none" onchange="loadZipFile(this.files[0]);this.value=''">
+<input type="file" id="fi-import-zip" accept=".zip" style="display:none" onchange="importSystemZip(this.files[0]);this.value=''">
 
 <!-- ══════════════ FEATURED SYSTEMS SCREEN ══════════════ -->
 <div class="screen hide" id="s-featured">
@@ -287,9 +291,42 @@
 </div>
 
 <div id="modal-preset">
-  <div class="mpanel" id="mpanel-preset" style="padding:28px 28px 22px;max-width:760px;width:90vw">
-    <h2 style="font-family:'Orbitron',sans-serif;font-size:.85rem;color:var(--sky2);letter-spacing:.15em;margin-bottom:6px">SELECT BODY PRESET</h2>
-    <p id="mp-desc" style="font-size:.7rem;color:var(--ink4);margin-bottom:16px">Choose a starting template — all properties are fully editable afterward</p>
+  <div class="mpanel" id="mpanel-preset" style="padding:22px 28px 20px;max-width:780px;width:92vw">
+    <!-- Header row: title + orbit controls -->
+    <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:10px">
+      <div style="flex:1;min-width:0">
+        <h2 style="font-family:'Orbitron',sans-serif;font-size:.82rem;color:var(--sky2);letter-spacing:.15em;margin-bottom:4px">SELECT BODY PRESET</h2>
+        <p id="mp-desc" style="font-size:.66rem;color:var(--ink4);margin:0">Choose a starting template — all properties are fully editable afterward</p>
+      </div>
+      <!-- Right-side controls: only shown for non-center bodies -->
+      <div id="prs-orbit-controls" style="display:none;flex-shrink:0;min-width:200px">
+        <!-- Orbit Height (SMA) -->
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--ink4);white-space:nowrap;letter-spacing:.06em">orbit height</span>
+          <input id="prs-sma-input" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false"
+            style="flex:1;min-width:0;background:rgba(255,255,255,.04);border:1px solid var(--rim2);border-radius:3px;color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:.65rem;padding:4px 6px;outline:none"
+            oninput="prsOnSmaInput()" onblur="prsOnSmaBlur()">
+          <select id="prs-sma-unit" style="background:#0a0e1e;border:1px solid var(--rim2);border-radius:3px;color:var(--ink3);font-family:'JetBrains Mono',monospace;font-size:.6rem;padding:3px 2px;cursor:pointer;outline:none"
+            onchange="prsOnSmaUnitChange()">
+            <option value="m">m</option>
+            <option value="km">km</option>
+            <option value="Mm">Mm</option>
+            <option value="Gm">Gm</option>
+            <option value="AU" selected>AU</option>
+            <option value="ly">ly</option>
+          </select>
+        </div>
+        <!-- SOI display -->
+        <div id="prs-soi-display" style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--ink4);padding-left:2px;margin-bottom:5px;min-height:14px"></div>
+        <!-- Parent body -->
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--ink4);white-space:nowrap;letter-spacing:.06em">parent</span>
+          <select id="prs-parent-sel" style="flex:1;min-width:0;background:#0a0e1e;border:1px solid var(--rim2);border-radius:3px;color:var(--ink3);font-family:'JetBrains Mono',monospace;font-size:.6rem;padding:3px 5px;cursor:pointer;outline:none"
+            onchange="prsOnParentChange()"></select>
+          <button onclick="prsOnParentChange(true)" title="Clear parent — use currently selected body" style="background:transparent;border:1px solid var(--rim);border-radius:3px;color:var(--ink4);font-size:.6rem;padding:2px 5px;cursor:pointer;line-height:1">×</button>
+        </div>
+      </div>
+    </div>
     <!-- Tab bar -->
     <div class="prs-tabs">
       <button class="prs-tab on" onclick="prsSetTab('all',this)">ALL</button>
@@ -304,12 +341,13 @@
     </div>
     <!-- Grid -->
     <div class="prs-grid" id="prs-grid"></div>
-    <div class="modal-footer" style="margin-top:16px">
+    <div class="modal-footer" style="margin-top:14px">
       <button class="mf-btn" onclick="closePreset()">CANCEL</button>
       <label class="mf-btn" style="cursor:pointer;border-color:rgba(48,224,144,.45);color:rgba(48,224,144,.9);background:rgba(48,224,144,.07)" title="Import a body directly from a .txt file">
         ⬆ UPLOAD TXT
         <input type="file" accept=".txt" style="display:none" onchange="importBodyFromTxt(this)">
       </label>
+      <button class="mf-btn" id="prs-next-btn" onclick="prsNext()" style="display:none;border-color:rgba(100,180,255,.4);color:rgba(120,190,255,.9);background:rgba(100,180,255,.06)">NEXT →</button>
       <button class="mf-btn ok" id="prs-confirm-btn" onclick="confirmPreset()">ADD BODY →</button>
     </div>
   </div>
@@ -473,7 +511,7 @@
           <div class="frow"><span class="flabel">Height (m)</span>
             <input class="finput" style="flex:1;min-width:60px" id="av-height" type="text" inputmode="decimal" step="10000"><select class="funit-sel" id="av-height-unit" style="width:52px" onchange="onSimpleKmChange('av-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Texture</span>
-            <div class="tpick-wrap" id="tpw-av-tex"><input class="tpick-input" id="av-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-av-tex">✕</button><div class="tpick-dropdown" id="tpd-av-tex"></div></div>
+            <div class="tpick-wrap" id="tpw-av-tex"><div class="tpick-field"><div class="tpick-preview" id="tpv-av-tex"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="av-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-av-tex">✕</button></div><div class="tpick-dropdown" id="tpd-av-tex"></div></div>
           </div>
         </div>
       </div>
@@ -483,7 +521,7 @@
           <div class="tog on" id="cl-has" onclick="this.classList.toggle('on');toggleAtmoSection('cl-fields','cl-has')"></div></div>
         <div id="cl-fields">
           <div class="frow"><span class="flabel">Texture</span>
-            <div class="tpick-wrap" id="tpw-cl-tex"><input class="tpick-input" id="cl-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-cl-tex">✕</button><div class="tpick-dropdown" id="tpd-cl-tex"></div></div></div>
+            <div class="tpick-wrap" id="tpw-cl-tex"><div class="tpick-field"><div class="tpick-preview" id="tpv-cl-tex"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="cl-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-cl-tex">✕</button></div><div class="tpick-dropdown" id="tpd-cl-tex"></div></div></div>
           <div class="frow"><span class="flabel">Start Height</span>
             <input class="finput" style="flex:1;min-width:60px" id="cl-sh" type="text" inputmode="decimal" step="100" oninput="clWidthAutoSync();syncCloudVel()"><select class="funit-sel" id="cl-sh-unit" style="width:52px" onchange="onSimpleKmChange('cl-sh')"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Width</span>
@@ -525,7 +563,7 @@
           <div class="tog" id="fc-has" onclick="this.classList.toggle('on');toggleAtmoSection('fc-fields','fc-has')"></div></div>
         <div id="fc-fields">
           <div class="frow"><span class="flabel">Clouds Texture</span>
-            <div class="tpick-wrap" id="tpw-fc-tex"><input class="tpick-input" id="fc-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-fc-tex">✕</button><div class="tpick-dropdown" id="tpd-fc-tex"></div></div></div>
+            <div class="tpick-wrap" id="tpw-fc-tex"><div class="tpick-field"><div class="tpick-preview" id="tpv-fc-tex"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="fc-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-fc-tex">✕</button></div><div class="tpick-dropdown" id="tpd-fc-tex"></div></div></div>
           <div class="frow-s">
             <div class="frow-s-top"><span class="flabel">Cutout</span><span class="fval" id="fc-cut-val">—</span><input class="finput" id="fc-cut" type="text" inputmode="decimal" step="0.01" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('fc-cut',-1,1)"></div>
             <input class="fslider" id="fc-cut-sl" type="range" min="-1" max="1" step="0.01" oninput="syncFromSlider('fc-cut',-1,1,2)">
@@ -560,7 +598,7 @@
         <div id="terrain-fields">
         <div class="fsec-title" style="margin-top:10px">TEXTURE DATA</div>
         <div class="frow"><span class="flabel">Planet Texture</span>
-          <div class="tpick-wrap" id="tpw-tt-pt"><input class="tpick-input" id="tt-pt" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-pt">✕</button><div class="tpick-dropdown" id="tpd-tt-pt"></div></div></div>
+          <div class="tpick-wrap" id="tpw-tt-pt"><div class="tpick-field"><div class="tpick-preview" id="tpv-tt-pt"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="tt-pt" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-pt">✕</button></div><div class="tpick-dropdown" id="tpd-tt-pt"></div></div></div>
         <div class="frow-s">
           <div class="frow-s-top"><span class="flabel">Tex Cutout</span><span class="fval" id="tt-cut-val">—</span><input class="finput" id="tt-cut" type="text" inputmode="decimal" step="0.001" min="-1" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('tt-cut',-1,1)"></div>
           <input class="fslider" id="tt-cut-sl" type="range" min="-1" max="1" step="0.001" oninput="syncFromSlider('tt-cut',-1,1,3)">
@@ -572,7 +610,7 @@
         <div class="ftoggle-row"><span class="flabel">Lock Texture to Surface <span style="color:var(--ink4);font-size:.52rem">(DontDistort)</span></span>
           <div class="tog" id="tt-nd" onclick="this.classList.toggle('on')"></div></div>
         <div class="frow"><span class="flabel">Surface Tex A</span>
-          <div class="tpick-wrap" id="tpw-tt-sa"><input class="tpick-input" id="tt-sa" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sa">✕</button><div class="tpick-dropdown" id="tpd-tt-sa"></div></div></div>
+          <div class="tpick-wrap" id="tpw-tt-sa"><div class="tpick-field"><div class="tpick-preview" id="tpv-tt-sa"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="tt-sa" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sa">✕</button></div><div class="tpick-dropdown" id="tpd-tt-sa"></div></div></div>
         <div class="frow"><span class="flabel">Surf Size A (x,y)</span>
           <input class="finput" id="tt-sax" type="text" inputmode="decimal" step="1" placeholder="x" style="flex:0 0 55px">
           <input class="finput" id="tt-say" type="text" inputmode="decimal" step="1" placeholder="y" style="flex:0 0 55px">
@@ -581,7 +619,7 @@
           <input class="finput" id="tt-lod-a" type="text" inputmode="decimal" step="1" min="0" placeholder="px (def 80)">
         </div>
         <div class="frow"><span class="flabel">Surface Tex B</span>
-          <div class="tpick-wrap" id="tpw-tt-sb"><input class="tpick-input" id="tt-sb" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sb">✕</button><div class="tpick-dropdown" id="tpd-tt-sb"></div></div></div>
+          <div class="tpick-wrap" id="tpw-tt-sb"><div class="tpick-field"><div class="tpick-preview" id="tpv-tt-sb"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="tt-sb" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-sb">✕</button></div><div class="tpick-dropdown" id="tpd-tt-sb"></div></div></div>
         <div class="frow"><span class="flabel">Surf Size B (x,y)</span>
           <input class="finput" id="tt-sbx" type="text" inputmode="decimal" step="1" placeholder="x" style="flex:0 0 55px">
           <input class="finput" id="tt-sby" type="text" inputmode="decimal" step="1" placeholder="y" style="flex:0 0 55px">
@@ -590,7 +628,7 @@
           <input class="finput" id="tt-lod-b" type="text" inputmode="decimal" step="1" min="0" placeholder="px (def 80)">
         </div>
         <div class="frow"><span class="flabel">Terrain Tex C</span>
-          <div class="tpick-wrap" id="tpw-tt-tc"><input class="tpick-input" id="tt-tc" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-tc">✕</button><div class="tpick-dropdown" id="tpd-tt-tc"></div></div></div>
+          <div class="tpick-wrap" id="tpw-tt-tc"><div class="tpick-field"><div class="tpick-preview" id="tpv-tt-tc"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="tt-tc" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-tt-tc">✕</button></div><div class="tpick-dropdown" id="tpd-tt-tc"></div></div></div>
         <div class="frow"><span class="flabel">Terrain Size C</span>
           <input class="finput" id="tt-tcx" type="text" inputmode="decimal" step="1" placeholder="x" style="flex:0 0 55px">
           <input class="finput" id="tt-tcy" type="text" inputmode="decimal" step="1" placeholder="y" style="flex:0 0 55px">
@@ -750,7 +788,7 @@
           <div class="tog" id="rng-has" onclick="this.classList.toggle('on');toggleRings()"></div></div>
         <div id="rings-fields" style="opacity:.35;pointer-events:none">
           <div class="frow"><span class="flabel">Rings Texture</span>
-            <div class="tpick-wrap" id="tpw-rng-tex"><input class="tpick-input" id="rng-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-rng-tex">✕</button><div class="tpick-dropdown" id="tpd-rng-tex"></div></div></div>
+            <div class="tpick-wrap" id="tpw-rng-tex"><div class="tpick-field"><div class="tpick-preview" id="tpv-rng-tex"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="rng-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-rng-tex">✕</button></div><div class="tpick-dropdown" id="tpd-rng-tex"></div></div></div>
           <div class="frow"><span class="flabel">Start Radius</span>
             <input class="finput" id="rng-sr" type="text" inputmode="decimal" step="50000" oninput="onDistInput('rng-sr','rng-sr-unit','rng-sr-hint','radius')">
             <select class="funit-sel" id="rng-sr-unit" onchange="onUnitChange('rng-sr','rng-sr-unit','rng-sr-hint','radius')">
@@ -787,7 +825,7 @@
           <div class="tog" id="wt-has" onclick="this.classList.toggle('on');toggleWater()"></div></div>
         <div id="water-fields" style="opacity:.35;pointer-events:none">
           <div class="frow"><span class="flabel">Ocean Mask Tex</span>
-            <div class="tpick-wrap" id="tpw-wt-tex"><input class="tpick-input" id="wt-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-wt-tex">✕</button><div class="tpick-dropdown" id="tpd-wt-tex"></div></div></div>
+            <div class="tpick-wrap" id="tpw-wt-tex"><div class="tpick-field"><div class="tpick-preview" id="tpv-wt-tex"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="wt-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-wt-tex">✕</button></div><div class="tpick-dropdown" id="tpd-wt-tex"></div></div></div>
           <div class="ftoggle-row"><span class="flabel">Lower Terrain</span>
             <div class="tog on" id="wt-lt" onclick="this.classList.toggle('on')"></div></div>
           <div class="frow"><span class="flabel">Ocean Depth</span>
@@ -1453,6 +1491,88 @@
   </div>
 </div>
 
+<!-- ══════════════ IMPORT SYSTEM MODAL ══════════════ -->
+<div id="modal-import-system">
+  <div class="mpanel" style="width:520px;max-width:96vw">
+    <div style="font-size:2rem;margin-bottom:10px">🔀</div>
+    <h2 style="margin-bottom:6px">IMPORT SYSTEM</h2>
+    <p style="margin-bottom:18px;font-size:.75rem;color:var(--ink4);line-height:1.7">
+      Merge a second system zip into the current session.<br>
+      Choose how the imported system's centre connects to the existing one.
+    </p>
+
+    <!-- Option cards -->
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">
+
+      <!-- Option A – Barycentre -->
+      <label id="imp-opt-a" class="imp-opt-card imp-opt-sel" onclick="selectImportOpt('a')">
+        <div class="imp-opt-radio"></div>
+        <div>
+          <div class="imp-opt-title">⚖ Shared Barycentre</div>
+          <div class="imp-opt-desc">
+            Both system centres orbit a new barycentre body at a distance large enough that neither system's SOI is disrupted.
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:.68rem;color:var(--ink4);font-family:'JetBrains Mono',monospace">Separation (AU):</span>
+            <input id="imp-bary-au" type="number" value="10" min="0.01" step="0.1"
+              style="width:70px;padding:3px 6px;font-size:.72rem;font-family:'JetBrains Mono',monospace;
+                     background:var(--dp2);border:1px solid var(--rim);border-radius:3px;color:var(--ink1);outline:none"
+              onclick="event.stopPropagation()">
+          </div>
+        </div>
+      </label>
+
+      <!-- Option B – New orbits existing centre -->
+      <label id="imp-opt-b" class="imp-opt-card" onclick="selectImportOpt('b')">
+        <div class="imp-opt-radio"></div>
+        <div>
+          <div class="imp-opt-title">🌐 New Centre Orbits Existing Centre</div>
+          <div class="imp-opt-desc">
+            The imported system's centre is given an orbit around the current system's centre.
+            All imported bodies keep their relative orbits intact.
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:.68rem;color:var(--ink4);font-family:'JetBrains Mono',monospace">Orbit SMA (AU):</span>
+            <input id="imp-b-au" type="number" value="20" min="0.01" step="0.1"
+              style="width:70px;padding:3px 6px;font-size:.72rem;font-family:'JetBrains Mono',monospace;
+                     background:var(--dp2);border:1px solid var(--rim);border-radius:3px;color:var(--ink1);outline:none"
+              onclick="event.stopPropagation()">
+          </div>
+        </div>
+      </label>
+
+      <!-- Option C – New orbits chosen body -->
+      <label id="imp-opt-c" class="imp-opt-card" onclick="selectImportOpt('c')">
+        <div class="imp-opt-radio"></div>
+        <div>
+          <div class="imp-opt-title">🪐 New Centre Orbits a Specific Body</div>
+          <div class="imp-opt-desc">
+            The imported system's centre orbits a body you choose from the existing system.
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:.68rem;color:var(--ink4);font-family:'JetBrains Mono',monospace">Parent body:</span>
+            <select id="imp-c-parent"
+              style="padding:3px 6px;font-size:.72rem;font-family:'JetBrains Mono',monospace;
+                     background:var(--dp2);border:1px solid var(--rim);border-radius:3px;color:var(--ink1);outline:none"
+              onclick="event.stopPropagation()"></select>
+            <span style="font-size:.68rem;color:var(--ink4);font-family:'JetBrains Mono',monospace">SMA (AU):</span>
+            <input id="imp-c-au" type="number" value="5" min="0.01" step="0.1"
+              style="width:70px;padding:3px 6px;font-size:.72rem;font-family:'JetBrains Mono',monospace;
+                     background:var(--dp2);border:1px solid var(--rim);border-radius:3px;color:var(--ink1);outline:none"
+              onclick="event.stopPropagation()">
+          </div>
+        </div>
+      </label>
+    </div>
+
+    <div class="modal-footer" style="gap:10px">
+      <button class="mf-btn" onclick="closeImportSystemModal()">CANCEL</button>
+      <button class="mf-btn" style="border-color:rgba(160,100,255,.45);color:rgba(190,140,255,.9);background:rgba(160,100,255,.07)"
+        onclick="triggerFileInput('fi-import-zip')">📂 PICK ZIP &amp; IMPORT →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ LOADING OVERLAY ══════════════ -->
 <div id="loading-overlay">
   <div class="loading-inner">
@@ -1506,6 +1626,7 @@
 <script src="js/tex-creator.js?v=5.8"></script>
 <script src="js/sfx.js?v=5.8"></script>
 <script src="js/utils.js?v=5.8"></script>
+<script src="js/images.js?v=5.8"></script>
 <!-- ══ TERRAIN DETAIL DROPDOWN (body-level to escape topbar stacking context) ══ -->
 <div id="terrain-detail-dropdown" style="display:none;position:fixed;
   min-width:200px;background:rgba(6,10,22,.97);border:1px solid rgba(180,140,255,.25);
@@ -1732,6 +1853,8 @@
             padding:8px 12px;min-height:34px;cursor:pointer;white-space:nowrap">⤢ Pan / Zoom Image</button>
         </div>
         <div id="ast-draw-hint" style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.8);letter-spacing:.04em">Drag to paint the asteroid silhouette</div>
+
+
       </div>
 
       <!-- Effects panel -->
@@ -1918,19 +2041,19 @@
         <div style="display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(85,85,112,.9);white-space:nowrap">Height:</span>
-            <input type="range" id="ast-hmap-height" min="-50000" max="50000" value="5000"
+            <input type="range" id="ast-hmap-height" min="0" max="50000" value="5000"
               style="flex:1;accent-color:rgba(90,240,192,.8);height:28px"
               oninput="document.getElementById('ast-hmap-height-val').value=this.value;astUpdateApplyPreview()">
             <input type="text" inputmode="decimal" id="ast-hmap-height-val" value="5000"
               style="width:78px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.4);
               color:rgba(220,220,255,.8);font-family:'JetBrains Mono',monospace;font-size:.54rem;
               padding:4px 6px;text-align:right;border-radius:2px"
-              oninput="document.getElementById('ast-hmap-height').value=this.value;astUpdateApplyPreview()">
+              oninput="let _v=parseFloat(this.value)||0;if(_v&lt;0){_v=0;this.value=0;}document.getElementById('ast-hmap-height').value=_v;astUpdateApplyPreview()">
             <span style="font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.6)">m</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(85,85,112,.7)">
             <span>Range:</span>
-            <input type="text" inputmode="decimal" id="ast-height-min" value="-50000" placeholder="min"
+            <input type="text" inputmode="decimal" id="ast-height-min" value="0" placeholder="min"
               style="width:70px;background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.3);
               color:rgba(180,180,200,.7);font-family:'JetBrains Mono',monospace;font-size:.5rem;
               padding:3px 5px;text-align:center;border-radius:2px"
@@ -1947,9 +2070,16 @@
           </div>
         </div>
 
+        <!-- Replace toggle -->
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="ast-replace-formula" checked
+            style="accent-color:rgba(90,240,192,.9);width:14px;height:14px;flex-shrink:0;cursor:pointer">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(200,200,240,.75)">Replace existing heightmap / terrain formula</span>
+        </label>
+
         <!-- Formula preview -->
         <div style="background:rgba(6,10,22,.9);border:1px solid rgba(90,90,112,.3);padding:8px;border-radius:2px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:.45rem;letter-spacing:.1em;color:rgba(90,240,192,.35);margin-bottom:4px">WILL APPEND TO TERRAIN FORMULA (Normal)</div>
+          <div id="ast-apply-mode-label" style="font-family:'JetBrains Mono',monospace;font-size:.45rem;letter-spacing:.1em;color:rgba(90,240,192,.35);margin-bottom:4px">WILL REPLACE TERRAIN FORMULA (Normal)</div>
           <div id="ast-apply-preview" style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(200,200,240,.7);word-break:break-all;line-height:1.5">
             <span style="color:rgba(85,85,112,.5)">— generate heightmap first —</span>
           </div>
@@ -2190,15 +2320,21 @@ function astGenerate() {
   const maxR=Math.max(...sm);
   if(maxR===0){document.getElementById('ast-map-info').textContent='Nothing drawn yet';astRawMapData=null;return;}
   astRawMapData=new Float32Array(W);
-  // Sample right-to-left so the exported heightmap is horizontally mirrored
-  // relative to the drawing. This cancels the in-game left-right flip without
-  // changing how the silhouette looks in the draw preview.
-  for(let x=0;x<W;x++) astRawMapData[x]=sm[Math.floor((W-1-x)/W*AST_RES)]/maxR;
+  // HeightMap.cs: points[W-1-i] = GetHeightAtX(i) → two flips cancel, so sample right-to-left.
+  // The draw canvas is CCW, the game samples CW → mirror sm before sampling to fix the handedness.
+  // +AST_RES/2 applies a 180° CW correction (equivalent to two 90° CW rotations) so the
+  // heightmap orientation matches what the game expects.
+  const ROT180 = AST_RES / 2;
+  for(let x=0;x<W;x++){
+    const srcIdx = (AST_RES - Math.floor((W-1-x)/(W-1)*(AST_RES-1)) + ROT180) % AST_RES;
+    astRawMapData[x] = sm[srcIdx] / maxR;
+  }
   document.getElementById('ast-vshift').value=0;
   document.getElementById('ast-vshift-val').textContent='0';
   astRenderMap(0);
   document.getElementById('ast-map-info').textContent=`${W}×${H}  ·  max radius ${Math.round(maxR)}px  ·  ${AST_RES} angular samples`;
 }
+
 
 function astRenderMap(shiftPx) {
   if(!astRawMapData) return;
@@ -2207,13 +2343,12 @@ function astRenderMap(shiftPx) {
   const W=mc.width, H=mc.height;
   const img=mctx.createImageData(W,H);
   for(let x=0;x<W;x++){
-    const h=1-astRawMapData[x];
-    const cutY=Math.round(H*(1-h))+shiftPx;
+    const cutY=Math.round(H*(1-astRawMapData[x]))+shiftPx;
     for(let y=0;y<H;y++){
       const i=(y*W+x)*4;
-      const below=y>=cutY;
+      const opaque=y>=cutY;
       img.data[i]=img.data[i+1]=img.data[i+2]=0;
-      img.data[i+3]=below?255:0;
+      img.data[i+3]=opaque?255:0;
     }
   }
   mctx.putImageData(img,0,0);
@@ -2259,13 +2394,14 @@ function astBuildOffscreenCanvas(shiftPx) {
     ? (parseInt(document.getElementById('ast-vshift').value) || 0)
     : shiftPx;
   for (let x = 0; x < W; x++) {
-    const h = 1 - astRawMapData[x];
-    const cutY = Math.round(H * (1 - h)) + shift;
+    // Unity GetPixels32 is bottom-origin. Scanning j=0 upward finds first non-opaque from bottom.
+    // Transparent top / opaque bottom. cutY = H*(1-v) so Unity reads back v = astRawMapData[x].
+    const cutY = Math.round(H * (1 - astRawMapData[x])) + shift;
     for (let y = 0; y < H; y++) {
       const i = (y * W + x) * 4;
-      const below = y >= cutY;
+      const opaque = y >= cutY;
       img.data[i] = img.data[i + 1] = img.data[i + 2] = 0;
-      img.data[i + 3] = below ? 255 : 0;
+      img.data[i + 3] = opaque ? 255 : 0;
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -2589,24 +2725,50 @@ function astRefreshBodyList() {
     sel.appendChild(opt);
   });
   if (prev && names.includes(prev)) sel.value = prev;
+  // Auto-set height to the selected body's radius
+  if (sel.value) astSetHeightToBodyRadius(sel.value);
+  else astUpdateApplyPreview();
+}
+
+function astSetHeightToBodyRadius(bodyName) {
+  if (!bodyName) return;
+  const b = (typeof bodies !== 'undefined') && bodies[bodyName];
+  if (!b) return;
+  const r = b.data && b.data.BASE_DATA && b.data.BASE_DATA.radius;
+  if (!r) return;
+  const radius = Math.round(parseFloat(r));
+  if (isNaN(radius) || radius <= 0) return;
+  // Expand slider max if the radius exceeds it, then set value
+  const sl = document.getElementById('ast-hmap-height');
+  const ni = document.getElementById('ast-hmap-height-val');
+  if (radius > parseFloat(sl.max)) {
+    sl.max = radius;
+    document.getElementById('ast-height-max').value = radius;
+  }
+  sl.value = radius;
+  ni.value = radius;
   astUpdateApplyPreview();
 }
 
 function astClampHeightRange() {
-  const minV = parseFloat(document.getElementById('ast-height-min').value) || -50000;
+  const minV = Math.max(0, parseFloat(document.getElementById('ast-height-min').value) || 0);
   const maxV = parseFloat(document.getElementById('ast-height-max').value) || 50000;
   const sl = document.getElementById('ast-hmap-height');
   const ni = document.getElementById('ast-hmap-height-val');
   let v = parseFloat(ni.value) || 0;
-  v = Math.max(minV, Math.min(maxV, v));
+  v = Math.max(0, Math.max(minV, Math.min(maxV, v))); // absolute floor at 0
+  sl.min = 0; // always keep slider min at 0
   sl.value = v; ni.value = v;
 }
 
 function astSetHeightRange() {
-  const minV = parseFloat(document.getElementById('ast-height-min').value) || -50000;
-  const maxV = parseFloat(document.getElementById('ast-height-max').value) || 50000;
+  const minV = Math.max(0, parseFloat(document.getElementById('ast-height-min').value) || 0);
+  const maxV = Math.max(minV + 1, parseFloat(document.getElementById('ast-height-max').value) || 50000);
+  document.getElementById('ast-height-min').value = minV; // enforce 0 floor visually
+  document.getElementById('ast-height-max').value = maxV;
   const sl = document.getElementById('ast-hmap-height');
-  sl.min = minV; sl.max = maxV;
+  sl.min = 0; // slider never goes below 0
+  sl.max = maxV;
   astClampHeightRange();
   astUpdateApplyPreview();
 }
@@ -2635,8 +2797,13 @@ function astUpdateApplyPreview() {
     if (circ !== null) circumStr = circ;
   }
 
+  const replaceMode = document.getElementById('ast-replace-formula')?.checked ?? true;
   const line = `OUTPUT = AddHeightMap(${pngName}.png, ${circumStr}, ${height})`;
   preview.textContent = line;
+  // Update the label to show current mode
+  const labelEl = document.querySelector('[for="ast-replace-formula"] ~ *') ;
+  const modeLabel = document.getElementById('ast-apply-mode-label');
+  if(modeLabel) modeLabel.textContent = replaceMode ? 'WILL REPLACE TERRAIN FORMULA (Normal)' : 'WILL APPEND TO TERRAIN FORMULA (Normal)';
 
   const ready = hasMap && !!bodyName;
   btn.disabled = !ready;
@@ -2672,32 +2839,66 @@ function astApplyToBody() {
   // 1. Save PNG into assets.heightmaps
   const mc = astBuildOffscreenCanvas();
   if (!mc) { alert('Failed to render heightmap.'); return; }
-  mc.toBlob(blob => {
-    if (!blob) { alert('Failed to export PNG.'); return; }
-    const url = URL.createObjectURL(blob);
-    const entry = { name: pngName, url, type: 'image/png', bytes: null };
-    // Store bytes for export
-    blob.arrayBuffer().then(ab => { entry.bytes = new Uint8Array(ab); }).catch(()=>{});
+  // Use toDataURL so the URL is a real data: URL (not a blob: URL).
+  // This ensures export.js dataUrlToBytes() can read it correctly, and
+  // avoids the async race where entry.bytes was null at export time.
+  const dataUrl = mc.toDataURL('image/png');
+  if (!dataUrl || dataUrl === 'data:,') { alert('Failed to export PNG.'); return; }
 
-    // Add to heightmaps array (no longer removing existing - now using unique names)
-    if (existing) {
-      existing.push(entry);
-    }
+  // Synchronously convert to bytes for ZIP export
+  const b64 = dataUrl.split(',')[1];
+  const byteStr = atob(b64);
+  const bytes = new Uint8Array(byteStr.length);
+  for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
 
-    // Inject into heightmap system
-    if (typeof injectCustomHeightmap === 'function') injectCustomHeightmap(pngName);
-    // Render asset row
-    if (typeof renderAssetRow === 'function') renderAssetRow(entry, 'heightmaps');
+  const entry = { name: pngName, url: dataUrl, type: 'image/png', bytes };
 
-    // 2. Append formula line to Normal terrain formula of selected body
-    const b = bodies[bodyName];
-    const TD = (b.data.TERRAIN_DATA = b.data.TERRAIN_DATA || {});
-    const tfd = (TD.terrainFormulaDifficulties = TD.terrainFormulaDifficulties || {});
+  // Add to heightmaps array
+  if (existing) existing.push(entry);
 
-    // Append to Normal (and mirror to Hard/Realistic if empty)
+  // Inject into heightmap system
+  if (typeof injectCustomHeightmap === 'function') injectCustomHeightmap(pngName);
+  // Render asset row
+  if (typeof renderAssetRow === 'function') renderAssetRow(entry, 'heightmaps');
+
+  const replaceMode = document.getElementById('ast-replace-formula')?.checked ?? true;
+
+  // 2. Write formula line to terrain formula of selected body
+  const b = bodies[bodyName];
+  const TD = (b.data.TERRAIN_DATA = b.data.TERRAIN_DATA || {});
+  const tfd = (TD.terrainFormulaDifficulties = TD.terrainFormulaDifficulties || {});
+
+  if(replaceMode){
+    // Remove any heightmap assets that were referenced only by this body's old formula
+    // (collect names from old formula lines before wiping)
+    const oldLines = [...(tfd.Normal||[]), ...(tfd.Hard||[]), ...(tfd.Realistic||[])];
+    const oldHmNames = new Set();
+    oldLines.forEach(l => {
+      const m = l.match(/AddHeightMap\(([^,)]+)/);
+      if(m) oldHmNames.add(m[1].trim());
+    });
+    // Only remove assets not referenced by any other body
+    const otherBodiesFormulas = Object.entries(bodies)
+      .filter(([n]) => n !== bodyName)
+      .flatMap(([,bv]) => {
+        const t = bv.data?.TERRAIN_DATA?.terrainFormulaDifficulties || {};
+        return [...(t.Normal||[]),...(t.Hard||[]),...(t.Realistic||[])];
+      });
+    oldHmNames.forEach(hmName => {
+      const usedElsewhere = otherBodiesFormulas.some(l => l.includes(hmName));
+      if(!usedElsewhere && typeof assets !== 'undefined' && assets.heightmaps){
+        const idx = assets.heightmaps.findIndex(e => e.name === hmName || e.name === hmName + '.png');
+        if(idx !== -1) assets.heightmaps.splice(idx, 1);
+      }
+    });
+    // Wipe all three difficulty formula arrays
+    tfd.Normal = [formulaLine];
+    tfd.Hard = [];
+    tfd.Realistic = [];
+  } else {
+    // Append mode — add line, mirror to Hard/Realistic if empty
     const appendLine = (key) => {
       const cur = (tfd[key] || []);
-      // Remove any previous AddHeightMap for this png so we don't duplicate
       const filtered = cur.filter(l => !l.includes(`AddHeightMap(${uniqueName}.png`));
       filtered.push(formulaLine);
       tfd[key] = filtered;
@@ -2705,25 +2906,27 @@ function astApplyToBody() {
     appendLine('Normal');
     if (!tfd.Hard || tfd.Hard.length === 0) appendLine('Hard');
     if (!tfd.Realistic || tfd.Realistic.length === 0) appendLine('Realistic');
+  }
 
-    // 3. Refresh the sidebar if this body is currently selected
-    if (typeof selectedBody !== 'undefined' && selectedBody === bodyName && typeof fillSidebar === 'function') {
-      fillSidebar(bodyName);
-    }
+  // 3. Refresh the sidebar if this body is currently selected
+  if (typeof selectedBody !== 'undefined' && selectedBody === bodyName && typeof fillSidebar === 'function') {
+    fillSidebar(bodyName);
+  }
 
-    // 4. Status feedback
-    const status = document.getElementById('ast-apply-status');
-    status.textContent = `✓ Saved ${pngName} & appended to "${bodyName}" terrain formula`;
-    status.style.color = 'rgba(90,240,192,.8)';
-    setTimeout(() => { status.textContent = ''; }, 4000);
-
-  }, 'image/png');
+  // 4. Status feedback
+  const status = document.getElementById('ast-apply-status');
+  status.textContent = `✓ Saved ${pngName} & ${replaceMode ? 'replaced' : 'appended to'} "${bodyName}" terrain formula`;
+  status.style.color = 'rgba(90,240,192,.8)';
+  setTimeout(() => { status.textContent = ''; }, 4000);
 }
 
 // Update preview whenever relevant inputs change
 document.getElementById('ast-png-name').addEventListener('input', astUpdateApplyPreview);
-document.getElementById('ast-body-select').addEventListener('change', astUpdateApplyPreview);
+document.getElementById('ast-body-select').addEventListener('change', function() {
+  astSetHeightToBodyRadius(this.value);
+});
 document.getElementById('ast-hmap-height-val').addEventListener('input', astUpdateApplyPreview);
+document.getElementById('ast-replace-formula').addEventListener('change', astUpdateApplyPreview);
 
 // Refresh body list when the modal opens
 const _astOrigOpen = openAsteroidsMenu;
@@ -2849,6 +3052,8 @@ document.addEventListener('keydown', function(e){
 // ── Circumference display for planet Radius field ─────────────────────────────
 (function(){
   // Wrap onDistInput to also update the 2πr display for b-radius
+  // Guard: if units.js failed to load, skip gracefully
+  if (typeof onDistInput !== 'function' || typeof onUnitChange !== 'function') return;
   const _origOnDistInput = onDistInput;
   window.onDistInput = function(inputId, unitSelId, hintId, mode) {
     _origOnDistInput.apply(this, arguments);
@@ -2896,6 +3101,150 @@ document.addEventListener('keydown', function(e){
     <span><span style="display:block;color:rgba(100,220,180,.9)">CALCULATOR</span>
     <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Circumference, cloud &amp; heightmap width</span></span>
   </button>
+  <button onclick="openImagePanel()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='rgba(100,220,180,.1)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">🖼️</span>
+    <span><span style="display:block;color:rgba(100,220,180,.9)">IMAGE OVERLAY</span>
+    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Place reference images on the viewport</span></span>
+  </button>
+</div>
+
+<!-- hidden file input for image import -->
+<input type="file" id="img-file-input" accept="image/*" multiple style="display:none">
+
+<!-- ══════════════ IMAGE OVERLAY PANEL ══════════════ -->
+<div id="img-panel" style="
+  position:fixed;top:0;right:0;width:300px;height:100dvh;
+  background:rgba(6,10,22,.97);border-left:1px solid rgba(100,220,180,.18);
+  display:flex;flex-direction:column;z-index:9000;
+  transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+  font-family:'JetBrains Mono',monospace">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px;border-bottom:1px solid rgba(100,220,180,.12);flex-shrink:0">
+    <span style="font-family:'Orbitron',sans-serif;font-size:.6rem;letter-spacing:.14em;
+      color:rgba(100,220,180,.9)">🖼️ IMAGE OVERLAY</span>
+    <button onclick="closeImagePanel()" style="background:none;border:none;cursor:pointer;
+      color:rgba(180,180,210,.45);font-size:1.1rem;padding:0 4px;line-height:1;
+      transition:color .15s" onmouseover="this.style.color='rgba(200,80,80,.8)'"
+      onmouseout="this.style.color='rgba(180,180,210,.45)'">✕</button>
+  </div>
+
+  <!-- Drop / Load zone -->
+  <div id="img-drop-zone" onclick="imgTriggerFileInput()" style="
+    margin:12px;border:1.5px dashed rgba(100,220,180,.25);border-radius:6px;
+    padding:14px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;
+    background:rgba(100,220,180,.03);flex-shrink:0"
+    onmouseover="this.style.borderColor='rgba(100,220,180,.55)';this.style.background='rgba(100,220,180,.07)'"
+    onmouseout="this.style.borderColor='rgba(100,220,180,.25)';this.style.background='rgba(100,220,180,.03)'">
+    <div style="font-size:1.4rem;margin-bottom:4px">📂</div>
+    <div style="font-size:.6rem;color:rgba(100,220,180,.75);letter-spacing:.06em">LOAD IMAGE</div>
+    <div style="font-size:.54rem;color:rgba(150,150,180,.5);margin-top:3px">tap or drop · PNG JPG WEBP GIF</div>
+  </div>
+
+  <!-- Image list -->
+  <div style="flex-shrink:0;padding:0 12px 6px">
+    <div style="font-size:.52rem;color:rgba(100,220,180,.45);letter-spacing:.1em;margin-bottom:5px">LOADED IMAGES</div>
+    <div id="img-list" style="max-height:120px;overflow-y:auto;
+      border:1px solid rgba(100,220,180,.1);border-radius:4px">
+      <div style="padding:12px;font-size:.62rem;color:var(--ink4);text-align:center">No images loaded</div>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <div style="border-top:1px solid rgba(100,220,180,.08);margin:4px 0;flex-shrink:0"></div>
+
+  <!-- Detail panel: shown when an image is selected -->
+  <div id="img-detail" style="display:none;flex:1;overflow-y:auto;padding:10px 12px">
+
+    <!-- Name -->
+    <div style="margin-bottom:10px">
+      <div class="img-field-label">LABEL</div>
+      <input id="img-d-name" class="img-field-input" type="text"
+        oninput="imgFieldChange('name',this.value)">
+    </div>
+
+    <!-- Opacity -->
+    <div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span class="img-field-label">OPACITY</span>
+        <input id="img-d-opacity" type="number" min="0" max="100" step="1"
+          class="img-field-num" oninput="imgFieldChange('opacity',this.value)">
+      </div>
+      <input type="range" min="0" max="100" step="1" class="img-slider"
+        oninput="document.getElementById('img-d-opacity').value=this.value;imgFieldChange('opacity',this.value)"
+        id="img-d-opacity-sl">
+    </div>
+
+    <!-- Rotation -->
+    <div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span class="img-field-label">ROTATE °</span>
+        <input id="img-d-rotate" type="number" min="-180" max="180" step="1"
+          class="img-field-num" oninput="imgFieldChange('rotate',this.value)">
+      </div>
+      <input type="range" min="-180" max="180" step="1" class="img-slider"
+        oninput="document.getElementById('img-d-rotate').value=this.value;imgFieldChange('rotate',this.value)"
+        id="img-d-rotate-sl">
+    </div>
+
+    <!-- Width / Height -->
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <div class="img-field-label">WIDTH</div>
+        <input id="img-d-width" type="number" min="1" step="1"
+          class="img-field-input" oninput="imgFieldChange('width',this.value)">
+      </div>
+      <div style="flex:1">
+        <div class="img-field-label">HEIGHT</div>
+        <input id="img-d-height" type="number" min="1" step="1"
+          class="img-field-input" oninput="imgFieldChange('height',this.value)">
+      </div>
+    </div>
+
+    <!-- Click-through toggle -->
+    <label class="img-toggle-row" title="When on, clicks pass through the image to bodies below">
+      <span class="img-field-label" style="margin:0">CLICK-THROUGH</span>
+      <div class="img-toggle-wrap">
+        <input type="checkbox" id="img-d-clickthrough"
+          onchange="imgFieldChange('clickthrough',this.checked)">
+        <span class="img-toggle-track"></span>
+      </div>
+    </label>
+    <div style="font-size:.52rem;color:var(--ink4);margin-bottom:10px;margin-top:2px">
+      Passes clicks through to bodies underneath
+    </div>
+
+    <!-- Lock to planet -->
+    <div style="margin-bottom:12px">
+      <div class="img-field-label">LOCK TO BODY</div>
+      <select id="img-d-lock" class="img-field-select"
+        onchange="imgFieldChange('lock',this.value)">
+        <option value="None">None</option>
+      </select>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+      <div style="display:flex;gap:6px">
+        <button class="img-action-btn" onclick="imgBringForward()" title="Bring forward in draw order">▲ FORWARD</button>
+        <button class="img-action-btn" onclick="imgSendBackward()" title="Send backward in draw order">▼ BACK</button>
+      </div>
+      <button class="img-action-btn" onclick="imgDuplicateSelected()">⧉ DUPLICATE</button>
+      <button class="img-action-btn danger" onclick="imgDeleteSelected()">✕ DELETE IMAGE</button>
+    </div>
+  </div>
+
+  <!-- Placeholder when nothing is selected -->
+  <div id="img-detail-none" style="flex:1;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:6px;color:var(--ink4)">
+    <div style="font-size:1.5rem;opacity:.35">🖼️</div>
+    <div style="font-size:.6rem;letter-spacing:.06em">Select an image to edit</div>
+  </div>
 </div>
 
 <!-- ══════════════ CALCULATOR MODAL ══════════════ -->

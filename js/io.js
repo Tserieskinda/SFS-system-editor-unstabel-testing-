@@ -562,88 +562,86 @@ function _snapshotNewAssets(texBefore, presetsBefore, hmBefore){
 }
 
 // ── Main autoload (with IDB cache) ───────────────────────────────────────────
+// Strategy: CACHE-FIRST (stale-while-revalidate)
+//   1. Read IDB immediately — if cached, replay assets NOW with zero network I/O.
+//   2. After serving from cache, do a background HEAD check per URL.
+//      If ETag changed, re-download silently and update IDB for the next load.
+//   3. If no cache entry exists, do a normal download (first-time user).
+//
+// Result: returning users see assets instantly; fresh assets arrive next visit.
 
 async function autoLoadRemoteAssets(){
   if(!REMOTE_ASSETS_URLS || !REMOTE_ASSETS_URLS.length) return;
-  const statusEl = document.getElementById('default-tex-status');
-  const btn = document.getElementById('btn-load-assets');
+  const statusEl  = document.getElementById('default-tex-status');
+  const btn       = document.getElementById('btn-load-assets');
   const cancelBtn = document.getElementById('btn-cancel-remote');
-  if(statusEl){ statusEl.textContent = '⟳ Loading assets…'; statusEl.style.color = 'var(--sky2)'; }
 
-  let totalTextures = 0, totalPresets = 0, errors = 0, cancelled = false;
   _remoteAbortCtrl = new AbortController();
   const signal = _remoteAbortCtrl.signal;
 
+  let totalTextures = 0, totalPresets = 0, errors = 0;
+  let anyMissing = false;
+
+  if(statusEl){ statusEl.textContent = '\u23f3 Loading assets\u2026'; statusEl.style.color = 'var(--sky2)'; }
+
+  // ── PASS 1: serve everything already in IDB — no network ──────────────────
+  const cacheRecords = [];
+  for(let i = 0; i < REMOTE_ASSETS_URLS.length; i++){
+    const { url, name: fname } = REMOTE_ASSETS_URLS[i];
+    const cached = await idbCacheRead(url);
+    cacheRecords.push(cached);
+    if(cached && cached.textures && cached.textures.length > 0){
+      const r = await _replayFromCache(cached);
+      totalTextures += r.totalTextures;
+      totalPresets  += r.totalPresets;
+      console.log(`[SFS|IDB] Instant cache hit: "${fname}" (${r.totalTextures} tex)`);
+    } else {
+      anyMissing = true;
+    }
+  }
+
+  // All served from cache — show UI immediately, then revalidate in background
+  if(!anyMissing){
+    _finaliseAutoload(statusEl, btn, cancelBtn, totalTextures, totalPresets, errors);
+    _revalidateCacheInBackground(REMOTE_ASSETS_URLS, cacheRecords).catch(() => {});
+    return;
+  }
+
+  // ── PASS 2: download any URLs with no cache entry (first-time / cleared) ──
   showLoading();
   showLoadingBars();
   setLoadingTitle('LOADING ASSETS');
   if(cancelBtn) cancelBtn.style.display = '';
+  let cancelled = false;
 
   for(let i = 0; i < REMOTE_ASSETS_URLS.length; i++){
     if(signal.aborted){ cancelled = true; break; }
+    if(cacheRecords[i] && cacheRecords[i].textures && cacheRecords[i].textures.length > 0){
+      continue; // already served from cache in Pass 1
+    }
+
     const { url, name: fname } = REMOTE_ASSETS_URLS[i];
     setLoadingMsg(`(${i+1}/${REMOTE_ASSETS_URLS.length}) ${fname}`);
-    setBar1(0, 'CHECKING CACHE');
+    setBar1(0, 'DOWNLOADING');
     setBar2(null, 'LOADING TEXTURES');
 
     try{
-      // ── 1. Try to get current ETag/Last-Modified via HEAD (fast, no body) ──
-      let freshEtag = null;
-      let freshSize = 0;
-      try{
-        const head = await fetch(url, { method:'HEAD', signal });
-        if(head.ok){
-          freshEtag = head.headers.get('ETag') || head.headers.get('Last-Modified') || null;
-          freshSize = parseInt(head.headers.get('Content-Length')||'0', 10);
-        }
-      } catch(_){ /* offline or CORS no-HEAD — skip cache check, fall through to full fetch */ }
-
-      // ── 2. Check IDB for a valid cached entry ──────────────────────────────
-      const cached = await idbCacheRead(url);
-      if(cached && cached.textures && cached.textures.length > 0){
-        // If we couldn't get a fresh ETag (CORS/offline/server omits it), trust
-        // the cache — we have no better data to serve.  If we did get an ETag,
-        // only use the cache when it matches (stale-check).
-        const etagMatch = !freshEtag || cached.etag === freshEtag;
-        if(etagMatch){
-          // Cache hit — replay instantly
-          setBar1(50, 'FROM CACHE');
-          const r = await _replayFromCache(cached);
-          totalTextures += r.totalTextures;
-          totalPresets  += r.totalPresets;
-          setBar1(100, 'FROM CACHE ✓');
-          console.log(`[SFS|IDB] Cache hit for "${fname}" — skipped download (etag=${freshEtag||'unavailable'})`);
-          await _yield();
-          continue;
-        }
-        console.log(`[SFS|IDB] Cache stale for "${fname}" — etag changed (${cached.etag} → ${freshEtag})`);
-      }
-
-      // ── 3. Cache miss or stale — fetch zip normally ────────────────────────
-      setBar1(0, 'DOWNLOADING');
       const resp = await fetch(url, { signal });
       if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const freshEtag = resp.headers.get('ETag') || resp.headers.get('Last-Modified') || null;
+      const freshSize = parseInt(resp.headers.get('Content-Length')||'0', 10);
 
-      // Grab ETag from the actual GET response if HEAD didn't give us one
-      if(!freshEtag){
-        freshEtag = resp.headers.get('ETag') || resp.headers.get('Last-Modified') || null;
-        freshSize = parseInt(resp.headers.get('Content-Length')||'0', 10);
-      }
-
-      // Stream download with bar1 progress if Content-Length is known
       const contentLength = resp.headers.get('Content-Length');
       let buffer;
       if(contentLength){
-        const total = parseInt(contentLength, 10);
+        const total  = parseInt(contentLength, 10);
         const reader = resp.body.getReader();
-        const chunks = [];
-        let received = 0;
+        const chunks = []; let received = 0;
         while(true){
           if(signal.aborted){ reader.cancel(); cancelled = true; break; }
-          const {done, value} = await reader.read();
+          const { done, value } = await reader.read();
           if(done) break;
-          chunks.push(value);
-          received += value.length;
+          chunks.push(value); received += value.length;
           setBar1(received / total * 100);
         }
         if(cancelled) break;
@@ -652,14 +650,13 @@ async function autoLoadRemoteAssets(){
         for(const c of chunks){ full.set(c, off); off += c.length; }
         buffer = full.buffer;
       } else {
-        setBar1(50, 'DOWNLOADING…');
+        setBar1(50, 'DOWNLOADING\u2026');
         buffer = await resp.arrayBuffer();
         setBar1(100);
       }
 
-      // ── 4. Snapshot pre-load state so we can diff what was added ──────────
-      const texBefore    = assets.textures.length;
-      const hmBefore     = assets.heightmaps.length;
+      const texBefore     = assets.textures.length;
+      const hmBefore      = assets.heightmaps.length;
       const presetsBefore = {
         vanilla: Object.keys(dynamicPresets.vanilla).length,
         custom:  Object.keys(dynamicPresets.custom).length,
@@ -675,7 +672,6 @@ async function autoLoadRemoteAssets(){
       totalPresets  += res.totalPresets;
       errors        += res.errors;
 
-      // ── 5. Persist processed assets to IDB (async, non-blocking) ──────────
       if(res.totalTextures > 0 || res.totalPresets > 0){
         const payload = _snapshotNewAssets(texBefore, presetsBefore, hmBefore);
         idbCacheWrite(url, freshEtag, freshSize, payload).then(ok => {
@@ -697,23 +693,72 @@ async function autoLoadRemoteAssets(){
   setLoadingTitle('LOADING SYSTEM');
 
   if(cancelled){
-    if(statusEl){ statusEl.textContent = '⚠ Download cancelled — upload zips manually'; statusEl.style.color = 'var(--amber)'; }
+    if(statusEl){ statusEl.textContent = '\u26a0 Download cancelled \u2014 upload zips manually'; statusEl.style.color = 'var(--amber)'; }
     return;
   }
 
+  _finaliseAutoload(statusEl, btn, cancelBtn, totalTextures, totalPresets, errors);
+  _revalidateCacheInBackground(REMOTE_ASSETS_URLS, cacheRecords).catch(() => {});
+}
+
+// ── Shared UI finalise ────────────────────────────────────────────────────────
+function _finaliseAutoload(statusEl, btn, cancelBtn, totalTextures, totalPresets, errors){
+  if(cancelBtn) cancelBtn.style.display = 'none';
   const parts = [];
   if(totalTextures > 0) parts.push(`${totalTextures} texture${totalTextures!==1?'s':''}`);
   if(totalPresets  > 0) parts.push(`${totalPresets} preset${totalPresets!==1?'s':''}`);
   if(statusEl){
     if(errors > 0 && totalTextures === 0){
-      statusEl.textContent = '⚠ Remote assets unavailable — upload zip manually';
+      statusEl.textContent = '\u26a0 Remote assets unavailable \u2014 upload zip manually';
       statusEl.style.color = 'var(--amber)';
     } else {
-      statusEl.textContent = parts.length ? `✓ Assets loaded: ${parts.join(', ')}` : '✓ Assets loaded';
+      statusEl.textContent = parts.length
+        ? `\u2713 Assets loaded: ${parts.join(', ')}`
+        : '\u2713 Assets loaded';
       statusEl.style.color = 'var(--jade)';
     }
   }
-  if(btn && totalTextures > 0){ btn.style.display = 'none'; }
+  if(btn && totalTextures > 0) btn.style.display = 'none';
+}
+
+// ── Background revalidation ────────────────────────────────────────────────────
+// Runs silently after assets are already displayed. Checks ETags via HEAD;
+// if a zip changed, re-downloads it and updates IDB so the next startup is fresh.
+async function _revalidateCacheInBackground(urls, cacheRecords){
+  await new Promise(r => setTimeout(r, 3000)); // yield to let the page settle
+  for(let i = 0; i < urls.length; i++){
+    const { url, name: fname } = urls[i];
+    const cached = cacheRecords[i];
+    try{
+      const head = await fetch(url, { method: 'HEAD' });
+      if(!head.ok) continue;
+      const freshEtag = head.headers.get('ETag') || head.headers.get('Last-Modified') || null;
+      if(!freshEtag) continue; // server gives no ETag — cannot detect staleness
+      if(cached && cached.etag === freshEtag){
+        console.log(`[SFS|IDB] BG revalidate: "${fname}" still fresh`);
+        continue;
+      }
+      // Stale — silently re-download for next startup
+      console.log(`[SFS|IDB] BG revalidate: "${fname}" changed (${cached?.etag} \u2192 ${freshEtag}), refreshing cache\u2026`);
+      const resp = await fetch(url);
+      if(!resp.ok) continue;
+      const freshSize = parseInt(resp.headers.get('Content-Length')||'0', 10);
+      const buffer    = await resp.arrayBuffer();
+
+      const texBefore     = assets.textures.length;
+      const hmBefore      = assets.heightmaps.length;
+      const presetsBefore = {
+        vanilla: Object.keys(dynamicPresets.vanilla).length,
+        custom:  Object.keys(dynamicPresets.custom).length,
+      };
+      await _loadSFSAssetBuffer(buffer, fname, ()=>{}, ()=>{});
+      const payload = _snapshotNewAssets(texBefore, presetsBefore, hmBefore);
+      await idbCacheWrite(url, freshEtag, freshSize, payload);
+      console.log(`[SFS|IDB] BG revalidate: "${fname}" cache updated`);
+    } catch(e){
+      // Offline or CORS — silently skip, try again next load
+    }
+  }
 }
 
 // Expose cache-clear for the settings panel
@@ -929,4 +974,284 @@ setTimeout(resizeViewport, 50);
 setTimeout(initUnitInputs, 100);
 // Auto-fetch remote assets if URL is configured (no-op when REMOTE_ASSETS_URL is null)
 _autoLoadPromise = autoLoadRemoteAssets();
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── IMPORT SYSTEM — merge a second system zip into the current session ──
+// ════════════════════════════════════════════════════════════════════════════
+
+let _importOpt = 'a'; // 'a' = barycentre, 'b' = new orbits existing centre, 'c' = new orbits chosen body
+
+function openImportSystemModal(){
+  // Must have an active session to import into
+  if(Object.keys(bodies).length === 0){
+    alert('Load or create a system first before importing into it.');
+    return;
+  }
+  // Populate parent-body dropdown for option C
+  const sel = document.getElementById('imp-c-parent');
+  sel.innerHTML = '';
+  Object.keys(bodies).forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n;
+    sel.appendChild(opt);
+  });
+  // Default selection to centre if present
+  const centreName = Object.keys(bodies).find(n => bodies[n].isCenter);
+  if(centreName) sel.value = centreName;
+
+  _importOpt = 'a';
+  selectImportOpt('a', /*silent*/true);
+  document.getElementById('modal-import-system').classList.add('open');
+}
+
+function closeImportSystemModal(){
+  document.getElementById('modal-import-system').classList.remove('open');
+}
+
+function selectImportOpt(opt, silent){
+  _importOpt = opt;
+  ['a','b','c'].forEach(o => {
+    const card = document.getElementById('imp-opt-' + o);
+    if(card) card.classList.toggle('imp-opt-sel', o === opt);
+  });
+}
+
+async function importSystemZip(file){
+  if(!file) return;
+  closeImportSystemModal();
+
+  const AU_m = 1.496e11;
+  const opt  = _importOpt;
+  const baryAU  = parseFloat(document.getElementById('imp-bary-au')?.value) || 10;
+  const bAU     = parseFloat(document.getElementById('imp-b-au')?.value)    || 20;
+  const cParent = document.getElementById('imp-c-parent')?.value            || '';
+  const cAU     = parseFloat(document.getElementById('imp-c-au')?.value)    || 5;
+
+  showLoading(); showLoadingBars();
+  setLoadingTitle('IMPORTING SYSTEM');
+  setLoadingMsg('Reading zip…');
+
+  try {
+    const buffer = await file.arrayBuffer();
+    setLoadingMsg('Parsing entries…');
+    setBar1(0, 'DECOMPRESSING');
+    const rawEntries = parseZip(buffer);
+    const entries    = await decompressEntries(rawEntries, pct => setBar1(pct));
+    const dec = bytes => new TextDecoder().decode(bytes);
+
+    // ── Parse the incoming system into a temporary bodies map ──
+    const inBodies = {}; // name → { data, isCenter, _lacksOrbit, preset, color, glow, icon }
+    let   planetCount = 0;
+    setBar2(0, 'LOADING BODIES');
+    const entryKeys  = Object.keys(entries);
+    const entryTotal = entryKeys.length || 1;
+    let   entryIdx   = 0;
+
+    for(const [path, data] of Object.entries(entries)){
+      entryIdx++;
+      setBar2(entryIdx / entryTotal * 100);
+      const parts    = path.split('/');
+      const folder   = parts.length >= 3 ? parts[parts.length - 2] : parts[0];
+      const filename = parts[parts.length - 1];
+      setLoadingMsg(`Loading ${filename}…`);
+
+      if(folder === 'Planet Data' && filename.endsWith('.txt')){
+        try{
+          const raw = dec(data);
+          const name = filename.replace('.txt','');
+          if(['Import_Settings','Space_Center_Data','Version'].includes(name)) continue;
+          const fixedRaw = raw
+            .replace(/,\s*([}\]])/g, '$1')
+            .replace(/(\d)\.(?=[,\s}\]])/g, '$10')
+            .replace(/:\s*Infinity\b/g,  ': 1e38')
+            .replace(/:\s*-Infinity\b/g, ': -1e38')
+            .replace(/:\s*NaN\b/g,       ': 0');
+          const bodyData = normalizeDiffScaleKeys(JSON.parse(fixedRaw));
+          const lacksOrbit = !bodyData.ORBIT_DATA;
+          const _meta = inferPresetMeta(name, bodyData);
+          inBodies[name] = { data: bodyData, preset: _meta.id, isCenter: false,
+                             _lacksOrbit: lacksOrbit, color: _meta.color, glow: _meta.glow, icon: _meta.icon };
+          planetCount++;
+        } catch(e){ console.warn('[IMPORT] failed to parse', filename, e); }
+
+      } else if(folder === 'Texture Data'){
+        const ext = filename.split('.').pop().toLowerCase();
+        if(!['png','jpg','jpeg','webp'].includes(ext)) continue;
+        const mime  = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+        const b64   = bytesToBase64(data);
+        const url   = `data:${mime};base64,${b64}`;
+        if(!assets.textures.find(a => a.name === filename)){
+          const entry = { name: filename, url, size: data.length };
+          assets.textures.push(entry);
+          renderAssetThumb(entry);
+          cacheTexture(filename.replace(/\.[^.]+$/, ''), url);
+        }
+
+      } else if(folder === 'Heightmap Data' && filename.endsWith('.txt')){
+        const content = dec(data);
+        const entry = { name: filename, content, size: data.length };
+        if(!assets.heightmaps.find(a => a.name === filename)){
+          assets.heightmaps.push(entry);
+          renderAssetRow(entry, 'heightmaps');
+          injectCustomHeightmap(filename);
+        }
+
+      } else if(folder === 'Heightmap Data' && /\.(png|jpe?g)$/i.test(filename)){
+        const ext  = filename.split('.').pop().toLowerCase();
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+        const url  = `data:${mime};base64,${bytesToBase64(data)}`;
+        if(!assets.heightmaps.find(a => a.name === filename)){
+          const entry = { name: filename, url, size: data.length };
+          assets.heightmaps.push(entry);
+          renderAssetRow(entry, 'heightmaps');
+          injectCustomHeightmap(filename);
+        }
+      }
+    }
+
+    if(planetCount === 0){
+      hideLoading(); hideLoadingBars(); setLoadingTitle('LOADING SYSTEM');
+      alert('No planet files found in the import zip.');
+      return;
+    }
+
+    // Elect incoming centre (no-orbit body with largest radius)
+    const noOrbit = Object.entries(inBodies).filter(([,b]) => b._lacksOrbit);
+    let inCentreName = null;
+    if(noOrbit.length > 0){
+      noOrbit.sort(([,a],[,b]) => ((b.data.BASE_DATA||{}).radius||0) - ((a.data.BASE_DATA||{}).radius||0));
+      noOrbit[0][1].isCenter = true;
+      inCentreName = noOrbit[0][0];
+    }
+    Object.values(inBodies).forEach(b => delete b._lacksOrbit);
+
+    // ── Resolve name collisions: prefix all imported names with the zip stem ──
+    const stem    = file.name.replace(/\.zip$/i,'').replace(/[^A-Za-z0-9_\- ]/g,'').trim() || 'Imported';
+    const renamed = {}; // oldName → newName
+
+    Object.keys(inBodies).forEach(oldName => {
+      let newName = oldName;
+      if(bodies[newName]){
+        newName = stem + '_' + oldName;
+        let counter = 2;
+        while(bodies[newName] || renamed[newName]) newName = stem + '_' + oldName + '_' + (counter++);
+      }
+      renamed[oldName] = newName;
+    });
+
+    // Rewrite parent references inside imported system
+    Object.entries(inBodies).forEach(([, b]) => {
+      if(b.data.ORBIT_DATA?.parent){
+        const oldParent = b.data.ORBIT_DATA.parent;
+        if(renamed[oldParent]) b.data.ORBIT_DATA.parent = renamed[oldParent];
+      }
+    });
+
+    // ── Determine existing centre ──
+    const exCentreName = Object.keys(bodies).find(n => bodies[n].isCenter) || null;
+
+    // ── Apply merge mode ──
+    const importedCentreBody = inCentreName ? inBodies[inCentreName] : null;
+
+    if(opt === 'a'){
+      // ── Mode A: Shared barycentre ──
+      // 1. Create a barycentre body (no mass, no atmosphere, just a marker)
+      const baryName = _uniqueName('Barycentre', bodies);
+      const barySMA  = baryAU * AU_m;
+
+      // Give existing centre an orbit around barycentre
+      if(exCentreName){
+        bodies[exCentreName].isCenter = false;
+        bodies[exCentreName].data.ORBIT_DATA = {
+          parent: baryName, semiMajorAxis: barySMA * 0.5,
+          eccentricity: 0, argumentOfPeriapsis: 0, direction: 1,
+          multiplierSOI: 2.5, smaDifficultyScale: {}, soiDifficultyScale: {}
+        };
+      }
+
+      // Give imported centre an orbit around barycentre
+      if(importedCentreBody){
+        importedCentreBody.isCenter = false;
+        importedCentreBody.data.ORBIT_DATA = {
+          parent: baryName, semiMajorAxis: barySMA * 0.5,
+          eccentricity: 0, argumentOfPeriapsis: 180, direction: 1,
+          multiplierSOI: 2.5, smaDifficultyScale: {}, soiDifficultyScale: {}
+        };
+      }
+
+      // Insert barycentre as new system centre (tiny invisible body)
+      bodies[baryName] = {
+        data: {
+          BASE_DATA: { radius: 1000, gravity: 0, gravityDifficultyScale: {},
+                       radiusDifficultyScale: {}, bodyType: 0 }
+        },
+        preset: 'asteroid', isCenter: true,
+        color: '#aaaaaa', glow: false, icon: '⚫'
+      };
+
+    } else if(opt === 'b'){
+      // ── Mode B: Imported centre orbits existing centre ──
+      if(importedCentreBody){
+        importedCentreBody.isCenter = false;
+        importedCentreBody.data.ORBIT_DATA = {
+          parent: exCentreName || Object.keys(bodies)[0],
+          semiMajorAxis: bAU * AU_m,
+          eccentricity: 0, argumentOfPeriapsis: 0, direction: 1,
+          multiplierSOI: 2.5, smaDifficultyScale: {}, soiDifficultyScale: {}
+        };
+      }
+
+    } else if(opt === 'c'){
+      // ── Mode C: Imported centre orbits chosen body ──
+      const parentBody = cParent && bodies[cParent] ? cParent : (exCentreName || Object.keys(bodies)[0]);
+      if(importedCentreBody){
+        importedCentreBody.isCenter = false;
+        importedCentreBody.data.ORBIT_DATA = {
+          parent: parentBody,
+          semiMajorAxis: cAU * AU_m,
+          eccentricity: 0, argumentOfPeriapsis: 0, direction: 1,
+          multiplierSOI: 2.5, smaDifficultyScale: {}, soiDifficultyScale: {}
+        };
+      }
+    }
+
+    // ── Commit renamed imported bodies into global bodies map ──
+    Object.entries(inBodies).forEach(([oldName, b]) => {
+      const newName = renamed[oldName];
+      bodies[newName] = b;
+    });
+
+    // ── Wrap up ──
+    if(typeof fillSidebar === 'function') fillSidebar();
+    updateStatusBar();
+    syncAddBodyBtn();
+    refreshTexPickerLists();
+    updateAssetEmptyState();
+    const hasCenter = Object.values(bodies).some(b => b.isCenter);
+    if(hasCenter) document.getElementById('empty-state').classList.add('gone');
+
+    setLoadingMsg('Done!');
+    setTimeout(() => {
+      hideLoading(); hideLoadingBars(); setLoadingTitle('LOADING SYSTEM');
+      goNew();
+      setTimeout(() => drawViewport(), 400);
+    }, 350);
+
+    console.log(`[SFS|IMPORT] merged ${planetCount} bodies using mode "${opt}"; renamed:`, renamed);
+
+  } catch(err){
+    hideLoading(); hideLoadingBars(); setLoadingTitle('LOADING SYSTEM');
+    console.error('[SFS|IMPORT] error:', err);
+    alert('Failed to import zip: ' + err.message);
+  }
+}
+
+/** Return a name not already in bodies, appending _2, _3, … as needed. */
+function _uniqueName(base, bodyMap){
+  if(!bodyMap[base]) return base;
+  let i = 2;
+  while(bodyMap[base + '_' + i]) i++;
+  return base + '_' + i;
+}
 

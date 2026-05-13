@@ -168,6 +168,16 @@ const SFX = (() => {
     patch('addBodyPrompt',     select);
     patch('replaceBodyPrompt', select);
     patch('hmInsertMap',       select);
+    patch('openCalculator',    select);
+    patch('toggleUtilsDropdown', select);
+
+    // ── CLICK (neutral actions) ───────────────────────────────────
+    patch('closeCalculator',   click);
+    patch('prsOnParentChange', click);
+
+    // ── SELECT (toggle-style actions) ─────────────────────────────
+    patch('astToggleEffect',   select);
+    patch('calcSetTab',        select);
 
     // ── POSITIVE (meaningful confirms — 2 s cooldown) ─────────────
     patch('goNew',              positive);
@@ -185,6 +195,11 @@ const SFX = (() => {
     patch('astDownload',        positive);
     patch('astExportTxt',       positive);
     patch('astFxRandomize',     positive);
+    patch('astApplyToBody',     positive);
+    patch('astRefreshBodyList', select);
+    patch('astSetHeightRange',  select);
+    patch('prsNext',            positive);
+    patch('clearAssetCache',    positive);
 
     // ── WARNING ───────────────────────────────────────────────────
     patch('confirmClearAll',   warning);
@@ -194,6 +209,7 @@ const SFX = (() => {
     patch('delFogKey',         warning);
     patch('delPPKey',          warning);
     patch('delLandmark',       warning);
+    patch('delFlatZone',       warning);
     patch('hmRemoveLine',      warning);
     patch('astClearCanvas',    warning);
 
@@ -226,12 +242,18 @@ const SFX = (() => {
       if (oc.includes('TC.open')) { select(); return; }
 
       // triggerFileInput — file pickers
-      if (oc.startsWith('triggerFileInput') || oc.startsWith('document.getElementById(') && oc.includes('.click()')) {
+      if (oc.startsWith('triggerFileInput') || (oc.startsWith('document.getElementById(') && oc.includes('.click()'))) {
         select(); return;
       }
 
       // Wt advanced toggle (inline IIFE)
       if (oc.includes('wt-advanced')) { select(); return; }
+
+      // document.getElementById('ast-trace-file').click()
+      if (oc.includes('ast-trace-file')) { select(); return; }
+
+      // clearAssetCache inline chain (.then(...))
+      if (oc.startsWith('clearAssetCache')) { positive(); return; }
 
     }, true); // capture so we hear it even if child stops propagation
   }

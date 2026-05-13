@@ -356,6 +356,12 @@ vp.addEventListener('mousedown', e => {
     return; // never pan in drag orbit mode
   }
   dragging=true; dragSX=e.clientX; dragSY=e.clientY;
+  // Image overlay: consume mousedown if it hits an image or its handles
+  const _rect0 = vp.getBoundingClientRect();
+  const _mx0 = e.clientX - _rect0.left, _my0 = e.clientY - _rect0.top;
+  if(typeof imgMouseDown === 'function' && imgMouseDown(_mx0, _my0, e.clientX, e.clientY)){
+    dragging = false; // don't pan while dragging an image
+  }
 });
 addEventListener('mousemove', e => {
   if(dragOrbitMode){
@@ -374,6 +380,8 @@ addEventListener('mousemove', e => {
     }
     return;
   }
+  // Image overlay drag takes priority over viewport pan
+  if(typeof imgMouseMove === 'function' && imgMouseMove(e.clientX, e.clientY)) return;
   if(!dragging) return;
   vpOffX += (e.clientX-dragSX)/vpZ;
   vpOffY += (e.clientY-dragSY)/vpZ;
@@ -381,6 +389,7 @@ addEventListener('mousemove', e => {
   drawViewport();
 });
 addEventListener('mouseup', e => {
+  if(typeof imgMouseUp === 'function') imgMouseUp();
   if(dragOrbitMode && _dob_active && _dob_body){
     _dob_active = false;
     _dob_body = null;
@@ -523,7 +532,15 @@ vp.addEventListener('touchstart', e => {
     _wasPinching = true;
     _pinchMoved  = false; // reset — will be set true on first actual movement
   }
-  if(ids.length === 1){ dragSX = e.touches[0].clientX; dragSY = e.touches[0].clientY; }
+  if(ids.length === 1){
+    dragSX = e.touches[0].clientX; dragSY = e.touches[0].clientY;
+    // Image overlay touch — consume if it hits an image
+    const _t0 = e.touches[0];
+    const _rect1 = vp.getBoundingClientRect();
+    if(typeof imgMouseDown === 'function'){
+      imgMouseDown(_t0.clientX - _rect1.left, _t0.clientY - _rect1.top, _t0.clientX, _t0.clientY);
+    }
+  }
 }, {passive: false});
 
 vp.addEventListener('touchmove', e => {
@@ -575,16 +592,22 @@ vp.addEventListener('touchmove', e => {
       if(result) _drawDragOrbitPreview(_dob_body, e.touches[0].clientX, e.touches[0].clientY);
     } else if(!dragOrbitMode){
       const t = e.touches[0];
-      vpOffX += (t.clientX - dragSX) / vpZ;
-      vpOffY += (t.clientY - dragSY) / vpZ;
-      dragSX = t.clientX; dragSY = t.clientY;
-      drawViewport();
+      // Image drag takes priority over viewport pan
+      if(typeof imgMouseMove === 'function' && imgMouseMove(t.clientX, t.clientY)){
+        dragSX = t.clientX; dragSY = t.clientY;
+      } else {
+        vpOffX += (t.clientX - dragSX) / vpZ;
+        vpOffY += (t.clientY - dragSY) / vpZ;
+        dragSX = t.clientX; dragSY = t.clientY;
+        drawViewport();
+      }
     }
   }
 }, {passive: false});
 
 vp.addEventListener('touchend', e => {
   Array.from(e.changedTouches).forEach(t => { delete _touches[t.identifier]; });
+  if(typeof imgMouseUp === 'function') imgMouseUp();
   if(dragOrbitMode && _dob_active){
     _dob_active = false; _dob_body = null;
     _dob_frozenScale = null; _dob_frozenParentSP = null; _dob_frozenVpZ = null;
