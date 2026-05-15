@@ -495,20 +495,45 @@ function cancelRemoteAssets(){ if(_remoteAbortCtrl) _remoteAbortCtrl.abort(); }
 
 // ── IDB cache replay helpers ──────────────────────────────────────────────────
 
+// Yield to the browser for one frame so the loading screen can paint.
+function _yieldFrame(){ return new Promise(r => requestAnimationFrame(r)); }
+
 // Replay a cached asset payload directly into the live stores (no network, no
-// decompression).  Returns { totalTextures, totalPresets }.
-async function _replayFromCache(record){
+// decompression).  Shows a loading screen with progress.
+// Returns { totalTextures, totalPresets }.
+async function _replayFromCache(record, { showUI = false, progressLabel = '' } = {}){
   let totalTextures = 0, totalPresets = 0;
 
-  // Textures
-  for(const t of (record.textures || [])){
+  const textures = record.textures || [];
+  const total    = textures.length;
+
+  if(showUI && total > 0){
+    showLoading();
+    showLoadingBars();
+    setLoadingTitle('LOADING ASSETS');
+    setLoadingMsg(progressLabel || 'Reading cache…');
+    setBar1(0, 'CACHE REPLAY');
+    setBar2(null, 'LOADING TEXTURES');
+    await _yieldFrame(); // let the overlay paint before we start work
+  }
+
+  // Process textures in chunks — yield every 8 so the page stays responsive.
+  const CHUNK = 8;
+  for(let i = 0; i < textures.length; i++){
+    const t = textures[i];
     if(!assets.textures.find(a => a.name === t.name)){
       cacheTexture(t.name.replace(/\.[^.]+$/,''), t.url);
       assets.textures.push(t);
       renderAssetThumb(t);
       totalTextures++;
     }
+    // Yield at chunk boundaries so the browser can breathe
+    if(showUI && (i + 1) % CHUNK === 0){
+      setBar1((i + 1) / total * 100, 'CACHE REPLAY');
+      await _yieldFrame();
+    }
   }
+  if(showUI && total > 0) setBar1(100, 'CACHE REPLAY');
 
   // Presets (vanilla / custom)
   const dp = record.presets || {};
@@ -585,22 +610,33 @@ async function autoLoadRemoteAssets(){
   if(statusEl){ statusEl.textContent = '\u23f3 Loading assets\u2026'; statusEl.style.color = 'var(--sky2)'; }
 
   // ── PASS 1: serve everything already in IDB — no network ──────────────────
+  // We show the loading screen even for cache hits so the user sees progress
+  // instead of a frozen / unresponsive page while textures are being decoded.
   const cacheRecords = [];
+  let   anyCacheHit  = false;
   for(let i = 0; i < REMOTE_ASSETS_URLS.length; i++){
     const { url, name: fname } = REMOTE_ASSETS_URLS[i];
     const cached = await idbCacheRead(url);
     cacheRecords.push(cached);
     if(cached && cached.textures && cached.textures.length > 0){
-      const r = await _replayFromCache(cached);
+      anyCacheHit = true;
+      const label = `(${i+1}/${REMOTE_ASSETS_URLS.length}) ${fname}`;
+      const r = await _replayFromCache(cached, { showUI: true, progressLabel: label });
       totalTextures += r.totalTextures;
       totalPresets  += r.totalPresets;
-      console.log(`[SFS|IDB] Instant cache hit: "${fname}" (${r.totalTextures} tex)`);
+      console.log(`[SFS|IDB] Cache hit: "${fname}" (${r.totalTextures} tex)`);
     } else {
       anyMissing = true;
     }
   }
+  // Dismiss loading screen after the cache pass (before any download pass).
+  if(anyCacheHit){
+    hideLoading();
+    hideLoadingBars();
+    setLoadingTitle('LOADING SYSTEM');
+  }
 
-  // All served from cache — show UI immediately, then revalidate in background
+  // All served from cache — finalise and kick off background revalidation.
   if(!anyMissing){
     _finaliseAutoload(statusEl, btn, cancelBtn, totalTextures, totalPresets, errors);
     _revalidateCacheInBackground(REMOTE_ASSETS_URLS, cacheRecords).catch(() => {});
