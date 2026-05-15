@@ -1225,8 +1225,10 @@ let _holdTimer     = null;   // setTimeout handle
 let _holdMoved     = false;  // pointer moved too far during hold → cancel
 let _holdStartX    = 0;
 let _holdStartY    = 0;
-const HOLD_MS      = 500;    // hold duration
-const HOLD_MAX_MOVE = 10;    // px
+const HOLD_MS       = 500;    // hold duration
+const HOLD_MAX_MOVE = 10;     // px — mouse (precise pointer)
+const HOLD_MAX_MOVE_TOUCH = 22; // px — touch (finger naturally drifts more)
+const HOLD_DEAD_MS  = 160;    // ms — ignore movement during initial touch settle
 
 function _ctxEl(){ return _ctxMenu || (_ctxMenu = document.getElementById('body-ctx-menu')); }
 
@@ -1305,16 +1307,19 @@ vp.addEventListener('mouseup', () => { clearTimeout(_holdTimer); }, true);
 
 // ── Hold-detect on touch (mobile) ────────────────────────────────────────
 // We install on capture so we can inspect touches before the regular handler.
+// _holdTouchDeadUntil: ignore touchmove cancellation during initial finger-settle window
+let _holdTouchDeadUntil = 0;
+
 vp.addEventListener('touchstart', e => {
   if(e.touches.length !== 1) { clearTimeout(_holdTimer); return; }
   const t = e.touches[0];
   _holdMoved = false;
   _holdStartX = t.clientX; _holdStartY = t.clientY;
+  _holdTouchDeadUntil = Date.now() + HOLD_DEAD_MS;
   _holdTimer = setTimeout(() => {
     if(_holdMoved) return;
     const hit = _hitBodyAt(t.clientX, t.clientY);
     if(hit){
-      // Vibrate briefly for tactile feedback (supported on Android)
       if(navigator.vibrate) navigator.vibrate(40);
       openBodyCtxMenu(hit, t.clientX, t.clientY);
     }
@@ -1323,8 +1328,10 @@ vp.addEventListener('touchstart', e => {
 
 vp.addEventListener('touchmove', e => {
   if(e.touches.length !== 1) { clearTimeout(_holdTimer); return; }
+  // Dead-zone: don't cancel during initial finger-settle
+  if(Date.now() < _holdTouchDeadUntil) return;
   const t = e.touches[0];
-  if(Math.hypot(t.clientX - _holdStartX, t.clientY - _holdStartY) > HOLD_MAX_MOVE){
+  if(Math.hypot(t.clientX - _holdStartX, t.clientY - _holdStartY) > HOLD_MAX_MOVE_TOUCH){
     _holdMoved = true;
     clearTimeout(_holdTimer);
   }
