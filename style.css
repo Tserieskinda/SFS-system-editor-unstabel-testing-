@@ -1653,6 +1653,17 @@ body {
 
   /* ── Empty state add center button ── */
   #add-center-btn { padding: 16px 22px; font-size: .65rem; }
+
+  /* ── Group-select panel: slides up from bottom on mobile ── */
+  #group-sel-panel {
+    width: 100%;
+    top: auto; bottom: 44px; left: 0; right: 0;
+    height: 55vh;
+    transform: translateY(100%);
+    border-left: none; border-top: 1px solid rgba(255,160,50,.35);
+    border-radius: 0;
+  }
+  #group-sel-panel.open { transform: translateY(0); }
 }
 
 @media (max-width: 380px) {

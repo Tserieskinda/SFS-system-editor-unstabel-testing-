@@ -654,6 +654,7 @@ function _drawViewportNow(){
       ctx2.beginPath(); ctx2.arc(sp.x,sp.y,4,0,Math.PI*2);
       ctx2.strokeStyle='rgba(180,180,255,0.35)'; ctx2.stroke();
       if(selectedBody===name){ ctx2.beginPath(); polygonCircle(ctx2,sp.x,sp.y,10,64); ctx2.closePath(); ctx2.strokeStyle='rgba(80,180,255,0.75)'; ctx2.lineWidth=1.5; ctx2.setLineDash([3,3]); ctx2.stroke(); ctx2.setLineDash([]); }
+      if(typeof groupSelectMode !== 'undefined' && groupSelectMode && typeof groupSelected !== 'undefined' && groupSelected.has(name)){ ctx2.beginPath(); polygonCircle(ctx2,sp.x,sp.y,11,64); ctx2.closePath(); ctx2.strokeStyle='rgba(255,155,40,0.9)'; ctx2.lineWidth=2; ctx2.setLineDash([3,3]); ctx2.stroke(); ctx2.setLineDash([]); }
       ctx2.fillStyle='rgba(150,200,240,0.7)'; ctx2.font='9px "JetBrains Mono",monospace'; ctx2.textAlign='center';
       ctx2.fillText(name, sp.x, sp.y+18);
       ctx2.restore(); // must restore before early return
@@ -1963,6 +1964,24 @@ function _drawViewportNow(){
       }
       ctx2.closePath();
       ctx2.strokeStyle='rgba(80,180,255,0.75)'; ctx2.lineWidth=1.5;
+      ctx2.setLineDash([4,4]); ctx2.stroke(); ctx2.setLineDash([]);
+    }
+    // ── Group-select ring — orange, slightly larger ──
+    if(typeof groupSelectMode !== 'undefined' && groupSelectMode &&
+       typeof groupSelected !== 'undefined' && groupSelected.has(name)){
+      const GS_GAP = selectedBody === name ? 10 : 6;
+      const ringSteps2 = 128;
+      ctx2.beginPath();
+      for(let _si = 0; _si <= ringSteps2; _si++){
+        const rad = (_si / ringSteps2) * Math.PI * 2;
+        const rPx = _surfaceRpx(rad) + GS_GAP;
+        const px = sp.x + rPx * Math.cos(rad);
+        const py = sp.y - rPx * Math.sin(rad);
+        _si === 0 ? ctx2.moveTo(px, py) : ctx2.lineTo(px, py);
+      }
+      ctx2.closePath();
+      ctx2.strokeStyle = 'rgba(255,155,40,0.9)';
+      ctx2.lineWidth = 2;
       ctx2.setLineDash([4,4]); ctx2.stroke(); ctx2.setLineDash([]);
     }
 

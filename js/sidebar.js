@@ -40,6 +40,7 @@ function selectBody(name){
 }
 
 function openSidebar(){
+  if(typeof groupSelectMode !== 'undefined' && groupSelectMode) return; // group mode owns the right panel
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('statusbar').style.right='340px';
   setTimeout(resizeViewport, 360);

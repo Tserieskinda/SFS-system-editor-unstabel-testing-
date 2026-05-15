@@ -3363,6 +3363,253 @@ document.addEventListener('keydown', function(e){
 }
 </style>
 
+
+<!-- ── Body Context Menu (hold-click) ─────────────────────────────── -->
+<div id="body-ctx-menu" style="display:none">
+  <div class="bctx-title" id="bctx-title">PLANET</div>
+  <button class="bctx-btn" id="bctx-add"      onclick="bctxAddBody()">＋ Add Body</button>
+  <button class="bctx-btn" id="bctx-replace"  onclick="bctxReplace()">⇄ Replace</button>
+  <button class="bctx-btn bctx-danger" id="bctx-delete" onclick="bctxDelete()">✕ Delete</button>
+  <div class="bctx-divider"></div>
+  <button class="bctx-btn bctx-group" id="bctx-group" onclick="bctxGroupSelect()">◉ Group Select</button>
+</div>
+
+<style>
+/* ── Body context menu ── */
+#body-ctx-menu {
+  position: fixed;
+  z-index: 50000;
+  min-width: 160px;
+  background: var(--panel3);
+  border: 1px solid var(--rim2);
+  border-radius: 6px;
+  padding: 6px 0;
+  box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04);
+  font-family: 'Exo 2', system-ui, sans-serif;
+  pointer-events: auto;
+  /* Clip-path gives the SFS angular panel feel */
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  animation: bctx-in .12s ease;
+}
+@keyframes bctx-in {
+  from { opacity: 0; transform: scale(.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.bctx-title {
+  font-size: .6rem;
+  letter-spacing: .12em;
+  color: var(--ink);
+  padding: 4px 14px 6px;
+  border-bottom: 1px solid var(--rim);
+  margin-bottom: 4px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bctx-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--ink3);
+  font-family: 'Exo 2', system-ui, sans-serif;
+  font-size: .72rem;
+  letter-spacing: .06em;
+  padding: 8px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.bctx-btn:hover, .bctx-btn:active {
+  background: var(--ac12);
+  color: var(--ink3);
+}
+.bctx-btn.bctx-danger { color: rgba(220,80,70,.85); }
+.bctx-btn.bctx-danger:hover { background: rgba(200,60,50,.15); color: rgba(240,100,90,1); }
+.bctx-btn.bctx-group { color: rgba(255,160,50,.9); }
+.bctx-btn.bctx-group:hover { background: rgba(255,150,40,.12); color: rgba(255,180,80,1); }
+/* Active group-select state — button lights up */
+.bctx-btn.bctx-group.active { color: rgba(255,180,80,1); background: rgba(255,150,40,.18); }
+.bctx-divider {
+  height: 1px;
+  background: var(--rim);
+  margin: 4px 0;
+}
+/* ── Group-select panel (replaces HUD) ── */
+#group-sel-panel {
+  position: fixed;
+  right: 0; top: 48px; bottom: 28px;
+  width: 240px;
+  z-index: 91; /* above main sidebar */
+  background: var(--panel);
+  border-left: 1px solid rgba(255,160,50,.35);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  font-family: 'Exo 2', system-ui, sans-serif;
+  pointer-events: none;
+}
+#group-sel-panel.open {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+.gsp-head {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid rgba(255,160,50,.2);
+  flex-shrink: 0;
+}
+.gsp-title {
+  font-size: .58rem;
+  letter-spacing: .14em;
+  color: rgba(255,160,50,.9);
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: flex; align-items: center; gap: 6px;
+}
+.gsp-title::before {
+  content: '⬡';
+  font-size: .7rem;
+}
+#gsp-count {
+  font-size: .62rem;
+  color: rgba(255,200,100,.7);
+  font-weight: 600;
+  letter-spacing: .05em;
+}
+.gsp-hint {
+  font-size: .55rem;
+  color: rgba(255,255,255,.3);
+  letter-spacing: .05em;
+  margin-top: 3px;
+}
+.gsp-body {
+  flex: 1; overflow-y: auto;
+  padding: 10px 10px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.gsp-section-label {
+  font-size: .52rem;
+  letter-spacing: .1em;
+  color: rgba(255,255,255,.25);
+  text-transform: uppercase;
+  margin: 6px 0 3px 2px;
+}
+.gsp-btn {
+  width: 100%;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 4px;
+  color: rgba(220,220,230,.85);
+  font-family: 'Exo 2', system-ui, sans-serif;
+  font-size: .6rem;
+  letter-spacing: .07em;
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  transition: background .15s, border-color .15s;
+}
+.gsp-btn:hover {
+  background: rgba(255,255,255,.09);
+  border-color: rgba(255,255,255,.22);
+}
+.gsp-btn .gsp-icon {
+  font-size: .75rem;
+  width: 16px; text-align: center; flex-shrink: 0;
+  opacity: .8;
+}
+.gsp-btn.danger {
+  color: rgba(240,100,90,.9);
+  border-color: rgba(220,80,70,.35);
+  background: rgba(200,60,50,.08);
+}
+.gsp-btn.danger:hover {
+  background: rgba(200,60,50,.22);
+  border-color: rgba(220,80,70,.6);
+}
+.gsp-btn.accent {
+  color: rgba(100,200,255,.9);
+  border-color: rgba(80,180,240,.3);
+  background: rgba(60,140,200,.08);
+}
+.gsp-btn.accent:hover {
+  background: rgba(60,140,200,.18);
+  border-color: rgba(80,180,240,.55);
+}
+.gsp-footer {
+  padding: 10px;
+  border-top: 1px solid rgba(255,160,50,.15);
+  flex-shrink: 0;
+}
+.gsp-exit-btn {
+  width: 100%;
+  background: rgba(255,140,30,.08);
+  border: 1px solid rgba(255,150,40,.3);
+  border-radius: 4px;
+  color: rgba(255,160,50,.85);
+  font-family: 'Exo 2', system-ui, sans-serif;
+  font-size: .6rem;
+  letter-spacing: .1em;
+  text-align: center;
+  padding: 7px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.gsp-exit-btn:hover {
+  background: rgba(255,150,40,.18);
+  border-color: rgba(255,160,50,.55);
+  color: rgba(255,180,80,1);
+}
+/* Dim the main sidebar when group mode is active */
+#sidebar.gs-locked {
+  pointer-events: none;
+  opacity: 0.3;
+  filter: grayscale(.6);
+}
+</style>
+
+<!-- Group-select panel -->
+<div id="group-sel-panel">
+  <div class="gsp-head">
+    <div class="gsp-title">Group Select</div>
+    <div id="gsp-count" style="font-size:.62rem;color:rgba(255,200,100,.7);font-weight:600;letter-spacing:.05em;">0 selected</div>
+    <div class="gsp-hint">Tap bodies to toggle · Tap empty to exit</div>
+  </div>
+  <div class="gsp-body">
+
+    <div class="gsp-section-label">Selection</div>
+    <button class="gsp-btn accent" onclick="groupSelInvert()">
+      <span class="gsp-icon">⇄</span>Invert Selection
+    </button>
+
+    <div class="gsp-section-label">Scale</div>
+    <button class="gsp-btn" onclick="groupSelScaleSMA()">
+      <span class="gsp-icon">⟺</span>Scale All SMA
+    </button>
+    <button class="gsp-btn" onclick="groupSelScaleRadii()">
+      <span class="gsp-icon">◎</span>Scale All Radii
+    </button>
+
+    <div class="gsp-section-label">Jitter / Randomise</div>
+    <button class="gsp-btn" onclick="groupSelJitterSMA()">
+      <span class="gsp-icon">〜</span>Jitter SMA
+    </button>
+    <button class="gsp-btn" onclick="groupSelJitterEcc()">
+      <span class="gsp-icon">⟳</span>Jitter Eccentricity
+    </button>
+
+    <div class="gsp-section-label">Destructive</div>
+    <button class="gsp-btn danger" onclick="groupSelDeleteAll()">
+      <span class="gsp-icon">✕</span>Delete All Selected
+    </button>
+
+  </div>
+  <div class="gsp-footer">
+    <button class="gsp-exit-btn" onclick="exitGroupSelect()">✕ Exit Group Select</button>
+  </div>
+</div>
 </body>
 
 </html>
