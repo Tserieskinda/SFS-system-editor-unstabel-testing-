@@ -50,14 +50,16 @@ function setTerrainDetail(val){
 // Close detail dropdown on outside click (registered together with other dropdowns)
 // handled in the existing mousedown listener below — we append to it via a second listener
 document.addEventListener('mousedown', e => {
-  const wrap = document.getElementById('btn-terrain-detail');
-  const dd   = document.getElementById('terrain-detail-dropdown');
-  if(dd && dd.style.display !== 'none'){
-    if((!wrap || !wrap.contains(e.target)) && !dd.contains(e.target)){
-      _terrainDetailDropOpen = false;
-      dd.style.display = 'none';
+  try {
+    const wrap = document.getElementById('btn-terrain-detail');
+    const dd   = document.getElementById('terrain-detail-dropdown');
+    if(dd && dd.style.display !== 'none'){
+      if((!wrap || !wrap.contains(e.target)) && !dd.contains(e.target)){
+        _terrainDetailDropOpen = false;
+        dd.style.display = 'none';
+      }
     }
-  }
+  } catch(_){}
 }, true);
 
 // ════════════════════════════════ TOOLS: HIGH RES SURFACE ════════════════════════════════
@@ -125,12 +127,14 @@ function toggleToolsDropdown(){
 }
 // Close dropdowns when clicking outside
 document.addEventListener('mousedown', e => {
-  const wrap = document.getElementById('tools-dropdown-wrap');
-  const toolsDd = document.getElementById('tools-dropdown');
-  if(wrap && !wrap.contains(e.target) && toolsDd && !toolsDd.contains(e.target)){ _toolsDropOpen = false; toolsDd.style.display='none'; }
-  const envWrap = document.getElementById('env-dropdown-wrap');
-  const envDd = document.getElementById('env-dropdown');
-  if(envWrap && !envWrap.contains(e.target) && envDd && !envDd.contains(e.target)){ _envDropOpen = false; envDd.style.display='none'; }
+  try {
+    const wrap = document.getElementById('tools-dropdown-wrap');
+    const toolsDd = document.getElementById('tools-dropdown');
+    if(wrap && !wrap.contains(e.target) && toolsDd && !toolsDd.contains(e.target)){ _toolsDropOpen = false; toolsDd.style.display='none'; }
+    const envWrap = document.getElementById('env-dropdown-wrap');
+    const envDd = document.getElementById('env-dropdown');
+    if(envWrap && !envWrap.contains(e.target) && envDd && !envDd.contains(e.target)){ _envDropOpen = false; envDd.style.display='none'; }
+  } catch(_){}
 }, true);
 
 let dragOrbitMode = false;
@@ -338,15 +342,41 @@ vp.addEventListener('mousedown', e => {
       const br = (b.data.BASE_DATA||{}).radius || 1;
       const iconR = (b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10:(b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7:b.preset==='moon'?5:4) * iconScale;
       const r = Math.max(iconR, br * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
-      pushUndo();
-      vp.style.cursor = 'grabbing';
+      const d = Math.hypot(mx - sp.x, my - sp.y);
+      if(d < r + 12) hits.push({name, iconR, d});
+    });
+    hits.sort((a,b) => b.iconR - a.iconR || a.d - b.d);
+    if(hits.length){
+      const hitName = hits[0].name;
+      // Group drag: if group-select is active and the hit body is in the selection,
+      // start a multi-body drag (only root bodies actually move).
+      if(groupSelectMode && groupSelected.has(hitName)){
+        _gdob_start(hitName, e.clientX, e.clientY);
+      } else {
+        _dob_body = hitName;
+        _dob_active = true;
+        _dob_freeze(_dob_body);
+        pushUndo();
+        vp.style.cursor = 'grabbing';
+      }
     }
     return; // never pan in drag orbit mode
   }
   dragging=true; dragSX=e.clientX; dragSY=e.clientY;
+  // Image overlay: consume mousedown if it hits an image or its handles
+  const _rect0 = vp.getBoundingClientRect();
+  const _mx0 = e.clientX - _rect0.left, _my0 = e.clientY - _rect0.top;
+  if(typeof imgMouseDown === 'function' && imgMouseDown(_mx0, _my0, e.clientX, e.clientY)){
+    dragging = false; // don't pan while dragging an image
+  }
 });
 addEventListener('mousemove', e => {
   if(dragOrbitMode){
+    // Group drag takes precedence
+    if(_gdob_active){
+      _gdob_move(e.clientX, e.clientY);
+      return;
+    }
     if(_dob_active && _dob_body && bodies[_dob_body]){
       // Update orbit data live so drawViewport renders in new position
       const result = _dragOrbitCalcOrbit(_dob_body, e.clientX, e.clientY);
@@ -362,6 +392,8 @@ addEventListener('mousemove', e => {
     }
     return;
   }
+  // Image overlay drag takes priority over viewport pan
+  if(typeof imgMouseMove === 'function' && imgMouseMove(e.clientX, e.clientY)) return;
   if(!dragging) return;
   vpOffX += (e.clientX-dragSX)/vpZ;
   vpOffY += (e.clientY-dragSY)/vpZ;
@@ -369,6 +401,8 @@ addEventListener('mousemove', e => {
   drawViewport();
 });
 addEventListener('mouseup', e => {
+  if(typeof imgMouseUp === 'function') imgMouseUp();
+  if(dragOrbitMode && _gdob_active){ _gdob_end(); return; }
   if(dragOrbitMode && _dob_active && _dob_body){
     _dob_active = false;
     _dob_body = null;
@@ -406,6 +440,8 @@ vp.addEventListener('click', e => {
   if(dragOrbitMode) return; // click does nothing in drag orbit mode
   // Ignore drag moves
   if(Math.abs(e.clientX - dragSX) > 4 || Math.abs(e.clientY - dragSY) > 4) return;
+  // In group-select mode, taps toggle selection instead of opening sidebar
+  if(_groupSelHandleTap(e.clientX, e.clientY)) return;
   const rect = vp.getBoundingClientRect();
   const mx = e.clientX - rect.left, my = e.clientY - rect.top;
 
@@ -496,7 +532,14 @@ vp.addEventListener('touchstart', e => {
       if(d < r + 16) hits.push({name, iconR, d});
     });
     hits.sort((a,b) => b.iconR - a.iconR || a.d - b.d);
-    if(hits.length){ _dob_body = hits[0].name; _dob_active = true; _dob_freeze(_dob_body); pushUndo(); }
+    if(hits.length){
+      const hitName = hits[0].name;
+      if(groupSelectMode && groupSelected.has(hitName)){
+        _gdob_start(hitName, t.clientX, t.clientY);
+      } else {
+        _dob_body = hitName; _dob_active = true; _dob_freeze(_dob_body); pushUndo();
+      }
+    }
     return;
   }
   const ids = Object.keys(_touches);
@@ -510,8 +553,18 @@ vp.addEventListener('touchstart', e => {
     _pinchMidY = (t0.y + t1.y) / 2;
     _wasPinching = true;
     _pinchMoved  = false; // reset — will be set true on first actual movement
+    // Group-select: start SMA pinch snapshot
+    _gsPinchStart(dist);
   }
-  if(ids.length === 1){ dragSX = e.touches[0].clientX; dragSY = e.touches[0].clientY; }
+  if(ids.length === 1){
+    dragSX = e.touches[0].clientX; dragSY = e.touches[0].clientY;
+    // Image overlay touch — consume if it hits an image
+    const _t0 = e.touches[0];
+    const _rect1 = vp.getBoundingClientRect();
+    if(typeof imgMouseDown === 'function'){
+      imgMouseDown(_t0.clientX - _rect1.left, _t0.clientY - _rect1.top, _t0.clientX, _t0.clientY);
+    }
+  }
 }, {passive: false});
 
 vp.addEventListener('touchmove', e => {
@@ -525,6 +578,8 @@ vp.addEventListener('touchmove', e => {
 
     // Guard: skip frame if dist is degenerate (fingers overlapping during lag)
     if(dist > 1){
+      // Group-select: scale SMAs proportional to total pinch ratio (from start)
+      _gsPinchUpdate(dist);
       // Delta-based zoom: multiply by ratio of current-to-last distance each frame.
       // This prevents teleport when a third finger briefly touches or fingers rejoin.
       // Increased sensitivity: 1.8× multiplier on the delta
@@ -551,7 +606,10 @@ vp.addEventListener('touchmove', e => {
     }
 
   } else if(ids.length === 1 && e.touches.length === 1){
-    if(dragOrbitMode && _dob_active && _dob_body && bodies[_dob_body]){
+    if(dragOrbitMode && _gdob_active){
+      const t = e.touches[0];
+      _gdob_move(t.clientX, t.clientY);
+    } else if(dragOrbitMode && _dob_active && _dob_body && bodies[_dob_body]){
       const t = e.touches[0];
       const result = _dragOrbitCalcOrbit(_dob_body, t.clientX, t.clientY);
       if(result){
@@ -563,16 +621,23 @@ vp.addEventListener('touchmove', e => {
       if(result) _drawDragOrbitPreview(_dob_body, e.touches[0].clientX, e.touches[0].clientY);
     } else if(!dragOrbitMode){
       const t = e.touches[0];
-      vpOffX += (t.clientX - dragSX) / vpZ;
-      vpOffY += (t.clientY - dragSY) / vpZ;
-      dragSX = t.clientX; dragSY = t.clientY;
-      drawViewport();
+      // Image drag takes priority over viewport pan
+      if(typeof imgMouseMove === 'function' && imgMouseMove(t.clientX, t.clientY)){
+        dragSX = t.clientX; dragSY = t.clientY;
+      } else {
+        vpOffX += (t.clientX - dragSX) / vpZ;
+        vpOffY += (t.clientY - dragSY) / vpZ;
+        dragSX = t.clientX; dragSY = t.clientY;
+        drawViewport();
+      }
     }
   }
 }, {passive: false});
 
 vp.addEventListener('touchend', e => {
   Array.from(e.changedTouches).forEach(t => { delete _touches[t.identifier]; });
+  if(typeof imgMouseUp === 'function') imgMouseUp();
+  if(dragOrbitMode && _gdob_active){ _gdob_end(); return; }
   if(dragOrbitMode && _dob_active){
     _dob_active = false; _dob_body = null;
     _dob_frozenScale = null; _dob_frozenParentSP = null; _dob_frozenVpZ = null;
@@ -580,6 +645,7 @@ vp.addEventListener('touchend', e => {
   }
   const remaining = Object.keys(_touches).length;
   if(remaining < 2){
+    _gsPinchEnd();
     _pinchStartDist = null; _pinchStartZ = null; _lastPinchDist = null;
     if(remaining === 1){
       const id = Object.keys(_touches)[0];
@@ -621,6 +687,9 @@ vp.addEventListener('touchend', e => {
         return;
       }
 
+      // Group-select mode: tap toggles body selection
+      if(_groupSelHandleTap(t.clientX, t.clientY)) return;
+
       // Single tap: select body
       const sc2t = getSMAScale();
       const hitCandidatesT = [];
@@ -642,6 +711,31 @@ vp.addEventListener('touchend', e => {
 }, {passive: false});
 
 function renderBody(name){ drawViewport(); }
+// ── touchcancel: treat as all-fingers-up to prevent phantom stuck touches ────
+// Fires when the OS interrupts touches (notifications, app switch, edge swipe,
+// scroll takeover). Without this, cancelled touch identifiers stay in _touches
+// permanently, making the next single-finger pan behave like a pinch-zoom.
+vp.addEventListener('touchcancel', e => {
+  // Remove every cancelled touch from our tracking map
+  Array.from(e.changedTouches).forEach(t => { delete _touches[t.identifier]; });
+  // If all touches are gone (most common case), do a full state reset
+  if(Object.keys(_touches).length === 0){
+    _pinchStartDist = null; _pinchStartZ = null; _lastPinchDist = null;
+    _wasPinching = false; _pinchMoved = false;
+    if(dragOrbitMode && _dob_active){
+      _dob_active = false; _dob_body = null;
+      _dob_frozenScale = null; _dob_frozenParentSP = null; _dob_frozenVpZ = null;
+      _cachedSMAScale = null;
+    }
+    drawViewport();
+  } else {
+    // Some fingers still active — reset pinch state if we dropped below 2
+    if(Object.keys(_touches).length < 2){
+      _pinchStartDist = null; _pinchStartZ = null; _lastPinchDist = null;
+    }
+  }
+}, {passive: false});
+
 function updateBodyVisual(name){ drawViewport(); }
 
 function updateStatusBar(){
@@ -1119,3 +1213,516 @@ function _pscInitCanvasEvents(){
 
 // Expose init (called after DOM ready from modal onload-equivalent)
 window._pscInitCanvasEvents = _pscInitCanvasEvents;
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── BODY CONTEXT MENU (hold-click / long-press) ──────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+
+let _ctxMenu       = null;   // the DOM element (fetched on first use)
+let _ctxMenuBody   = null;   // which body the menu is showing for
+let _holdTimer     = null;   // setTimeout handle
+let _holdMoved     = false;  // pointer moved too far during hold → cancel
+let _holdStartX    = 0;
+let _holdStartY    = 0;
+const HOLD_MS       = 500;    // hold duration
+const HOLD_MAX_MOVE = 10;     // px — mouse (precise pointer)
+const HOLD_MAX_MOVE_TOUCH = 22; // px — touch (finger naturally drifts more)
+const HOLD_DEAD_MS  = 160;    // ms — ignore movement during initial touch settle
+
+function _ctxEl(){ return _ctxMenu || (_ctxMenu = document.getElementById('body-ctx-menu')); }
+
+function _hitBodyAt(clientX, clientY){
+  const rect = vp.getBoundingClientRect();
+  const mx = clientX - rect.left, my = clientY - rect.top;
+  const sc2 = getSMAScale();
+  const hits = [];
+  Object.entries(bodyScreenPos).forEach(([name, sp]) => {
+    if(!bodyVisibleMap[name]) return;
+    const b = bodies[name];
+    const br = (b.data.BASE_DATA||{}).radius || 1;
+    const iconR = (b.isCenter?18 : b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10 :
+                  (b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7 : b.preset==='moon'?5:4) * iconScale;
+    const r = Math.max(iconR, br * sc2 * vpZ, bodyTerrainPeakPx[name] || 0);
+    const d = Math.hypot(mx - sp.x, my - sp.y);
+    if(d < r + 14) hits.push({name, iconR, d});
+  });
+  hits.sort((a,b) => b.iconR - a.iconR || a.d - b.d);
+  return hits.length ? hits[0].name : null;
+}
+
+function openBodyCtxMenu(bodyName, clientX, clientY){
+  _ctxMenuBody = bodyName;
+  const el = _ctxEl();
+  document.getElementById('bctx-title').textContent = bodyName.toUpperCase();
+
+  // Position: keep inside viewport
+  el.style.display = 'block';
+  el.style.left = '0'; el.style.top = '0'; // reset for measurement
+  requestAnimationFrame(() => {
+    const W = el.offsetWidth, H = el.offsetHeight;
+    const vW = window.innerWidth, vH = window.innerHeight;
+    let x = clientX + 8, y = clientY + 8;
+    if(x + W > vW - 8) x = clientX - W - 8;
+    if(y + H > vH - 8) y = clientY - H - 8;
+    if(x < 8) x = 8;
+    if(y < 48) y = 48; // below topbar
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+  });
+}
+
+function closeBodyCtxMenu(){
+  _ctxEl().style.display = 'none';
+  _ctxMenuBody = null;
+}
+
+// Dismiss when clicking outside
+document.addEventListener('pointerdown', e => {
+  if(_ctxEl().style.display !== 'none' && !_ctxEl().contains(e.target)){
+    closeBodyCtxMenu();
+  }
+}, true);
+
+// ── Hold-detect on mouse (desktop) ───────────────────────────────────────
+vp.addEventListener('mousedown', e => {
+  if(e.button !== 0) return;
+  _holdMoved = false;
+  _holdStartX = e.clientX; _holdStartY = e.clientY;
+  _holdTimer = setTimeout(() => {
+    if(_holdMoved) return;
+    const hit = _hitBodyAt(e.clientX, e.clientY);
+    if(hit) openBodyCtxMenu(hit, e.clientX, e.clientY);
+  }, HOLD_MS);
+}, true); // capture so we see it before the regular mousedown
+
+vp.addEventListener('mousemove', e => {
+  if(Math.hypot(e.clientX - _holdStartX, e.clientY - _holdStartY) > HOLD_MAX_MOVE){
+    _holdMoved = true;
+    clearTimeout(_holdTimer);
+  }
+}, true);
+
+vp.addEventListener('mouseup', () => { clearTimeout(_holdTimer); }, true);
+
+// ── Hold-detect on touch (mobile) ────────────────────────────────────────
+// We install on capture so we can inspect touches before the regular handler.
+// _holdTouchDeadUntil: ignore touchmove cancellation during initial finger-settle window
+let _holdTouchDeadUntil = 0;
+
+vp.addEventListener('touchstart', e => {
+  if(e.touches.length !== 1) { clearTimeout(_holdTimer); return; }
+  const t = e.touches[0];
+  _holdMoved = false;
+  _holdStartX = t.clientX; _holdStartY = t.clientY;
+  _holdTouchDeadUntil = Date.now() + HOLD_DEAD_MS;
+  _holdTimer = setTimeout(() => {
+    if(_holdMoved) return;
+    const hit = _hitBodyAt(t.clientX, t.clientY);
+    if(hit){
+      if(navigator.vibrate) navigator.vibrate(40);
+      openBodyCtxMenu(hit, t.clientX, t.clientY);
+    }
+  }, HOLD_MS);
+}, { capture: true, passive: true });
+
+vp.addEventListener('touchmove', e => {
+  if(e.touches.length !== 1) { clearTimeout(_holdTimer); return; }
+  // Dead-zone: don't cancel during initial finger-settle
+  if(Date.now() < _holdTouchDeadUntil) return;
+  const t = e.touches[0];
+  if(Math.hypot(t.clientX - _holdStartX, t.clientY - _holdStartY) > HOLD_MAX_MOVE_TOUCH){
+    _holdMoved = true;
+    clearTimeout(_holdTimer);
+  }
+}, { capture: true, passive: true });
+
+vp.addEventListener('touchend',    () => clearTimeout(_holdTimer), { capture: true, passive: true });
+vp.addEventListener('touchcancel', () => clearTimeout(_holdTimer), { capture: true, passive: true });
+
+// ── Menu action functions ─────────────────────────────────────────────────
+function bctxAddBody(){
+  const name = _ctxMenuBody;
+  closeBodyCtxMenu();
+  if(!name || !bodies[name]) return;
+  // Select the body first so the new body defaults to orbiting it
+  selectBody(name);
+  addBodyPrompt();
+}
+
+function bctxReplace(){
+  const name = _ctxMenuBody;
+  closeBodyCtxMenu();
+  if(!name || !bodies[name]) return;
+  selectBody(name);
+  replaceBodyPrompt();
+}
+
+function bctxDelete(){
+  const name = _ctxMenuBody;
+  closeBodyCtxMenu();
+  if(!name || !bodies[name]) return;
+  selectBody(name);
+  confirmDeleteBody();
+}
+
+function bctxGroupSelect(){
+  const name = _ctxMenuBody;
+  closeBodyCtxMenu();
+  if(!name || !bodies[name]) return;
+  // Activate group-select mode, seeding with this body
+  enterGroupSelect(name);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── GROUP SELECT ──────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+
+// Set of body names currently group-selected
+let groupSelected = new Set();
+let groupSelectMode = false;
+
+function _gsPanel(){ return document.getElementById('group-sel-panel'); }
+
+function enterGroupSelect(seedBody){
+  groupSelectMode = true;
+  groupSelected   = new Set();
+  if(seedBody) groupSelected.add(seedBody);
+  // Force-close and lock out the main planet sidebar
+  if(typeof selectedBody !== 'undefined'){
+    selectedBody = null;
+    const sbSel = document.getElementById('sb-sel');
+    if(sbSel) sbSel.textContent = '—';
+  }
+  const mainSidebar = document.getElementById('sidebar');
+  if(mainSidebar){ mainSidebar.classList.remove('open'); mainSidebar.classList.add('gs-locked'); }
+  document.getElementById('statusbar').style.right = '0';
+  setTimeout(resizeViewport, 360);
+  _gsOpenPanel();
+  drawViewport();
+}
+
+function exitGroupSelect(){
+  groupSelectMode = false;
+  groupSelected.clear();
+  const mainSidebar = document.getElementById('sidebar');
+  if(mainSidebar) mainSidebar.classList.remove('gs-locked');
+  _gsClosePanel();
+  drawViewport();
+}
+
+// ── Panel open / close ────────────────────────────────────────────────────
+
+function _gsOpenPanel(){
+  const p = _gsPanel();
+  if(p) p.classList.add('open');
+  document.getElementById('statusbar').style.right = '240px';
+  setTimeout(resizeViewport, 360);
+  _gsRebuildPanel();
+}
+
+function _gsClosePanel(){
+  const p = _gsPanel();
+  if(p) p.classList.remove('open');
+  document.getElementById('statusbar').style.right = '0';
+  setTimeout(resizeViewport, 360);
+}
+
+function _gsRebuildPanel(){
+  const countEl = document.getElementById('gsp-count');
+  if(countEl) countEl.textContent = groupSelected.size + ' selected';
+}
+
+// Toggle a body in/out of group selection (called on tap while in group mode)
+function groupSelToggle(name){
+  if(!groupSelectMode) return;
+  if(groupSelected.has(name)) groupSelected.delete(name);
+  else groupSelected.add(name);
+  _gsRebuildPanel();
+  drawViewport();
+}
+
+// ── Operations ───────────────────────────────────────────────────────────
+
+// Delete all group-selected bodies (plus their satellites)
+function groupSelDeleteAll(){
+  if(!groupSelected.size) return;
+  const names = [...groupSelected];
+  const toDelete = new Set();
+  names.forEach(n => {
+    toDelete.add(n);
+    if(typeof getSatelliteNames === 'function'){
+      getSatelliteNames(n).forEach(s => toDelete.add(s));
+    }
+  });
+  const total = toDelete.size;
+  if(!confirm(`Delete ${total} bod${total===1?'y':'ies'}?`)) return;
+  pushUndo();
+  toDelete.forEach(n => delete bodies[n]);
+  exitGroupSelect();
+  drawViewport();
+  if(typeof updateStatusBar === 'function') updateStatusBar();
+}
+
+// Invert selection (all orbital bodies, not system center)
+function groupSelInvert(){
+  const all = Object.keys(bodies).filter(n => bodies[n].data.ORBIT_DATA);
+  const newSel = new Set(all.filter(n => !groupSelected.has(n)));
+  groupSelected = newSel;
+  _gsRebuildPanel();
+  drawViewport();
+}
+
+// Scale SMA of all selected bodies by a factor
+function groupSelScaleSMA(){
+  if(!groupSelected.size){ alert('No bodies selected.'); return; }
+  const raw = prompt('Scale SMA — enter factor (e.g. 2) or percentage (e.g. 150%):');
+  if(raw === null || raw.trim() === '') return;
+  const factor = _gsParseFactorOrPct(raw);
+  if(factor === null){ alert('Invalid value.'); return; }
+  pushUndo();
+  groupSelected.forEach(name => {
+    const od = bodies[name]?.data?.ORBIT_DATA;
+    if(od && od.semiMajorAxis != null){
+      od.semiMajorAxis = Math.max(1000, od.semiMajorAxis * factor);
+    }
+  });
+  drawViewport();
+}
+
+// Scale radii of all selected bodies by a factor
+function groupSelScaleRadii(){
+  if(!groupSelected.size){ alert('No bodies selected.'); return; }
+  const raw = prompt('Scale Radii — enter factor (e.g. 0.5) or percentage (e.g. 75%):');
+  if(raw === null || raw.trim() === '') return;
+  const factor = _gsParseFactorOrPct(raw);
+  if(factor === null){ alert('Invalid value.'); return; }
+  pushUndo();
+  groupSelected.forEach(name => {
+    const bd = bodies[name]?.data?.BASE_DATA;
+    if(bd && bd.radius != null){
+      bd.radius = Math.max(100, bd.radius * factor);
+    }
+  });
+  drawViewport();
+}
+
+// Jitter SMA: randomise each selected body's SMA by ±bound%
+function groupSelJitterSMA(){
+  if(!groupSelected.size){ alert('No bodies selected.'); return; }
+  const raw = prompt('Jitter SMA — enter max percentage offset (e.g. 10 for ±10%):');
+  if(raw === null || raw.trim() === '') return;
+  const pct = parseFloat(raw.replace('%',''));
+  if(isNaN(pct) || pct < 0){ alert('Invalid value.'); return; }
+  pushUndo();
+  const bound = pct / 100;
+  groupSelected.forEach(name => {
+    const od = bodies[name]?.data?.ORBIT_DATA;
+    if(od && od.semiMajorAxis != null){
+      const jitter = 1 + (Math.random() * 2 - 1) * bound;
+      od.semiMajorAxis = Math.max(1000, od.semiMajorAxis * jitter);
+    }
+  });
+  drawViewport();
+}
+
+// Jitter eccentricity: randomise each selected body's ecc by ±bound
+function groupSelJitterEcc(){
+  if(!groupSelected.size){ alert('No bodies selected.'); return; }
+  const raw = prompt('Jitter Eccentricity — enter max absolute offset (e.g. 0.05 for ±0.05):');
+  if(raw === null || raw.trim() === '') return;
+  const bound = parseFloat(raw);
+  if(isNaN(bound) || bound < 0){ alert('Invalid value.'); return; }
+  pushUndo();
+  groupSelected.forEach(name => {
+    const od = bodies[name]?.data?.ORBIT_DATA;
+    if(od != null){
+      const cur = od.eccentricity || 0;
+      const delta = (Math.random() * 2 - 1) * bound;
+      od.eccentricity = Math.min(0.99, Math.max(0, cur + delta));
+    }
+  });
+  drawViewport();
+}
+
+// Parse "2", "2x", "150%" → multiplicative factor; null on error
+function _gsParseFactorOrPct(s){
+  s = s.trim();
+  if(s.endsWith('%')){
+    const v = parseFloat(s);
+    if(isNaN(v) || v <= 0) return null;
+    return v / 100;
+  }
+  s = s.replace(/x$/i,'');
+  const v = parseFloat(s);
+  if(isNaN(v) || v <= 0) return null;
+  return v;
+}
+
+// ── Intercept tap/click in group-select mode ──────────────────────────────
+// We patch the existing click and touchend paths: when groupSelectMode is on,
+// a normal tap toggles selection instead of opening the sidebar.
+
+function _groupSelHandleTap(clientX, clientY){
+  if(!groupSelectMode) return false;
+  const hit = _hitBodyAt(clientX, clientY);
+  if(hit){
+    groupSelToggle(hit);
+  } else {
+    // Tapping empty space exits group select
+    exitGroupSelect();
+  }
+  return true; // consumed
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── GROUP-SELECT PINCH: SHRINK/GROW SMA OF SELECTED BODIES ───────────────
+// The standard two-finger pinch zooms the viewport. In group-select mode,
+// pinching while bodies are selected ALSO scales their semi-major axes.
+// Both gestures happen simultaneously: viewport zoom + SMA scale.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Last pinch scale factor (ratio between current and start dist) tracked
+// per-gesture so we can apply the SMA delta each frame.
+let _gsPinchStartSMAs = null;  // { bodyName: sma } snapshot at pinch start
+let _gsPinchStartDist = null;
+
+function _gsPinchStart(dist){
+  if(!groupSelectMode || groupSelected.size === 0) return;
+  // Snapshot current SMAs
+  _gsPinchStartSMAs = {};
+  _gsPinchStartDist = dist;
+  groupSelected.forEach(name => {
+    const od = bodies[name]?.data?.ORBIT_DATA;
+    if(od) _gsPinchStartSMAs[name] = od.semiMajorAxis;
+  });
+}
+
+function _gsPinchUpdate(dist){
+  if(!_gsPinchStartSMAs || !_gsPinchStartDist) return;
+  const ratio = dist / _gsPinchStartDist;
+  // Apply to each selected body's SMA, clamped to reasonable range
+  groupSelected.forEach(name => {
+    const od = bodies[name]?.data?.ORBIT_DATA;
+    if(od && _gsPinchStartSMAs[name] != null){
+      od.semiMajorAxis = Math.max(1000, _gsPinchStartSMAs[name] * ratio);
+    }
+  });
+  if(typeof liveSync === 'function' && typeof selectedBody !== 'undefined'){
+    // Don't call liveSync (it reads sidebar) — just redraw
+  }
+  drawViewport();
+}
+
+function _gsPinchEnd(){
+  if(_gsPinchStartSMAs){
+    // Push undo after the gesture completes
+    // (we already called pushUndo at pinch start if needed — do it on end for clean undo point)
+  }
+  _gsPinchStartSMAs = null;
+  _gsPinchStartDist = null;
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── GROUP DRAG ORBIT: move only root selected bodies ─────────────────────
+// When dragOrbitMode is on AND groupSelectMode is on, dragging a selected
+// body moves all "root" selected bodies (those whose parent is NOT in the
+// selection set).  Satellites of selected bodies move automatically because
+// their orbit parent is moving, so we do NOT also drag them.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Returns the set of root bodies in the group selection:
+// a body is a root if none of its ancestors (up to system center) are also selected.
+function _groupSelRoots(){
+  const roots = new Set();
+  groupSelected.forEach(name => {
+    let cur = name;
+    let isRoot = true;
+    // Walk up parent chain
+    for(let depth = 0; depth < 20; depth++){
+      const od = bodies[cur]?.data?.ORBIT_DATA;
+      if(!od) break;
+      const par = od.parent;
+      if(!par) break;
+      if(groupSelected.has(par)){ isRoot = false; break; }
+      cur = par;
+    }
+    if(isRoot) roots.add(name);
+  });
+  return roots;
+}
+
+// Active group drag state
+let _gdob_bodies   = [];   // array of { name, frozenSMA, frozenAOP, frozenParentSP, frozenScale, frozenVpZ }
+let _gdob_active   = false;
+let _gdob_dragBody = null; // the body the pointer is actually over (reference)
+
+function _gdob_start(primaryBody, clientX, clientY){
+  if(!groupSelectMode || groupSelected.size === 0) return false;
+  if(!groupSelected.has(primaryBody)) return false;
+  pushUndo();
+  const roots = _groupSelRoots();
+  _gdob_bodies = [];
+  const rect = vp.getBoundingClientRect();
+  const mx = clientX - rect.left, my = clientY - rect.top;
+  roots.forEach(name => {
+    const b = bodies[name];
+    if(!b || b.isCenter) return;
+    const od = b.data?.ORBIT_DATA;
+    if(!od) return;
+    const frozenScale    = getSMAScale();
+    const frozenVpZ      = vpZ;
+    const parentWP       = bodyWorldPos[od.parent] || {x:0,y:0};
+    const frozenParentSP = worldToScreen(parentWP.x, parentWP.y);
+    _gdob_bodies.push({
+      name,
+      frozenSMA:      od.semiMajorAxis,
+      frozenAOP:      od.argumentOfPeriapsis,
+      frozenScale,
+      frozenVpZ,
+      frozenParentSP
+    });
+  });
+  _gdob_active   = true;
+  _gdob_dragBody = primaryBody;
+  return true;
+}
+
+function _gdob_move(clientX, clientY){
+  if(!_gdob_active) return;
+  const rect = vp.getBoundingClientRect();
+  const canvasX = clientX - rect.left;
+  const canvasY = clientY - rect.top;
+
+  _gdob_bodies.forEach(entry => {
+    const b  = bodies[entry.name];
+    if(!b) return;
+    const od = b.data?.ORBIT_DATA;
+    if(!od) return;
+
+    // Use each body's own frozen parent screen pos
+    const dx_px = canvasX - entry.frozenParentSP.x;
+    const dy_px = canvasY - entry.frozenParentSP.y;
+    const dist_px = Math.hypot(dx_px, dy_px);
+    if(dist_px < 0.5) return;
+    const dist_m = dist_px / entry.frozenVpZ / entry.frozenScale;
+    const ecc    = od.eccentricity || 0;
+    const c_m    = dist_m;  // treat drag radius as SMA (simplified — same as single drag)
+    const newSMA = Math.max(1000, dist_m / (1 - ecc)); // periapsis distance = SMA*(1-ecc)
+    const newAOP = Math.atan2(-dy_px, dx_px) * (180 / Math.PI);
+    od.semiMajorAxis       = newSMA;
+    od.argumentOfPeriapsis = ((newAOP % 360) + 360) % 360;
+  });
+  drawViewport();
+}
+
+function _gdob_end(){
+  _gdob_active   = false;
+  _gdob_bodies   = [];
+  _gdob_dragBody = null;
+  _cachedSMAScale = null;
+  drawViewport();
+}
