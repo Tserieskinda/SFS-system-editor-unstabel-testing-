@@ -76,15 +76,23 @@ const SFX = (() => {
   const testPositive = () => { _lastPositive = 0; _positive(); };
 
   // ── Non-destructive function patcher ─────────────────────────────
+  // _pendingPatch tracks names that already have a queued retry so a second
+  // _wire() call (DOMContentLoaded race) never schedules a duplicate setTimeout,
+  // which would cause the patched function to fire twice per click.
+  const _pendingPatch = new Set();
   function patch(name, sfxFn) {
     function _apply() {
+      _pendingPatch.delete(name);
       const fn = window[name];
       if (typeof fn !== 'function' || fn._sfxPatched) return false;
       window[name] = function (...a) { try { sfxFn(); } catch(_){} return fn.apply(this, a); };
       window[name]._sfxPatched = true;
       return true;
     }
-    if (!_apply()) setTimeout(_apply, 600); // retry once for late-loaded scripts
+    if (!_apply() && !_pendingPatch.has(name)) {
+      _pendingPatch.add(name);
+      setTimeout(_apply, 600); // retry once for late-loaded scripts
+    }
   }
 
   // ── Wire every button ────────────────────────────────────────────
@@ -160,6 +168,16 @@ const SFX = (() => {
     patch('addBodyPrompt',     select);
     patch('replaceBodyPrompt', select);
     patch('hmInsertMap',       select);
+    patch('openCalculator',    select);
+    patch('toggleUtilsDropdown', select);
+
+    // ── CLICK (neutral actions) ───────────────────────────────────
+    patch('closeCalculator',   click);
+    patch('prsOnParentChange', click);
+
+    // ── SELECT (toggle-style actions) ─────────────────────────────
+    patch('astToggleEffect',   select);
+    patch('calcSetTab',        select);
 
     // ── POSITIVE (meaningful confirms — 2 s cooldown) ─────────────
     patch('goNew',              positive);
@@ -177,6 +195,11 @@ const SFX = (() => {
     patch('astDownload',        positive);
     patch('astExportTxt',       positive);
     patch('astFxRandomize',     positive);
+    patch('astApplyToBody',     positive);
+    patch('astRefreshBodyList', select);
+    patch('astSetHeightRange',  select);
+    patch('prsNext',            positive);
+    patch('clearAssetCache',    positive);
 
     // ── WARNING ───────────────────────────────────────────────────
     patch('confirmClearAll',   warning);
@@ -186,6 +209,7 @@ const SFX = (() => {
     patch('delFogKey',         warning);
     patch('delPPKey',          warning);
     patch('delLandmark',       warning);
+    patch('delFlatZone',       warning);
     patch('hmRemoveLine',      warning);
     patch('astClearCanvas',    warning);
 
@@ -218,12 +242,18 @@ const SFX = (() => {
       if (oc.includes('TC.open')) { select(); return; }
 
       // triggerFileInput — file pickers
-      if (oc.startsWith('triggerFileInput') || oc.startsWith('document.getElementById(') && oc.includes('.click()')) {
+      if (oc.startsWith('triggerFileInput') || (oc.startsWith('document.getElementById(') && oc.includes('.click()'))) {
         select(); return;
       }
 
       // Wt advanced toggle (inline IIFE)
       if (oc.includes('wt-advanced')) { select(); return; }
+
+      // document.getElementById('ast-trace-file').click()
+      if (oc.includes('ast-trace-file')) { select(); return; }
+
+      // clearAssetCache inline chain (.then(...))
+      if (oc.startsWith('clearAssetCache')) { positive(); return; }
 
     }, true); // capture so we hear it even if child stops propagation
   }

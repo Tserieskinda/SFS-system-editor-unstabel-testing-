@@ -21,6 +21,11 @@ function buildZip(files){
     arrays.forEach(a=>{out.set(a,off);off+=a.length;}); return out;
   }
 
+  // Encode current date/time in MS-DOS packed format for ZIP timestamps
+  const _now = new Date();
+  const _dosTime = ((_now.getHours() << 11) | (_now.getMinutes() << 5) | Math.floor(_now.getSeconds() / 2));
+  const _dosDate = (((_now.getFullYear() - 1980) << 9) | ((_now.getMonth() + 1) << 5) | _now.getDate());
+
   const parts = [], centralDir = [];
   let offset = 0;
 
@@ -42,7 +47,7 @@ function buildZip(files){
       u16le(20),           // version needed
       u16le(flags),        // flags: 0x0800 if non-ASCII, else 0
       u16le(0),            // compression: stored
-      u16le(0), u16le(0x0021),  // mod time=0, mod date=Jan 1 1980 (MS-DOS epoch, not zero)
+      u16le(_dosTime), u16le(_dosDate),  // mod time/date: current date/time
       u32le(crc),
       u32le(size), u32le(size),
       u16le(name.length), u16le(0), // filename len, extra len
@@ -55,7 +60,7 @@ function buildZip(files){
       new Uint8Array([0x50,0x4B,0x01,0x02]), // signature
       u16le(20), u16le(20),  // version made by, version needed
       u16le(flags), u16le(0), // flags: UTF-8 if needed, compression: stored
-      u16le(0), u16le(0x0021),  // mod time=0, mod date=Jan 1 1980
+      u16le(_dosTime), u16le(_dosDate),  // mod time/date: current date/time
       u32le(crc),
       u32le(size), u32le(size),
       u16le(name.length),

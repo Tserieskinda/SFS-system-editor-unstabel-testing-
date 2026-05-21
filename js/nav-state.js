@@ -42,6 +42,9 @@ function goOpen(){
   const hasSession = Object.keys(bodies).length > 0;
   const warn = document.getElementById('open-session-warn');
   if(warn) warn.style.display = hasSession ? '' : 'none';
+  // Import System only makes sense when a session is already loaded
+  const importBtn = document.getElementById('btn-import-system');
+  if(importBtn) importBtn.style.display = hasSession ? '' : 'none';
 }
 
 // "START WITH EMPTY SYSTEM" from the open screen — confirm if session exists

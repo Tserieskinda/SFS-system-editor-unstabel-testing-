@@ -5,79 +5,89 @@ const texPixelCache = {};
 let _sfsDbgLogged   = {}; // throttle per-body NODRAW warnings to once per load
 
 function cacheTexture(name, dataUrl){
-  console.log(`[SFS|CACHE] queueing "${name}" (${dataUrl.length} chars)`);
   const img = new Image();
   img.onload = () => {
     textureCache[name] = img;
-    console.log(`[SFS|CACHE] loaded "${name}" ${img.naturalWidth}×${img.naturalHeight}`);
+    // ── Fast path: 64×64 strip samples (cheap, done immediately) ───────────
     try {
-      // ── Ring strip: 1-D horizontal sample ──────────────────────────────────
       const c = document.createElement('canvas');
       c.width = 64; c.height = 64;
       const x = c.getContext('2d');
       x.drawImage(img, 0, 0, 64, 64);
-      texPixelCache[name + '_ring'] = x.getImageData(0, 0, 64, 1).data;
-      // _atmos: always 64 rows, row 0=outer(transparent), row 63=inner(surface)
+      texPixelCache[name + '_ring']  = x.getImageData(0, 0, 64, 1).data;
       texPixelCache[name + '_atmos'] = x.getImageData(0, 0, 1, 64).data;
+    } catch(e) { console.warn('[SFS|CACHE] strip sample failed:', e); }
 
-      // ── Atmosphere polar canvas ────────────────────────────────────────────
-      // Pre-warp the texture into polar coordinates so we can drawImage it
-      // directly onto the atmosphere disc at render time.
-      //
-      // SFS wrapping rules:
-      //   - Texture left  edge (U=0) = rightmost point of planet (East, angle=0)
-      //   - Texture right edge (U=1) = wraps back after 360° counter-clockwise
-      //   - Wrapping is CCW: East→North→West→South→East = left→right of texture
-      //   - Texture bottom row (Y=SH-1) = planet surface (radFrac=0)
-      //   - Texture top    row (Y=0)    = outer atmosphere edge (radFrac=1)
-      //
-      // Canvas atan2: angle=0 → East, increases clockwise (CW).
-      // To get CCW from East: u = 1 - normalised_CW_angle  (flip direction)
-      const SZ = 256;
-      const pc = document.createElement('canvas');
-      pc.width = SZ; pc.height = SZ;
-      const px2 = pc.getContext('2d');
-      const srcC = document.createElement('canvas');
-      srcC.width = img.naturalWidth; srcC.height = img.naturalHeight;
-      const srcX = srcC.getContext('2d');
-      srcX.drawImage(img, 0, 0);
-      const srcD = srcX.getImageData(0, 0, srcC.width, srcC.height).data;
-      const SW = srcC.width, SH = srcC.height;
-      const outD = px2.createImageData(SZ, SZ);
-      const od = outD.data;
-      const halfSZ = SZ / 2;
-      for(let py = 0; py < SZ; py++){
-        for(let ppx = 0; ppx < SZ; ppx++){
-          const dx = ppx - halfSZ, dy = py - halfSZ;
-          const radFrac = Math.sqrt(dx*dx + dy*dy) / halfSZ;
-          const oi = (py*SZ + ppx)*4;
-          if(radFrac > 1.0){
-            od[oi]=od[oi+1]=od[oi+2]=od[oi+3]=0;
-            continue;
-          }
-          // Normalised CW angle: 0=East, increases clockwise, range 0..1
-          let cwAngle = Math.atan2(dy, dx) / (Math.PI*2);
-          if(cwAngle < 0) cwAngle += 1;
-          // CCW from East: flip so U=0=East and direction is counter-clockwise
-          const u = (1 - cwAngle) % 1;
-          // radFrac=0 (surface/inner) → texture bottom (SH-1)
-          // radFrac=1 (outer edge)    → texture top    (0)
-          const sx = Math.min(SW-1, Math.max(0, Math.round(u * (SW-1))));
-          const sy = Math.min(SH-1, Math.max(0, Math.round((1 - radFrac) * (SH-1))));
-          const si = (sy * SW + sx) * 4;
-          od[oi]   = srcD[si];
-          od[oi+1] = srcD[si+1];
-          od[oi+2] = srcD[si+2];
-          od[oi+3] = srcD[si+3];
-        }
-      }
-      px2.putImageData(outD, 0, 0);
-      texPixelCache[name + '_atmoCanvas'] = pc;
-    } catch(e) { console.warn('[SFS|CACHE] atmo polar warp failed:', e); }
+    // Notify immediately so the viewport can render (without atmo polar warp yet).
     drawViewport();
-    // Also refresh comparison modal if it's open
+    if(typeof refreshTexPickerLists === 'function') refreshTexPickerLists();
     if(typeof _PSC !== 'undefined' && _PSC.open && typeof _pscScheduleDraw === 'function'){
       _pscScheduleDraw();
+    }
+
+    // ── Slow path: 256×256 atmosphere polar warp — deferred off main thread ─
+    // requestIdleCallback fires when the browser is idle so it won't block
+    // loading-screen paint, scrolling, or any other interaction.
+    // Falls back to setTimeout(0) on browsers without rIC (rare).
+    const _doPolarWarp = () => {
+      try {
+        // ── Atmosphere polar canvas ──────────────────────────────────────────
+        // Pre-warp the texture into polar coordinates so drawImage() can paint
+        // it directly onto the atmosphere disc at render time.
+        //
+        // SFS wrapping rules:
+        //   - Texture left  edge (U=0) = rightmost point of planet (East, angle=0)
+        //   - Texture right edge (U=1) = wraps back after 360° counter-clockwise
+        //   - Wrapping is CCW: East→North→West→South→East = left→right of texture
+        //   - Texture bottom row (Y=SH-1) = planet surface (radFrac=0)
+        //   - Texture top    row (Y=0)    = outer atmosphere edge (radFrac=1)
+        //
+        // Canvas atan2: angle=0 → East, increases clockwise (CW).
+        // To get CCW from East: u = 1 - normalised_CW_angle  (flip direction)
+        const SZ = 256;
+        const pc = document.createElement('canvas');
+        pc.width = SZ; pc.height = SZ;
+        const px2 = pc.getContext('2d');
+        const srcC = document.createElement('canvas');
+        srcC.width = img.naturalWidth; srcC.height = img.naturalHeight;
+        const srcX = srcC.getContext('2d');
+        srcX.drawImage(img, 0, 0);
+        const srcD = srcX.getImageData(0, 0, srcC.width, srcC.height).data;
+        const SW = srcC.width, SH = srcC.height;
+        const outD = px2.createImageData(SZ, SZ);
+        const od = outD.data;
+        const halfSZ = SZ / 2;
+        for(let py = 0; py < SZ; py++){
+          for(let ppx = 0; ppx < SZ; ppx++){
+            const dx = ppx - halfSZ, dy = py - halfSZ;
+            const radFrac = Math.sqrt(dx*dx + dy*dy) / halfSZ;
+            const oi = (py*SZ + ppx)*4;
+            if(radFrac > 1.0){
+              od[oi]=od[oi+1]=od[oi+2]=od[oi+3]=0;
+              continue;
+            }
+            let cwAngle = Math.atan2(dy, dx) / (Math.PI*2);
+            if(cwAngle < 0) cwAngle += 1;
+            const u = (1 - cwAngle) % 1;
+            const sx = Math.min(SW-1, Math.max(0, Math.round(u * (SW-1))));
+            const sy = Math.min(SH-1, Math.max(0, Math.round((1 - radFrac) * (SH-1))));
+            const si = (sy * SW + sx) * 4;
+            od[oi]   = srcD[si];
+            od[oi+1] = srcD[si+1];
+            od[oi+2] = srcD[si+2];
+            od[oi+3] = srcD[si+3];
+          }
+        }
+        px2.putImageData(outD, 0, 0);
+        texPixelCache[name + '_atmoCanvas'] = pc;
+        // Re-draw now that the atmosphere canvas is ready
+        drawViewport();
+      } catch(e) { console.warn('[SFS|CACHE] atmo polar warp failed:', e); }
+    };
+    if(typeof requestIdleCallback === 'function'){
+      requestIdleCallback(_doPolarWarp, { timeout: 2000 });
+    } else {
+      setTimeout(_doPolarWarp, 0);
     }
   };
   img.src = dataUrl;
@@ -277,6 +287,94 @@ function allTexNames(){
   return [...new Set(uploaded)].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
 }
 
+// Returns aspect ratio (width/height) for a cached texture, or 1 if unknown.
+function _texAspect(name){
+  const img = textureCache[name];
+  if(img && img.naturalWidth && img.naturalHeight) return img.naturalWidth / img.naturalHeight;
+  // Fallback: check assets entry via an offscreen Image if not yet decoded.
+  // We can't block here, so just return 1 (neutral) for uncached textures.
+  return 1;
+}
+
+// Per-picker sort configs:
+//   keyword  – boost textures whose name includes this string (case-insensitive)
+//   aspect   – 'tall'   → portrait first (low ratio)
+//              'wide'   → landscape first (high ratio)
+//              'square' → closest to 1:1 first
+//   keyFirst – keyword matches float above aspect-preference matches
+// Special case: 'cl-tex' uses a custom 3-bucket sort (see sortTexForPicker).
+const TPICK_SORT = {
+  'av-tex':  { keyword: 'atmo',  aspect: 'tall',  keyFirst: true },
+  'fc-tex':  { keyword: 'cloud', aspect: 'square', keyFirst: true },
+  'rng-tex': { keyword: 'ring',  aspect: 'wide',   keyFirst: true },
+};
+
+// Score a texture for a given picker so lower = shown first.
+function _texSortScore(name, cfg){
+  const lower      = name.toLowerCase();
+  const hasKw      = lower.includes(cfg.keyword);
+  const ratio      = _texAspect(name);
+
+  let aspectScore;
+  if(cfg.aspect === 'tall'){
+    aspectScore = ratio;
+  } else if(cfg.aspect === 'wide'){
+    aspectScore = 1 / Math.max(ratio, 0.01);
+  } else { // 'square'
+    aspectScore = Math.abs(ratio - 1);
+  }
+
+  // Keyword matches get a large bucket offset → float to top
+  return (hasKw ? 0 : 1000) + aspectScore;
+}
+
+// cl-tex 3-bucket sort:
+//   bucket 0 – "cloud" keyword + least square (furthest from 1:1, i.e. wide/tall)
+//   bucket 1 – "cloud" keyword + squarer (closest to 1:1)
+//   bucket 2 – everything else (alpha)
+function _clTexSortScore(name){
+  const hasCloud = name.toLowerCase().includes('cloud');
+  const ratio    = _texAspect(name);
+  const squareness = Math.abs(ratio - 1); // 0 = perfect square, higher = less square
+
+  if(hasCloud){
+    // bucket 0: non-square cloud textures (sorted most-non-square first → descending squareness)
+    // bucket 1: square cloud textures (sorted most-square first → ascending squareness)
+    // We split at squareness threshold of 0.2 (ratio outside 0.83–1.2 = "not square")
+    const isSquare = squareness < 0.2;
+    if(!isSquare){
+      // bucket 0: sort descending squareness (least square = most stretched = first)
+      return { bucket: 0, sub: -squareness };
+    } else {
+      // bucket 1: sort ascending squareness (most square first)
+      return { bucket: 1, sub: squareness };
+    }
+  }
+  // bucket 2: alpha sort
+  return { bucket: 2, sub: 0 };
+}
+
+// Sort a list of texture names for a specific picker.
+function sortTexForPicker(names, pickId){
+  if(pickId === 'cl-tex'){
+    return names.slice().sort((a, b) => {
+      const sa = _clTexSortScore(a);
+      const sb = _clTexSortScore(b);
+      if(sa.bucket !== sb.bucket) return sa.bucket - sb.bucket;
+      if(sa.sub    !== sb.sub)    return sa.sub    - sb.sub;
+      return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    });
+  }
+  const cfg = TPICK_SORT[pickId];
+  if(!cfg) return names; // no special ordering → unchanged (already alpha)
+  return names.slice().sort((a, b) => {
+    const sa = _texSortScore(a, cfg);
+    const sb = _texSortScore(b, cfg);
+    if(sa !== sb) return sa - sb;
+    return a.localeCompare(b, undefined, { sensitivity: 'base' });
+  });
+}
+
 function getTexThumb(name){
   // Check textureCache first (works for all built-ins and uploads)
   const img = textureCache[name];
@@ -288,13 +386,17 @@ function getTexThumb(name){
 }
 
 function buildDropdownItems(pickId, query){
-  const names = allTexNames();
   const q = query.toLowerCase();
-  const filtered = names.filter(n => !q || n.toLowerCase().includes(q));
+  // Get alphabetically-sorted base list, then apply per-picker smart ordering.
+  const sorted   = sortTexForPicker(allTexNames(), pickId);
+  const filtered = sorted.filter(n => !q || n.toLowerCase().includes(q));
   const dd = document.getElementById('tpd-'+pickId);
   if(!dd) return;
+  // Bump token so any in-flight rAF chains from a previous build abort.
+  dd._buildToken = (dd._buildToken || 0) + 1;
   dd.innerHTML = '';
-  // Always show None at top
+
+  // Always show None at top (counts toward the cap)
   if(!q || 'none'.includes(q)){
     const noneEl = document.createElement('div');
     noneEl.className = 'tpick-opt tpick-none';
@@ -305,20 +407,31 @@ function buildDropdownItems(pickId, query){
   if(filtered.length === 0 && q){
     const emp = document.createElement('div');
     emp.className = 'tpick-empty';
-    emp.textContent = 'No textures match "' + query + '"';
+    emp.textContent = 'No match for "' + query + '"';
     dd.appendChild(emp);
     return;
   }
-  filtered.forEach(name => {
+
+  // Show at most 5 results — keeps DOM tiny and images small on mobile.
+  const MAX_VISIBLE = 5;
+  const visible = filtered.slice(0, MAX_VISIBLE);
+  visible.forEach(name => {
     const el = document.createElement('div');
     el.className = 'tpick-opt';
     const thumb = getTexThumb(name);
     el.innerHTML = thumb
       ? `<img class="tpick-opt-thumb" src="${thumb}"><span class="tpick-opt-name">${name}</span>`
-      : `<span style="width:24px;height:24px;flex-shrink:0;background:var(--ac10);border:1px solid var(--rim)"></span><span class="tpick-opt-name">${name}</span>`;
+      : `<span class="tpick-opt-nothumb"></span><span class="tpick-opt-name">${name}</span>`;
     el.onclick = () => commitTexPick(pickId, name);
     dd.appendChild(el);
   });
+
+  if(filtered.length > MAX_VISIBLE){
+    const more = document.createElement('div');
+    more.className = 'tpick-empty';
+    more.textContent = `+${filtered.length - MAX_VISIBLE} more — type to filter`;
+    dd.appendChild(more);
+  }
 }
 
 function commitTexPick(pickId, name){
@@ -329,6 +442,7 @@ function commitTexPick(pickId, name){
   inp.classList.toggle('has-val', name !== 'None' && name !== '');
   const clr = document.getElementById('tpc-'+pickId);
   if(clr) clr.classList.toggle('show', name !== 'None' && name !== '');
+  _tpickUpdatePreview(pickId, name);
   closeTexPicker(pickId);
   liveSync();
 }
@@ -364,12 +478,25 @@ function openTexPicker(pickId){
 
 function closeTexPicker(pickId){
   const dd = document.getElementById('tpd-'+pickId);
-  if(dd) dd.classList.remove('open');
+  if(dd){ dd.classList.remove('open'); dd._buildToken = (dd._buildToken || 0) + 1; }
   // Restore display text if user typed but didn't pick a result
   const inp = document.getElementById(pickId);
   if(inp && inp.dataset.lastCommit !== undefined){
     inp.value = inp.dataset.lastCommit;
     inp.classList.toggle('has-val', inp.dataset.lastCommit !== 'None' && inp.dataset.lastCommit !== '');
+    _tpickUpdatePreview(pickId, inp.dataset.lastCommit);
+  }
+}
+
+function _tpickUpdatePreview(pickId, name){
+  // pickId is e.g. 'av-tex'; preview container is 'tpv-av-tex'
+  const prev = document.getElementById('tpv-' + pickId);
+  if(!prev) return;
+  const thumb = (name && name !== 'None') ? getTexThumb(name) : null;
+  if(thumb){
+    prev.innerHTML = `<img src="${thumb}" alt="${name}">`;
+  } else {
+    prev.innerHTML = '<div class="tpick-preview-none">none</div>';
   }
 }
 
@@ -382,6 +509,7 @@ function setTexPick(pickId, value){
   inp.classList.toggle('has-val', v !== 'None');
   const clr = document.getElementById('tpc-'+pickId);
   if(clr) clr.classList.toggle('show', v !== 'None');
+  _tpickUpdatePreview(pickId, v);
 }
 
 // val() override for tpick inputs — reading .value gives the texture name directly, 
@@ -397,27 +525,39 @@ function setSelectVal(id, v){
 
 // Rebuild all picker dropdowns when texture list changes (uploads etc.)
 function refreshTexPickerLists(){
-  // Nothing to pre-build — dropdowns are built on open. Just update thumbs if open.
+  // Rebuild open dropdowns and refresh all previews (new textures may now have thumbs)
   TPICK_IDS.forEach(id => {
     const dd = document.getElementById('tpd-'+id);
     if(dd && dd.classList.contains('open')){
       const inp = document.getElementById(id);
       buildDropdownItems(id, inp ? inp.value : '');
     }
+    // Refresh preview in case a texture thumbnail just became available
+    const inp = document.getElementById(id);
+    if(inp && inp.dataset.lastCommit) _tpickUpdatePreview(id, inp.dataset.lastCommit);
   });
 }
 
 // Wire up all tpick widgets
 function initTexPickers(){
+  // Detect touch once — coarse pointer = mobile/tablet
+  const isTouch = window.matchMedia('(pointer: coarse)').matches;
+
   TPICK_IDS.forEach(pickId => {
     const inp = document.getElementById(pickId);
     const clr = document.getElementById('tpc-'+pickId);
     let   dd  = document.getElementById('tpd-'+pickId);
     if(!inp || !dd) return;
 
-    // Move the dropdown to <body> so it escapes the sidebar's transform stacking context.
-    // (sidebar uses transform:translateX which makes position:fixed relative to sidebar, not viewport)
-    document.body.appendChild(dd);
+    // On desktop: move dropdown to <body> so it escapes the sidebar's
+    // transform stacking context (transform:translateX makes position:fixed
+    // relative to the sidebar, not the viewport).
+    // On touch: keep dropdown inside .tpick-wrap so that the CSS
+    // `position:absolute; bottom:calc(100% + 2px)` correctly places it
+    // above the input (above the software keyboard).
+    if(!isTouch){
+      document.body.appendChild(dd);
+    }
 
     // mousedown on input: open picker, stop propagation so _tpickOutside doesn't
     // immediately close it on the same event.
@@ -426,17 +566,18 @@ function initTexPickers(){
       if(!dd.classList.contains('open')) openTexPicker(pickId);
       // If already open, leave it — user may be clicking to reposition cursor for typing
     });
-    // Mobile
+    // Mobile: touchend opens picker
     inp.addEventListener('touchend', e => {
       e.stopPropagation();
       openTexPicker(pickId);
     }, { passive: false });
 
-    // Type to filter — always use current inp.value as the live query
+    // Type to filter — debounced so mobile doesn't choke rebuilding DOM every keystroke.
+    // Desktop gets a shorter delay (50 ms) for snappier feel; touch gets 150 ms.
+    let _tpickTimer = null;
     inp.addEventListener('input', () => {
-      // Reposition on desktop
-      const isTouch = window.matchMedia('(pointer: coarse)').matches;
       if(!isTouch){
+        // Reposition dropdown on desktop
         const rect = inp.getBoundingClientRect();
         dd.style.left  = rect.left + 'px';
         dd.style.width = rect.width + 'px';
@@ -450,7 +591,11 @@ function initTexPickers(){
         }
       }
       dd.classList.add('open');
-      buildDropdownItems(pickId, inp.value);
+      // Debounce the expensive DOM rebuild
+      clearTimeout(_tpickTimer);
+      _tpickTimer = setTimeout(() => {
+        buildDropdownItems(pickId, inp.value);
+      }, isTouch ? 150 : 50);
     });
     // Clear button
     if(clr) clr.addEventListener('click', e => {
@@ -472,12 +617,14 @@ function initTexPickers(){
   }
   document.addEventListener('mousedown',  _tpickOutside);
   document.addEventListener('touchstart', _tpickOutside, { passive: true });
-  // Stop mousedown on any dropdown from bubbling to _tpickOutside
+  // Stop mousedown/touchstart on any dropdown from bubbling to _tpickOutside.
+  // Query dropdowns AFTER conditional body.appendChild above so we catch the
+  // right parent for each device type.
   document.querySelectorAll('.tpick-dropdown').forEach(dd => {
     dd.addEventListener('mousedown', e => e.stopPropagation());
     dd.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
   });
-  // Close on sb-body scroll (the actual scrolling element — fixed dropdown drifts)
+  // Close on sb-body scroll (desktop fixed dropdown drifts on scroll)
   const sbBody = document.querySelector('.sb-body');
   if(sbBody) sbBody.addEventListener('scroll', () => {
     TPICK_IDS.forEach(id => closeTexPicker(id));

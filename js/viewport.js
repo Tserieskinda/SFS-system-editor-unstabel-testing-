@@ -55,13 +55,19 @@ function getSMAScale(){
 // Convert SMA (metres) → pixels given current scale
 function smaToPixels(sma){ return sma * getSMAScale(); }
 
-// Returns SMA scaled by smaDifficultyScale for the current viewDifficulty.
+// Returns SMA scaled for the current viewDifficulty, matching game's SmaScale(planet).
+// Files store the Normal-mode SMA. Default multipliers: Normal=1, Hard=2, Realistic=20.
+// Per-body smaDifficultyScale overrides the default entirely (same as game behaviour).
 function effectiveSMA(od){
   if(!od) return 0;
   const scale = od.smaDifficultyScale;
-  const mult = (scale && scale[viewDiffKey] != null) ? scale[viewDiffKey] : 1;
+  const mult = (scale && scale[viewDiffKey] != null) ? scale[viewDiffKey] : (_DEF_SMA_SCALE[viewDiffKey] ?? 1);
   return od.semiMajorAxis * mult;
 }
+
+// Default SMA difficulty multipliers — matches game's defaultDistanceScales: Normal=1, Hard=2, Realistic=20.
+// Planet files store the Normal-mode SMA. The game multiplies it by this scale for harder difficulties.
+const _DEF_SMA_SCALE = { Normal: 1, Hard: 2, Realistic: 20 };
 
 // Mirrors Difficulty.RadiusScale() — defaultPlanetScales: Normal=1, Hard=2, Realistic=20
 const _DEF_RADIUS_SCALE = { normal: 1.0, hard: 2.0, realistic: 20.0 };
@@ -96,6 +102,13 @@ function cycleDifficulty(){
   // Invalidate all cached gradient stops — they depend on difficulty (atmo, ring fades)
   if(drawViewport._atmoStopCache) drawViewport._atmoStopCache = {};
   if(drawViewport._ringStopCache) drawViewport._ringStopCache = {};
+  // Refresh orbital period — effective SMA and parent GM both change with difficulty
+  if(typeof updatePeriodFromSMA === 'function') updatePeriodFromSMA();
+  // Refresh SOI display — depends on effectiveSMA and soiDifficultyScale
+  if(typeof updateSOIDisplay === 'function') updateSOIDisplay();
+  // Re-populate sidebar so SMA and radius fields reflect the new difficulty multiplier
+  if(typeof fillSidebar === 'function' && typeof selectedBody !== 'undefined' && selectedBody)
+    fillSidebar(selectedBody);
   drawViewport();
 }
 
@@ -210,8 +223,8 @@ function toggleSOI(){ toggleEnvFlag('soi'); }
 
 // ── SOI calculation (mirrors SFS game logic) ──
 // Formula: SOI = effectiveSMA × (mass_body / mass_parent)^0.4 × multiplierSOI
-// effectiveSMA = rawSMA × smaDifficultyScale[difficulty]  (Title Case keys, now fixed)
-// If no per-body smaDifficultyScale, effectiveSMA = rawSMA (scale=1 on Normal).
+// effectiveSMA = rawSMA × smaDifficultyScale[difficulty], default Normal=1, Hard=2, Realistic=20.
+// Files store the Normal-mode SMA; the game scales up for harder difficulties.
 // multiplierSOI is the raw value from ORBIT_DATA — no additional scaling.
 function computeSOI_m(name){
   const b = bodies[name];
@@ -571,6 +584,7 @@ function _drawViewportNow(){
 
   bodyScreenPos = {};
   names.forEach(name => {
+    try {
     const b = bodies[name];
     const wp = bodyWorldPos[name] || {x:0, y:0};
     const sp = worldToScreen(wp.x, wp.y);
@@ -640,6 +654,7 @@ function _drawViewportNow(){
       ctx2.beginPath(); ctx2.arc(sp.x,sp.y,4,0,Math.PI*2);
       ctx2.strokeStyle='rgba(180,180,255,0.35)'; ctx2.stroke();
       if(selectedBody===name){ ctx2.beginPath(); polygonCircle(ctx2,sp.x,sp.y,10,64); ctx2.closePath(); ctx2.strokeStyle='rgba(80,180,255,0.75)'; ctx2.lineWidth=1.5; ctx2.setLineDash([3,3]); ctx2.stroke(); ctx2.setLineDash([]); }
+      if(typeof groupSelectMode !== 'undefined' && groupSelectMode && typeof groupSelected !== 'undefined' && groupSelected.has(name)){ ctx2.beginPath(); polygonCircle(ctx2,sp.x,sp.y,11,64); ctx2.closePath(); ctx2.strokeStyle='rgba(255,155,40,0.9)'; ctx2.lineWidth=2; ctx2.setLineDash([3,3]); ctx2.stroke(); ctx2.setLineDash([]); }
       ctx2.fillStyle='rgba(150,200,240,0.7)'; ctx2.font='9px "JetBrains Mono",monospace'; ctx2.textAlign='center';
       ctx2.fillText(name, sp.x, sp.y+18);
       ctx2.restore(); // must restore before early return
@@ -1119,25 +1134,6 @@ function _drawViewportNow(){
     const _arcInfo = _canArcCull
       ? _computeVisibleArc(sp, Math.max(r, physR_px), W, H)
       : null;
-
-    // ── Terrain peak hit-radius — updated regardless of LOD/draw threshold ──
-    // Use cached full-circle 360-sample if available; do not block on async HM.
-    // This ensures bodyTerrainPeakPx is correct even when body is tiny on screen.
-    if (b.data.TERRAIN_DATA) {
-      const _peakResult = _terrainSampleCache[
-        Object.keys(_terrainSampleCache).find(k =>
-          k.startsWith(`${name}|${(bodyRadius_m * getRadiusDifficultyMult(b.data.BASE_DATA)).toFixed(0)}|`) &&
-          !k.includes('|arc|')
-        )
-      ];
-      if (_peakResult && _peakResult.heights) {
-        let _pH = 0;
-        for (let _pi = 0; _pi < _peakResult.heights.length; _pi++) {
-          if (_peakResult.heights[_pi] > _pH) _pH = _peakResult.heights[_pi];
-        }
-        bodyTerrainPeakPx[name] = physR_px * (1 + _pH / (bodyRadius_m * getRadiusDifficultyMult(b.data.BASE_DATA)));
-      }
-    }
 
     // ── Step 1: Base fill — terrain polygon or icon gradient ─────────────────
     {
@@ -1970,6 +1966,24 @@ function _drawViewportNow(){
       ctx2.strokeStyle='rgba(80,180,255,0.75)'; ctx2.lineWidth=1.5;
       ctx2.setLineDash([4,4]); ctx2.stroke(); ctx2.setLineDash([]);
     }
+    // ── Group-select ring — orange, slightly larger ──
+    if(typeof groupSelectMode !== 'undefined' && groupSelectMode &&
+       typeof groupSelected !== 'undefined' && groupSelected.has(name)){
+      const GS_GAP = selectedBody === name ? 10 : 6;
+      const ringSteps2 = 128;
+      ctx2.beginPath();
+      for(let _si = 0; _si <= ringSteps2; _si++){
+        const rad = (_si / ringSteps2) * Math.PI * 2;
+        const rPx = _surfaceRpx(rad) + GS_GAP;
+        const px = sp.x + rPx * Math.cos(rad);
+        const py = sp.y - rPx * Math.sin(rad);
+        _si === 0 ? ctx2.moveTo(px, py) : ctx2.lineTo(px, py);
+      }
+      ctx2.closePath();
+      ctx2.strokeStyle = 'rgba(255,155,40,0.9)';
+      ctx2.lineWidth = 2;
+      ctx2.setLineDash([4,4]); ctx2.stroke(); ctx2.setLineDash([]);
+    }
 
     ctx2.restore(); // end bodyFadeA globalAlpha
 
@@ -2158,6 +2172,7 @@ function _drawViewportNow(){
         ctx2.lineCap = 'butt';
       }
     }
+    } catch(e) { console.error('[SFS|DRAW] Error drawing body "'+name+'": '+e.message, e); }
   });
 
   bodyScreenPos = {};
@@ -2278,6 +2293,11 @@ function _drawViewportNow(){
       }
     });
     ctx2.restore();
+  }
+
+  // ── Image overlays — drawn on top of everything ──
+  if(typeof imgDrawOverlays === 'function'){
+    imgDrawOverlays(ctx2, vpZ, vpOffX, vpOffY, vp.width, vp.height);
   }
 }
 

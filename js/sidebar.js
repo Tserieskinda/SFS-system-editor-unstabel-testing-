@@ -26,6 +26,10 @@ function updateBodyIcon(r, g, b, a){
 }
 
 function selectBody(name){
+  // Blur any focused input before switching bodies to prevent data transfer
+  if (document.activeElement && document.activeElement.blur) {
+    document.activeElement.blur();
+  }
   selectedBody = name;
   if (typeof NameGen !== 'undefined') NameGen.clearSession(name);
   document.getElementById('sb-sel').textContent = name;
@@ -36,6 +40,7 @@ function selectBody(name){
 }
 
 function openSidebar(){
+  if(typeof groupSelectMode !== 'undefined' && groupSelectMode) return; // group mode owns the right panel
   document.getElementById('sidebar').classList.add('open');
   document.getElementById('statusbar').style.right='340px';
   setTimeout(resizeViewport, 360);
@@ -104,7 +109,7 @@ function replaceBodyPrompt(){
     if(!preset) return;
     pushUndo();
     const old = bodies[selectedBody];
-    const newData = JSON.parse(JSON.stringify(preset.data));
+    const newData = normalizeDiffScaleKeys(JSON.parse(JSON.stringify(preset.data)));
     if(old.data.ORBIT_DATA) newData.ORBIT_DATA = JSON.parse(JSON.stringify(old.data.ORBIT_DATA));
     else delete newData.ORBIT_DATA;
     bodies[selectedBody] = { data:newData, preset:preset.id, isCenter:old.isCenter, color:preset.color, glow:preset.glow, icon:preset.icon };
@@ -473,14 +478,12 @@ function onGravUnitChange() {
   const input = document.getElementById('b-gravity');
   const unitSel = document.getElementById('b-gravity-unit');
   if (!input || !unitSel) return;
-  // Convert displayed value from previous unit to new unit
+  // Called only from the unit SELECT's onchange — convert displayed value to new unit
   const raw = parseFloat(input.value);
   if (!isNaN(raw) && raw !== 0) {
-    // Store ms2 from old unit, re-express in new unit
-    // We track prev unit via data attribute
     const prevUnit = input.dataset.gravUnit || 'ms2';
     const ms2 = _gravToMs2(raw, prevUnit);
-    input.value = parseFloat(_ms2ToGrav(ms2, unitSel.value).toPrecision(6));
+    input.value = parseFloat(_ms2ToGrav(ms2, unitSel.value).toPrecision(6)).toString();
   }
   input.dataset.gravUnit = unitSel.value;
   if (typeof liveSync === 'function') liveSync();
@@ -498,9 +501,11 @@ function setGravDisplay(ms2) {
   const input = document.getElementById('b-gravity');
   const unitSel = document.getElementById('b-gravity-unit');
   if (!input) return;
+  // Don't overwrite a field the user is actively editing
+  if (document.activeElement === input) return;
   const unit = unitSel?.value || 'ms2';
   const v = _ms2ToGrav(ms2, unit);
-  input.value = ms2 !== 0 ? parseFloat(v.toPrecision(6)) : '';
+  input.value = ms2 !== 0 ? parseFloat(v.toPrecision(6)).toString() : '';
   input.dataset.gravUnit = unit;
 }
 
@@ -522,13 +527,13 @@ function onSimpleKmChange(inputId) {
   const input  = document.getElementById(inputId);
   const unitSel = document.getElementById(inputId + '-unit');
   if (!input || !unitSel) return;
+  if (document.activeElement === input) return;  // don't clobber mid-edit
   const raw = parseFloat(input.value);
   if (isNaN(raw) || raw === 0) return;
   const newUnit = unitSel.value; // 'm' or 'km'
   const prevUnit = newUnit === 'km' ? 'm' : 'km';
-  // Convert displayed value to metres, then to new unit
   const metres = prevUnit === 'km' ? raw * 1000 : raw;
-  input.value = newUnit === 'km' ? parseFloat((metres / 1000).toPrecision(6)) : metres;
+  input.value = (newUnit === 'km' ? parseFloat((metres / 1000).toPrecision(6)) : metres).toString();
   if (typeof liveSync === 'function') liveSync();
 }
 
@@ -669,6 +674,18 @@ function fillSidebar(name){
   const b = bodies[name];
   if(!b){ liveSync._filling = false; return; }
   const d = b.data;
+
+  // If the user is mid-edit in a sidebar input, don't clobber it.
+  // We still run fillSidebar so all OTHER fields stay in sync; setVal/setDistInput
+  // will skip the actively-focused element via this guard.
+  const _fillFocusId = document.activeElement?.closest('#sidebar') ? document.activeElement.id : null;
+  // Temporarily patch setVal to skip the focused field
+  const _origSetVal = window.setVal;
+  window.setVal = function(id, v){
+    if(id && id === _fillFocusId) return;  // user is typing here, leave it alone
+    _origSetVal(id, v);
+  };
+
   // Header
   const nameInput = document.getElementById('sbb-name-input');
   nameInput.value = name;
@@ -677,12 +694,18 @@ function fillSidebar(name){
 
   // BASE
   const BD = d.BASE_DATA||{};
-  setDistInput('b-radius','b-radius-unit','b-radius-hint', BD.radius ?? 0, 'radius');
+  { const _rm = (typeof getRadiusDifficultyMult === 'function') ? getRadiusDifficultyMult(BD) : 1;
+    setDistInput('b-radius','b-radius-unit','b-radius-hint', (BD.radius ?? 0) * _rm, 'radius'); }
   const rds = BD.radiusDifficultyScale||{};
-  setVal('b-radius-n', rds.Normal); setVal('b-radius-h', rds.Hard); setVal('b-radius-r', rds.Realistic);
+  // Empty string when not set — prevents baking defaults into the file on every liveSync.
+  setVal('b-radius-n', rds.Normal    ?? '');
+  setVal('b-radius-h', rds.Hard      ?? '');
+  setVal('b-radius-r', rds.Realistic ?? '');
   setGravDisplay(BD.gravity);
   const gds = BD.gravityDifficultyScale||{};
-  setVal('b-grav-n', gds.Normal); setVal('b-grav-h', gds.Hard); setVal('b-grav-r', gds.Realistic);
+  setVal('b-grav-n', gds.Normal    ?? '');
+  setVal('b-grav-h', gds.Hard      ?? '');
+  setVal('b-grav-r', gds.Realistic ?? '');
   setVal('b-twh', BD.timewarpHeight);
   setVal('b-vah', BD.velocityArrowsHeight);
   const mc = BD.mapColor||{r:1,g:1,b:1,a:1};
@@ -867,15 +890,34 @@ function fillSidebar(name){
 
   const OR = d.ORBIT_DATA||{};
   setVal('or-par',OR.parent);
-  setDistInput('or-sma','or-sma-unit','or-sma-hint', OR.semiMajorAxis ?? 0, 'sma');
-  const sds=OR.smaDifficultyScale||{}; setVal('or-sn',sds.Normal); setVal('or-sh',sds.Hard); setVal('or-sr',sds.Realistic);
+  { // Use effective scale: per-body override if present, else global default.
+    // Mirrors the game's SmaScale() — per-body replaces global entirely.
+    const _sds = OR.smaDifficultyScale || {};
+    const _vdk = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
+    const _defS = (typeof _DEF_SMA_SCALE !== 'undefined') ? _DEF_SMA_SCALE : {Normal:1,Hard:2,Realistic:20};
+    const _gm = (_sds[_vdk] != null) ? _sds[_vdk] : (_defS[_vdk] ?? 1);
+    setDistInput('or-sma','or-sma-unit','or-sma-hint', (OR.semiMajorAxis ?? 0) * _gm, 'sma'); }
+  const _rawSds=OR.smaDifficultyScale||{};
+  const sds={ Normal: _rawSds.Normal ?? _rawSds.normal, Hard: _rawSds.Hard ?? _rawSds.hard, Realistic: _rawSds.Realistic ?? _rawSds.realistic };
+  // Use empty string (not 1) when no per-body scale is set.
+  // This way liveSync's buildDiffScale() sees NaN for empty fields and skips them,
+  // preserving an empty smaDifficultyScale instead of baking in {1,1,1} which would
+  // override the game's global defaults (1,2,20) every time any field is touched.
+  setVal('or-sn', sds.Normal    ?? '');
+  setVal('or-sh', sds.Hard      ?? '');
+  setVal('or-sr', sds.Realistic ?? '');
   setSlider('or-ecc', OR.eccentricity, 0, 0.999); setSlider('or-aop', OR.argumentOfPeriapsis, -360, 360);
   initSlider('or-ecc',0,0.999);
   initSlider('or-aop',-360,360);
   setSelectVal('or-dir', String(OR.direction ?? 1));  // ?? not || so 0 is preserved
   setVal('or-soi',OR.multiplierSOI);
-  const ssds=OR.soiDifficultyScale||{}; setVal('or-soin',ssds.Normal); setVal('or-soih',ssds.Hard); setVal('or-soir',ssds.Realistic);
+  const ssds=OR.soiDifficultyScale||{};
+  // Same empty-string treatment as smaDifficultyScale above.
+  setVal('or-soin', ssds.Normal    ?? '');
+  setVal('or-soih', ssds.Hard      ?? '');
+  setVal('or-soir', ssds.Realistic ?? '');
   updateSOIDisplay();
+  if (typeof updatePeriodFromSMA === 'function') setTimeout(updatePeriodFromSMA, 0);
   toggleOrbit();
 
   // POST PROCESSING
@@ -884,6 +926,8 @@ function fillSidebar(name){
   // LANDMARKS
   buildLandmarks(d.LANDMARKS||[]);
 
+  // Restore the original setVal now that fill is complete
+  window.setVal = _origSetVal;
   liveSync._filling = false;
 }
 
@@ -900,7 +944,7 @@ function makeFogKey(k,i){
   const alpha = (col.a||0).toFixed(2);
   const d=document.createElement('div'); d.className='pp-key'; d.id='fk-'+i;
   d.innerHTML=`<div class="pp-key-header"><span class="pp-key-title">FOG KEY ${i+1}</span><button class="pp-key-del" onclick="delFogKey(${i})">✕</button></div>
-  <div class="frow"><span class="flabel">Distance</span><input class="finput" id="fk-${i}-d" type="number" step="100" value="${k.distance||0}" oninput="liveSync()"></div>
+  <div class="frow"><span class="flabel">Distance</span><input class="finput" id="fk-${i}-d" type="text" inputmode="decimal" step="100" value="${k.distance||0}" oninput="liveSync()"></div>
   <div class="cpick-wrap"><span class="flabel">Color</span>
     <input type="color" class="cpick-swatch" id="fk-${i}-pick" value="${hex}" oninput="onCpick('fk-${i}-pick','fk-${i}-hex','fk-${i}-r','fk-${i}-g','fk-${i}-b');liveSync()">
     <input type="text" class="cpick-hex" id="fk-${i}-hex" value="${hex}" maxlength="7" oninput="onChex('fk-${i}-hex','fk-${i}-pick','fk-${i}-r','fk-${i}-g','fk-${i}-b');liveSync()">
@@ -927,12 +971,12 @@ function makePPKey(k,i){
   const hex = rgbToHex(k.red||1, k.green||1, k.blue||1);
   const d=document.createElement('div'); d.className='pp-key'; d.id='ppk-'+i;
   d.innerHTML=`<div class="pp-key-header"><span class="pp-key-title">KEY ${i+1}</span><button class="pp-key-del" onclick="delPPKey(${i})">✕</button></div>
-  <div class="frow"><span class="flabel">Height</span><input class="finput" id="ppk-${i}-h" type="number" step="100" value="${k.height||0}"></div>
-  <div class="frow"><span class="flabel">Shadow Intens.</span><input class="finput" id="ppk-${i}-si" type="number" step="0.05" value="${k.shadowIntensity||1}"></div>
-  <div class="frow"><span class="flabel">Star Intens.</span><input class="finput" id="ppk-${i}-sti" type="number" step="0.1" value="${k.starIntensity||0}"></div>
-  <div class="frow"><span class="flabel">Hue Shift</span><input class="finput" id="ppk-${i}-hs" type="number" step="0.1" value="${k.hueShift||0}"></div>
-  <div class="frow"><span class="flabel">Saturation</span><input class="finput" id="ppk-${i}-sat" type="number" step="0.01" value="${k.saturation||1}"></div>
-  <div class="frow"><span class="flabel">Contrast</span><input class="finput" id="ppk-${i}-con" type="number" step="0.01" value="${k.contrast||1}"></div>
+  <div class="frow"><span class="flabel">Height</span><input class="finput" id="ppk-${i}-h" type="text" inputmode="decimal" step="100" value="${k.height||0}"></div>
+  <div class="frow"><span class="flabel">Shadow Intens.</span><input class="finput" id="ppk-${i}-si" type="text" inputmode="decimal" step="0.05" value="${k.shadowIntensity||1}"></div>
+  <div class="frow"><span class="flabel">Star Intens.</span><input class="finput" id="ppk-${i}-sti" type="text" inputmode="decimal" step="0.1" value="${k.starIntensity||0}"></div>
+  <div class="frow"><span class="flabel">Hue Shift</span><input class="finput" id="ppk-${i}-hs" type="text" inputmode="decimal" step="0.1" value="${k.hueShift||0}"></div>
+  <div class="frow"><span class="flabel">Saturation</span><input class="finput" id="ppk-${i}-sat" type="text" inputmode="decimal" step="0.01" value="${k.saturation||1}"></div>
+  <div class="frow"><span class="flabel">Contrast</span><input class="finput" id="ppk-${i}-con" type="text" inputmode="decimal" step="0.01" value="${k.contrast||1}"></div>
   <div class="cpick-wrap"><span class="flabel">RGB Tint</span>
     <input type="color" class="cpick-swatch" id="ppk-${i}-pick" value="${hex}"
       oninput="onCpick('ppk-${i}-pick','ppk-${i}-hex','ppk-${i}-r','ppk-${i}-g','ppk-${i}-b');liveSync()">
@@ -952,37 +996,125 @@ function buildLandmarks(lms){
   const el=document.getElementById('lm-list'); el.innerHTML='';
   lms.forEach((l,i)=>el.appendChild(makeLandmark(l,i)));
 }
-function makeLandmark(l,i){
-  const d=document.createElement('div'); d.className='lm-item'; d.id='lm-'+i;
-  const sa = l.startAngle||0, ea = l.endAngle||0;
-  // Slider + synced number input for precision entry.
-  // The number input accepts any value in [-360,360] typed directly; slider stays in sync.
-  d.innerHTML=`<div class="pp-key-header"><span class="pp-key-title">LANDMARK ${i+1}</span><button class="lm-del" onclick="delLandmark(${i})">✕</button></div>
-  <div class="frow"><span class="flabel">Name</span><input class="finput" id="lm-${i}-n" type="text" value="${l.name||''}" onblur="liveSync()"></div>
-  <div class="frow" style="flex-direction:column;gap:4px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span class="flabel">Start Angle</span>
-      <input type="number" id="lm-${i}-s-num" value="${sa}" min="-360" max="360" step="0.5"
-        style="width:64px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--sky2);background:var(--bg2);border:1px solid var(--ink5);border-radius:3px;padding:1px 4px;text-align:right"
-        oninput="const v=parseFloat(this.value)||0;const sl=document.getElementById('lm-${i}-s');if(sl){sl.value=Math.max(-360,Math.min(360,v));}liveSync()">
+
+// Draws a mini arc SVG showing where on a 360° circle the landmark sits.
+// centre and width are in degrees.
+function _lmArcSVG(centre, width){
+  const R=34, cx=44, cy=44, size=88;
+  // Convert SFS angle convention to SVG arc: SFS 0° = top (like a compass).
+  // SVG 0° = right, so offset by -90°.
+  const startDeg = centre - width/2;
+  const endDeg   = centre + width/2;
+  const toRad = d => (d - 90) * Math.PI / 180;
+  const sx = cx + R * Math.cos(toRad(startDeg));
+  const sy = cy + R * Math.sin(toRad(startDeg));
+  const ex = cx + R * Math.cos(toRad(endDeg));
+  const ey = cy + R * Math.sin(toRad(endDeg));
+  const largeArc = (width % 360) > 180 ? 1 : 0;
+  // Centre tick
+  const tickAngle = toRad(centre);
+  const tx1 = cx + (R-7) * Math.cos(tickAngle);
+  const ty1 = cy + (R-7) * Math.sin(tickAngle);
+  const tx2 = cx + (R+7) * Math.cos(tickAngle);
+  const ty2 = cy + (R+7) * Math.sin(tickAngle);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="flex-shrink:0">
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="rgba(100,150,220,.18)" stroke-width="6"/>
+    <path d="M${sx.toFixed(1)},${sy.toFixed(1)} A${R},${R} 0 ${largeArc},1 ${ex.toFixed(1)},${ey.toFixed(1)}"
+      fill="none" stroke="rgba(100,220,180,.75)" stroke-width="7" stroke-linecap="round"/>
+    <line x1="${tx1.toFixed(1)}" y1="${ty1.toFixed(1)}" x2="${tx2.toFixed(1)}" y2="${ty2.toFixed(1)}"
+      stroke="rgba(255,210,80,.9)" stroke-width="2" stroke-linecap="round"/>
+    <text x="${cx}" y="${cy+4}" text-anchor="middle" font-family="'JetBrains Mono',monospace"
+      font-size="8" fill="rgba(180,200,255,.6)">${Math.round(centre)}°</text>
+  </svg>`;
+}
+
+function _lmSyncArc(i){
+  const cEl = document.getElementById(`lm-${i}-c`);
+  const wEl = document.getElementById(`lm-${i}-w`);
+  if(!cEl || !wEl) return;
+  const centre = parseFloat(cEl.value) || 0;
+  const width  = parseFloat(wEl.value) || 10;
+  const arc = document.getElementById(`lm-${i}-arc`);
+  if(arc) arc.innerHTML = _lmArcSVG(centre, width);
+  // Update read-only startAngle / endAngle display
+  const sa = document.getElementById(`lm-${i}-sa`);
+  const ea = document.getElementById(`lm-${i}-ea`);
+  if(sa) sa.textContent = (centre - width/2).toFixed(1) + '°';
+  if(ea) ea.textContent = (centre + width/2).toFixed(1) + '°';
+}
+
+function makeLandmark(l, i){
+  const d = document.createElement('div');
+  d.className = 'lm-item'; d.id = 'lm-' + i;
+
+  const sa = typeof l.startAngle === 'number' ? l.startAngle : 0;
+  const ea = typeof l.endAngle   === 'number' ? l.endAngle   : 10;
+  const centre = (sa + ea) / 2;
+  const width  = Math.abs(ea - sa) || 10;
+
+  d.innerHTML = `
+    <div class="pp-key-header">
+      <span class="pp-key-title">LANDMARK ${i+1}</span>
+      <button class="lm-del" onclick="delLandmark(${i})">✕</button>
     </div>
-    <input type="range" class="finput" id="lm-${i}-s" min="-360" max="360" step="0.5" value="${sa}" style="padding:0;height:6px;cursor:pointer"
-      oninput="const num=document.getElementById('lm-${i}-s-num');if(num)num.value=parseFloat(this.value).toFixed(1);liveSync()">
-  </div>
-  <div class="frow" style="flex-direction:column;gap:4px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span class="flabel">End Angle</span>
-      <input type="number" id="lm-${i}-e-num" value="${ea}" min="-360" max="360" step="0.5"
-        style="width:64px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--sky2);background:var(--bg2);border:1px solid var(--ink5);border-radius:3px;padding:1px 4px;text-align:right"
-        oninput="const v=parseFloat(this.value)||0;const sl=document.getElementById('lm-${i}-e');if(sl){sl.value=Math.max(-360,Math.min(360,v));}liveSync()">
+
+    <div class="frow">
+      <span class="flabel">Name</span>
+      <input class="finput" id="lm-${i}-n" type="text" value="${(l.name||'').replace(/"/g,'&quot;')}"
+        oninput="liveSync()">
     </div>
-    <input type="range" class="finput" id="lm-${i}-e" min="-360" max="360" step="0.5" value="${ea}" style="padding:0;height:6px;cursor:pointer"
-      oninput="const num=document.getElementById('lm-${i}-e-num');if(num)num.value=parseFloat(this.value).toFixed(1);liveSync()">
-  </div>`;
+
+    <!-- Arc visualiser + computed start/end readout -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:6px 8px;
+      background:rgba(10,16,36,.6);border-radius:6px;border:1px solid rgba(100,220,180,.1)">
+      <div id="lm-${i}-arc">${_lmArcSVG(centre, width)}</div>
+      <div style="flex:1;font-family:'JetBrains Mono',monospace;font-size:.58rem">
+        <div style="color:var(--ink4);margin-bottom:3px">START → <span id="lm-${i}-sa" style="color:var(--sky2)">${sa.toFixed(1)}°</span></div>
+        <div style="color:var(--ink4)">END &nbsp; → <span id="lm-${i}-ea" style="color:var(--sky2)">${ea.toFixed(1)}°</span></div>
+        <div style="color:rgba(100,220,180,.35);margin-top:6px;font-size:.52rem">Width: <span id="lm-${i}-wd" style="color:rgba(100,220,180,.7)">${width.toFixed(1)}°</span></div>
+      </div>
+    </div>
+
+    <!-- Centre slider -->
+    <div class="frow" style="flex-direction:column;gap:3px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="flabel" style="font-size:.62rem">POSITION (centre)</span>
+        <input type="number" inputmode="decimal" id="lm-${i}-c-num"
+          value="${centre.toFixed(1)}" min="0" max="360" step="0.5"
+          style="width:62px;font-family:'JetBrains Mono',monospace;font-size:.66rem;
+            color:var(--sky2);background:rgba(10,16,36,.8);border:1px solid rgba(100,150,220,.3);
+            border-radius:3px;padding:2px 5px;text-align:right;outline:none"
+          oninput="const sl=document.getElementById('lm-${i}-c');if(sl)sl.value=this.value;_lmSyncArc(${i});liveSync()">
+      </div>
+      <input type="range" id="lm-${i}-c" min="0" max="360" step="0.5" value="${centre.toFixed(1)}"
+        class="lm-slider lm-slider-pos"
+        oninput="const n=document.getElementById('lm-${i}-c-num');if(n)n.value=parseFloat(this.value).toFixed(1);_lmSyncArc(${i});liveSync()">
+    </div>
+
+    <!-- Width slider -->
+    <div class="frow" style="flex-direction:column;gap:3px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="flabel" style="font-size:.62rem">WIDTH (angular span)</span>
+        <input type="number" inputmode="decimal" id="lm-${i}-w-num"
+          value="${width.toFixed(1)}" min="0.5" max="180" step="0.5"
+          style="width:62px;font-family:'JetBrains Mono',monospace;font-size:.66rem;
+            color:rgba(100,220,180,.9);background:rgba(10,16,36,.8);border:1px solid rgba(100,220,180,.25);
+            border-radius:3px;padding:2px 5px;text-align:right;outline:none"
+          oninput="const sl=document.getElementById('lm-${i}-w');if(sl)sl.value=this.value;const wd=document.getElementById('lm-${i}-wd');if(wd)wd.textContent=parseFloat(this.value).toFixed(1)+'°';_lmSyncArc(${i});liveSync()">
+      </div>
+      <input type="range" id="lm-${i}-w" min="0.5" max="180" step="0.5" value="${width.toFixed(1)}"
+        class="lm-slider lm-slider-wid"
+        oninput="const n=document.getElementById('lm-${i}-w-num');if(n)n.value=parseFloat(this.value).toFixed(1);const wd=document.getElementById('lm-${i}-wd');if(wd)wd.textContent=parseFloat(this.value).toFixed(1)+'°';_lmSyncArc(${i});liveSync()">
+    </div>`;
   return d;
 }
-function addLandmark(){ const l=document.getElementById('lm-list'); const i=l.children.length; l.appendChild(makeLandmark({name:'',startAngle:-5,endAngle:5},i)); }
-function delLandmark(i){ document.getElementById('lm-'+i)?.remove(); }
+
+function addLandmark(){
+  const l = document.getElementById('lm-list');
+  const i = l.children.length;
+  l.appendChild(makeLandmark({name:'', startAngle:175, endAngle:185}, i));
+}
+function delLandmark(i){ document.getElementById('lm-'+i)?.remove(); liveSync(); }
 
 // Auto-save: any text/number input in the sidebar triggers liveSync on blur
 // ── Colour picker helpers ──
@@ -1098,19 +1230,42 @@ function _liveSyncNow(){
   if(!b) return;
   const d = b.data;
 
+  // When the user is actively typing in a text/number field, that field's current
+  // raw string may be incomplete (e.g. "-", "1.", ""). We must not parse it yet —
+  // instead keep the last committed value for that field.
+  const _focusId = document.activeElement?.id || '';
+
+  // Safe numeric read: if the focused element is this field and its raw value is
+  // unparseable/empty, return the fallback instead of clobbering with 0 or NaN.
+  // For all other fields parse normally with the standard fallback.
+  function _sf(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    if (el.id === _focusId) {
+      const n = parseFloat(el.value);
+      return isNaN(n) ? fallback : n;   // if mid-edit and value invalid, keep last good value
+    }
+    const n = parseFloat(el.value);
+    return isNaN(n) ? fallback : n;
+  }
+
   // Only invalidate terrain cache when a terrain-relevant field triggered the sync.
-  // Invalidating on every keystroke (e.g. body name, map color) forces expensive
-  // heightmap re-evaluation each frame on weak devices.
-  if(typeof invalidateTerrainCache === 'function') invalidateTerrainCache(selectedBody);
+  // Orbit fields (SMA, eccentricity, AoP, direction) never affect terrain geometry —
+  // skipping the invalidation prevents a full terrain re-sample every slider tick on mobile.
+  const _orbitOnlyIds = new Set(['or-ecc','or-ecc-sl','or-aop','or-aop-sl','or-sma','or-sma-unit','or-dir','or-period','or-period-unit']);
+  if(typeof invalidateTerrainCache === 'function' && !_orbitOnlyIds.has(_focusId)){
+    invalidateTerrainCache(selectedBody);
+  }
 
   // BASE DATA
   d.BASE_DATA = d.BASE_DATA || {};
-  d.BASE_DATA.radius              = getDistMetres('b-radius') || d.BASE_DATA.radius;
+  { const _rm = (typeof getRadiusDifficultyMult === 'function') ? getRadiusDifficultyMult(d.BASE_DATA) : 1;
+    const _rv = getDistMetres('b-radius'); if(_rv) d.BASE_DATA.radius = _rm > 0 ? _rv / _rm : _rv; }
   d.BASE_DATA.radiusDifficultyScale = buildDiffScale('b-radius-n','b-radius-h','b-radius-r');
   d.BASE_DATA.gravity             = getGravMs2() || d.BASE_DATA.gravity;
   d.BASE_DATA.gravityDifficultyScale = buildDiffScale('b-grav-n','b-grav-h','b-grav-r');
-  d.BASE_DATA.timewarpHeight      = parseFloat(val('b-twh'))    || d.BASE_DATA.timewarpHeight;
-  d.BASE_DATA.velocityArrowsHeight= parseFloat(val('b-vah'));
+  d.BASE_DATA.timewarpHeight      = _sf('b-twh', d.BASE_DATA.timewarpHeight);
+  d.BASE_DATA.velocityArrowsHeight= _sf('b-vah', d.BASE_DATA.velocityArrowsHeight ?? 0);
   d.BASE_DATA.mapColor = getCpick('b-cr','b-cg','b-cb','b-ca','b-hdr');
   // Keep sphere icon in sync with map color (picker values are already 0-1 clamped)
   { const _mc = d.BASE_DATA.mapColor;
@@ -1126,20 +1281,20 @@ function _liveSyncNow(){
     // Preserve fields with no UI controls so edits don't wipe per-body difficulty scales
     const _apPrev = d.ATMOSPHERE_PHYSICS_DATA || {};
     d.ATMOSPHERE_PHYSICS_DATA = {
-      height: getSimpleKmMetres('ap-height'), density: parseFloat(val('ap-density'))||0,
-      curve: parseFloat(val('ap-curve'))||0, curveScale: _apPrev.curveScale || {},
-      parachuteMultiplier: parseFloat(val('ap-chute'))||1,
-      upperAtmosphere: parseFloat(val('ap-upper'))||0,
+      height: getSimpleKmMetres('ap-height'), density: _sf('ap-density', 0),
+      curve: _sf('ap-curve', 0), curveScale: _apPrev.curveScale || {},
+      parachuteMultiplier: _sf('ap-chute', 1),
+      upperAtmosphere: _sf('ap-upper', 0),
       heightDifficultyScale: _apPrev.heightDifficultyScale || {},
-      shockwaveIntensity: parseFloat(val('ap-shock'))||0,
-      minHeatingVelocityMultiplier: parseFloat(val('ap-mhvm'))||1
+      shockwaveIntensity: _sf('ap-shock', 0),
+      minHeatingVelocityMultiplier: _sf('ap-mhvm', 1)
     };
   } else delete d.ATMOSPHERE_PHYSICS_DATA;
 
   // ATMO VISUALS
   if(tog('av-has')){
     const cloudsObj = tog('cl-has')
-      ? { texture:val('cl-tex'), startHeight:getSimpleKmMetres('cl-sh'), width:getSimpleKmMetres('cl-w'), height:getSimpleKmMetres('cl-h'), alpha:parseFloat(val('cl-a'))||0, velocity:parseFloat(val('cl-v'))||0 }
+      ? { texture:val('cl-tex'), startHeight:getSimpleKmMetres('cl-sh'), width:getSimpleKmMetres('cl-w'), height:getSimpleKmMetres('cl-h'), alpha:_sf('cl-a', 0), velocity:_sf('cl-v', 0) }
       : { texture:'None', startHeight:0, width:0, height:0, alpha:0, velocity:0 };
     const fogObj = tog('fog-has')
       ? { keys: collectFogKeys() }
@@ -1147,7 +1302,7 @@ function _liveSyncNow(){
     // Preserve heightDifficultyScale on GRADIENT — it has no UI control
     const _gradPrev = d.ATMOSPHERE_VISUALS_DATA?.GRADIENT || {};
     d.ATMOSPHERE_VISUALS_DATA = {
-      GRADIENT: { positionZ:parseInt(val('av-pz'))||0, height:getSimpleKmMetres('av-height'), heightDifficultyScale: _gradPrev.heightDifficultyScale || {}, texture:val('av-tex') },
+      GRADIENT: { positionZ:_sf('av-pz', 0), height:getSimpleKmMetres('av-height'), heightDifficultyScale: _gradPrev.heightDifficultyScale || {}, texture:val('av-tex') },
       CLOUDS: cloudsObj,
       FOG: fogObj
     };
@@ -1156,7 +1311,7 @@ function _liveSyncNow(){
   // FRONT CLOUDS
   if(tog('fc-has')){
     const fctex = val('fc-tex');
-    d.FRONT_CLOUDS_DATA = { cloudsTexture:fctex||'None', cloudTextureCutout:parseFloat(val('fc-cut'))||1, fadeZoneHeight:getSimpleKmMetres('fc-fzh'), height:getSimpleKmMetres('fc-h'), positionZ:parseFloat(val('fc-pz'))||0, sharpenAlpha:tog('fc-sa') };
+    d.FRONT_CLOUDS_DATA = { cloudsTexture:fctex||'None', cloudTextureCutout:_sf('fc-cut', 1), fadeZoneHeight:getSimpleKmMetres('fc-fzh'), height:getSimpleKmMetres('fc-h'), positionZ:_sf('fc-pz', 0), sharpenAlpha:tog('fc-sa') };
   } else delete d.FRONT_CLOUDS_DATA;
 
   // TERRAIN — respect the "Has Terrain Data" toggle
@@ -1174,7 +1329,7 @@ function _liveSyncNow(){
       TERRAIN_TEXTURE_DATA: {
         planetTexture: ptex || 'None',
         planetTextureCutout:_fv(val('tt-cut'),-1),
-        planetTextureRotation:parseFloat(val('tt-rot'))||0, planetTextureDontDistort:!tog('tt-nd'),
+        planetTextureRotation:_sf('tt-rot', 0), planetTextureDontDistort:!tog('tt-nd'),
         surfaceTexture_A:val('tt-sa'), surfaceTextureSize_A:{x:_fv(val('tt-sax'),-1), y:_fv(val('tt-say'),-1)},
         surfaceLOD_A: _fv(val('tt-lod-a'), -1),
         surfaceTexture_B:val('tt-sb'), surfaceTextureSize_B:{x:_fv(val('tt-sbx'),-1), y:_fv(val('tt-sby'),-1)},
@@ -1188,14 +1343,14 @@ function _liveSyncNow(){
       textureFormula: document.getElementById('tf-texture').value.trim()
         ? document.getElementById('tf-texture').value.trim().split('\n').map(s=>s.trim()).filter(Boolean)
         : [],
-      verticeSize:parseFloat(val('ter-vs'))||2,
+      verticeSize:_sf('ter-vs', 2),
       collider:tog('ter-col'),
       flatZones: collectFlatZones(),
       flatZonesDifficulties: (bodies[selectedBody]?.data?.TERRAIN_DATA?.flatZonesDifficulties) || {}
     };
     const rktype = val('rk-type');
     if(rktype && rktype !== 'None'){
-      d.TERRAIN_DATA.rocks = { rockType:rktype, rockDensity:parseFloat(val('rk-den'))||0.5, minSize:parseFloat(val('rk-min'))||0.2, maxSize:parseFloat(val('rk-max'))||0.8, powerCurve:parseFloat(val('rk-pc'))||2, maxAngle:parseFloat(val('rk-ma'))||25 };
+      d.TERRAIN_DATA.rocks = { rockType:rktype, rockDensity:_sf('rk-den', 0.5), minSize:_sf('rk-min', 0.2), maxSize:_sf('rk-max', 0.8), powerCurve:_sf('rk-pc', 2), maxAngle:_sf('rk-ma', 25) };
     }
     // Invalidate cloud/water/atmo caches when texture changes
     if(drawViewport._cloudCache) drawViewport._cloudCache = {};
@@ -1216,7 +1371,7 @@ function _liveSyncNow(){
   // RINGS
   if(tog('rng-has')){
     const rngMap = getCpick('rng-map-r','rng-map-g','rng-map-b','rng-map-a');
-    d.RINGS_DATA = { ringsTexture:val('rng-tex'), startRadius:getDistMetres('rng-sr'), endRadius:getDistMetres('rng-er'), positionZ:parseFloat(val('rng-pz'))||0, mapColor:{r:rngMap.r,g:rngMap.g,b:rngMap.b,a:rngMap.a} };
+    d.RINGS_DATA = { ringsTexture:val('rng-tex'), startRadius:getDistMetres('rng-sr'), endRadius:getDistMetres('rng-er'), positionZ:_sf('rng-pz', 0), mapColor:{r:rngMap.r,g:rngMap.g,b:rngMap.b,a:rngMap.a} };
     // Rings visually affect body size on canvas
     b.hasRings = true;
     b.ringsInner = getDistMetres('rng-sr');
@@ -1236,25 +1391,25 @@ function _liveSyncNow(){
     d.WATER_DATA = {
       oceanMaskTexture: val('wt-tex'),
       lowerTerrain: tog('wt-lt'),
-      oceanDepth: getSimpleKmMetres('wt-dep')||5000,
+      oceanDepth: getSimpleKmMetres('wt-dep') || 5000,
       sand:    { r:wSand.r,  g:wSand.g,  b:wSand.b,  a:wSand.a  },
       floor:   { r:wFloor.r, g:wFloor.g, b:wFloor.b, a:wFloor.a },
       shallow: { r:wShal.r,  g:wShal.g,  b:wShal.b,  a:wShal.a  },
       deep:    { r:wDeep.r,  g:wDeep.g,  b:wDeep.b,  a:wDeep.a  },
-      maskGradient_Water:  { must:parseFloat(val('wt-mgw-must'))||1000, cannot:parseFloat(val('wt-mgw-can'))||700,  global:parseFloat(val('wt-mgw-glob'))||2000 },
-      waterGradientWidthMultiplier: parseFloat(val('wt-wgwm'))||0.5,
-      maskGradient_Terrain: { must:parseFloat(val('wt-mgt-must'))||25, cannot:parseFloat(val('wt-mgt-can'))||25, global:parseFloat(val('wt-mgt-glob'))||50 },
-      sandGradientWidthMultiplier:  parseFloat(val('wt-sgwm'))||2.0,
-      floorGradientWidthMultiplier: parseFloat(val('wt-fgwm'))||10.0,
-      shoreNoiseSize: { x:parseFloat(val('wt-snx'))||3000, y:parseFloat(val('wt-sny'))||1000 },
-      sandNoiseSize:  { x:parseFloat(val('wt-dnx'))||500,  y:parseFloat(val('wt-dny'))||100  },
-      wavesSize:      { x:parseFloat(val('wt-wvx'))||16,   y:parseFloat(val('wt-wvy'))||0.3  },
-      opacity_Surface: parseFloat(val('wt-so'))||0.8,
-      opacity_Far: parseFloat(val('wt-fo'))||1,
-      opacity_FullDarkness: parseFloat(val('wt-fd'))??0.95,
-      surfaceVisibilityDistance: getSimpleKmMetres('wt-svd')||1200,
-      fullDarknessDepth: getSimpleKmMetres('wt-fdd')||500,
-      fullDarknessVisibilityDistance: getSimpleKmMetres('wt-fdvd')||300,
+      maskGradient_Water:  { must:_sf('wt-mgw-must', 1000), cannot:_sf('wt-mgw-can', 700),  global:_sf('wt-mgw-glob', 2000) },
+      waterGradientWidthMultiplier: _sf('wt-wgwm', 0.5),
+      maskGradient_Terrain: { must:_sf('wt-mgt-must', 25), cannot:_sf('wt-mgt-can', 25), global:_sf('wt-mgt-glob', 50) },
+      sandGradientWidthMultiplier:  _sf('wt-sgwm', 2.0),
+      floorGradientWidthMultiplier: _sf('wt-fgwm', 10.0),
+      shoreNoiseSize: { x:_sf('wt-snx', 3000), y:_sf('wt-sny', 1000) },
+      sandNoiseSize:  { x:_sf('wt-dnx', 500),  y:_sf('wt-dny', 100)  },
+      wavesSize:      { x:_sf('wt-wvx', 16),   y:_sf('wt-wvy', 0.3)  },
+      opacity_Surface: _sf('wt-so', 0.8),
+      opacity_Far: _sf('wt-fo', 1),
+      opacity_FullDarkness: _sf('wt-fd', 0.95),
+      surfaceVisibilityDistance: getSimpleKmMetres('wt-svd') || 1200,
+      fullDarknessDepth: getSimpleKmMetres('wt-fdd') || 500,
+      fullDarknessVisibilityDistance: getSimpleKmMetres('wt-fdvd') || 300,
       mapColor: { r:wMap.r, g:wMap.g, b:wMap.b, a:wMap.a }
     };
   } else delete d.WATER_DATA;
@@ -1271,12 +1426,21 @@ function _liveSyncNow(){
     const dirRaw = document.getElementById('or-dir').value;
     d.ORBIT_DATA = {
       parent:             val('or-par') || 'Sun',
-      semiMajorAxis:      getDistMetres('or-sma'),
+      semiMajorAxis:      (() => {
+        // Recover stored SMA by dividing out the same effective scale used in fillSidebar.
+        // Per-body smaDifficultyScale replaces global default entirely (mirrors game SmaScale()).
+        const _sds  = buildDiffScale('or-sn','or-sh','or-sr');
+        const _vdk  = (typeof viewDiffKey !== 'undefined') ? viewDiffKey : 'Normal';
+        const _defS = (typeof _DEF_SMA_SCALE !== 'undefined') ? _DEF_SMA_SCALE : {Normal:1,Hard:2,Realistic:20};
+        const gm    = (_sds[_vdk] != null) ? _sds[_vdk] : (_defS[_vdk] ?? 1);
+        const raw   = getDistMetres('or-sma');
+        return gm > 0 ? raw / gm : raw;
+      })(),
       smaDifficultyScale: buildDiffScale('or-sn','or-sh','or-sr'),
-      eccentricity:       Math.min(parseFloat(val('or-ecc')) || 0, 0.999),
-      argumentOfPeriapsis:parseFloat(val('or-aop')) || 0,
+      eccentricity:       Math.min(_sf('or-ecc', 0), 0.999),
+      argumentOfPeriapsis:_sf('or-aop', 0),
       direction:          parseInt(dirRaw),   // parseInt('0') = 0 correctly
-      multiplierSOI:      parseFloat(val('or-soi')) || 2.5,
+      multiplierSOI:      _sf('or-soi', 2.5),
       soiDifficultyScale: buildDiffScale('or-soin','or-soih','or-soir')
     };
   } else delete d.ORBIT_DATA;
@@ -1292,6 +1456,9 @@ function _liveSyncNow(){
   // Update sidebar header to reflect current body state
   document.getElementById('sbb-type').textContent = b.isCenter ? 'System Center' : (d.ORBIT_DATA ? `orbiting ${d.ORBIT_DATA.parent}` : '');
 
+  // Refresh orbital period display whenever SMA / parent / diff scale may have changed
+  if (typeof updatePeriodFromSMA === 'function') updatePeriodFromSMA();
+
   // Invalidate cloud canvas cache so any atmosphere/texture change renders immediately
   if(drawViewport._cloudCache) drawViewport._cloudCache = {};
 
@@ -1304,6 +1471,8 @@ function _liveSyncNow(){
 document.getElementById('sidebar').addEventListener('input',  e => {
   // bsearch-input is a search filter, not a body-data field — don't trigger liveSync
   if(e.target.id === 'bsearch-input') return;
+  // or-period / or-period-unit: handled by updateSMAFromPeriod / attachPeriodParser — skip here
+  if(e.target.id === 'or-period' || e.target.id === 'or-period-unit') return;
   // hm-raw-view: live sync — push raw text into the hidden textarea then refresh
   if(e.target.id === 'hm-raw-view'){
     const lines = e.target.value.split('\n').filter(l => l.trim());
@@ -1319,13 +1488,22 @@ document.getElementById('sidebar').addEventListener('input',  e => {
     if(!liveSync._filling) liveSync();
     return;
   }
+  // Defer liveSync on text inputs to blur event — prevents lag while typing
+  if(e.target.type === 'text') return;
   if(!liveSync._filling) liveSync();
 });
 document.getElementById('sidebar').addEventListener('change', e => {
   if(e.target.id === 'bsearch-input') return;
   if(e.target.id === 'hm-raw-view') return;
+  if(e.target.id === 'or-period-unit') return;  // handled by attachPeriodParser
   if(!liveSync._filling) liveSync();
 });
+// Catch blur on text inputs to trigger liveSync after typing is done
+document.getElementById('sidebar').addEventListener('blur', e => {
+  if(e.target.type === 'text' && e.target.id !== 'bsearch-input' && e.target.id !== 'hm-raw-view'){
+    if(!liveSync._filling) liveSync();
+  }
+}, true);  // use capture to catch blur events
 // Delegated click on all toggles — fires after their own onclick toggles the class
 document.getElementById('sidebar').addEventListener('click', e => {
   if(e.target.classList.contains('tog')) setTimeout(liveSync, 0);
@@ -1558,11 +1736,15 @@ function collectPPKeys(){
 function collectLandmarks(){
   const lms=[]; let i=0;
   while(document.getElementById('lm-'+i)){
-    const n=val('lm-'+i+'-n');
-    // Read from number inputs (precise); fall back to range slider if not present
-    const lmS = parseFloat(document.getElementById('lm-'+i+'-s-num')?.value ?? val('lm-'+i+'-s')) || 0;
-    const lmE = parseFloat(document.getElementById('lm-'+i+'-e-num')?.value ?? val('lm-'+i+'-e')) || 0;
-    if(n) lms.push({name:n, startAngle:lmS, endAngle:lmE});
+    const name = document.getElementById(`lm-${i}-n`)?.value?.trim() || '';
+    // Read centre and width from number inputs (precise), fall back to range slider
+    const centre = parseFloat(document.getElementById(`lm-${i}-c-num`)?.value
+                ?? document.getElementById(`lm-${i}-c`)?.value) || 0;
+    const width  = parseFloat(document.getElementById(`lm-${i}-w-num`)?.value
+                ?? document.getElementById(`lm-${i}-w`)?.value) || 10;
+    const startAngle = parseFloat((centre - width/2).toFixed(4));
+    const endAngle   = parseFloat((centre + width/2).toFixed(4));
+    if(name) lms.push({ name, startAngle, endAngle });
     i++;
   }
   return lms;
