@@ -348,9 +348,8 @@ vp.addEventListener('mousedown', e => {
     hits.sort((a,b) => b.iconR - a.iconR || a.d - b.d);
     if(hits.length){
       const hitName = hits[0].name;
-      // Group drag: if group-select is active and the hit body is in the selection,
-      // start a multi-body drag (only root bodies actually move).
-      if(groupSelectMode && groupSelected.has(hitName)){
+      // Group drag orbit with group-select is disabled; fall through to single-body drag
+      if(false && groupSelectMode && groupSelected.has(hitName)){
         _gdob_start(hitName, e.clientX, e.clientY);
       } else {
         _dob_body = hitName;
@@ -534,7 +533,7 @@ vp.addEventListener('touchstart', e => {
     hits.sort((a,b) => b.iconR - a.iconR || a.d - b.d);
     if(hits.length){
       const hitName = hits[0].name;
-      if(groupSelectMode && groupSelected.has(hitName)){
+      if(false && groupSelectMode && groupSelected.has(hitName)){
         _gdob_start(hitName, t.clientX, t.clientY);
       } else {
         _dob_body = hitName; _dob_active = true; _dob_freeze(_dob_body); pushUndo();
@@ -1341,30 +1340,94 @@ vp.addEventListener('touchend',    () => clearTimeout(_holdTimer), { capture: tr
 vp.addEventListener('touchcancel', () => clearTimeout(_holdTimer), { capture: true, passive: true });
 
 // ── Menu action functions ─────────────────────────────────────────────────
-function bctxAddBody(){
+// ── Clipboard state ───────────────────────────────────────────────────────
+let _bodyClipboard = null;  // deep-copy of a body's data, or null
+
+function bctxCut(){
   const name = _ctxMenuBody;
   closeBodyCtxMenu();
   if(!name || !bodies[name]) return;
-  // Select the body first so the new body defaults to orbiting it
-  selectBody(name);
-  addBodyPrompt();
+  // Copy data then delete
+  _bodyClipboard = { name, data: JSON.parse(JSON.stringify(bodies[name].data)), preset: bodies[name].preset };
+  _updatePasteState();
+  pushUndo();
+  delete bodies[name];
+  if(typeof selectedBody !== 'undefined' && selectedBody === name){
+    selectedBody = null;
+    const sbSel = document.getElementById('sb-sel');
+    if(sbSel) sbSel.textContent = '—';
+  }
+  if(typeof drawViewport === 'function') drawViewport();
+  if(typeof updateStatusBar === 'function') updateStatusBar();
 }
 
-function bctxReplace(){
+function bctxCopy(){
   const name = _ctxMenuBody;
   closeBodyCtxMenu();
   if(!name || !bodies[name]) return;
-  selectBody(name);
-  replaceBodyPrompt();
+  _bodyClipboard = { name, data: JSON.parse(JSON.stringify(bodies[name].data)), preset: bodies[name].preset };
+  _updatePasteState();
 }
 
-function bctxDelete(){
-  const name = _ctxMenuBody;
+function bctxPaste(){
   closeBodyCtxMenu();
-  if(!name || !bodies[name]) return;
-  selectBody(name);
-  confirmDeleteBody();
+  if(!_bodyClipboard) return;
+  // Generate a unique name: "<original>_copy", "<original>_copy2", etc.
+  let newName = _bodyClipboard.name + '_copy';
+  let n = 2;
+  while(bodies[newName]) { newName = _bodyClipboard.name + '_copy' + n++; }
+  pushUndo();
+  bodies[newName] = {
+    preset: _bodyClipboard.preset,
+    data:   JSON.parse(JSON.stringify(_bodyClipboard.data))
+  };
+  if(typeof drawViewport === 'function') drawViewport();
+  if(typeof updateStatusBar === 'function') updateStatusBar();
 }
+
+// Grey-out Paste when clipboard is empty
+function _updatePasteState(){
+  const btn = document.getElementById('bctx-paste');
+  if(!btn) return;
+  if(_bodyClipboard) btn.classList.remove('disabled');
+  else               btn.classList.add('disabled');
+}
+
+// Also update paste state every time the menu opens
+const _origOpenBodyCtxMenu = openBodyCtxMenu;
+function openBodyCtxMenu(bodyName, clientX, clientY){
+  _updatePasteState();
+  _origOpenBodyCtxMenu(bodyName, clientX, clientY);
+}
+
+// Keyboard shortcuts: Ctrl/Cmd + X / C / V when a body is selected or menu open
+document.addEventListener('keydown', e => {
+  const mod = e.ctrlKey || e.metaKey;
+  if(!mod) return;
+  // Only trigger if not focused on an input/textarea
+  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+
+  if(e.key === 'x' || e.key === 'X'){
+    const name = _ctxMenuBody || (typeof selectedBody !== 'undefined' ? selectedBody : null);
+    if(name && bodies[name]){
+      _ctxMenuBody = name;
+      e.preventDefault();
+      bctxCut();
+    }
+  } else if(e.key === 'c' || e.key === 'C'){
+    const name = _ctxMenuBody || (typeof selectedBody !== 'undefined' ? selectedBody : null);
+    if(name && bodies[name]){
+      _ctxMenuBody = name;
+      e.preventDefault();
+      bctxCopy();
+    }
+  } else if(e.key === 'v' || e.key === 'V'){
+    if(_bodyClipboard){
+      e.preventDefault();
+      bctxPaste();
+    }
+  }
+});
 
 function bctxGroupSelect(){
   const name = _ctxMenuBody;
@@ -1373,6 +1436,7 @@ function bctxGroupSelect(){
   // Activate group-select mode, seeding with this body
   enterGroupSelect(name);
 }
+
 
 
 // ════════════════════════════════════════════════════════════════════════════

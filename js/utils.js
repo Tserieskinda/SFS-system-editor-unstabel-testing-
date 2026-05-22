@@ -32,20 +32,21 @@ document.addEventListener('mousedown', e => {
 
 
 // ── Calculator modal ─────────────────────────────────────────
-let _calcTab = 'circ';
+// Track which tool panels and sci panel are open
+let _calcOpenTool = null;   // 'circ' | 'cloud' | 'hm' | null
+let _calcSciOpen  = false;
 
 function openCalculator() {
-  // Close utils dropdown
   _utilsDropOpen = false;
   document.getElementById('utils-dropdown').style.display = 'none';
 
-  // Populate body selector from current system
   _calcPopulateBodies();
 
   const overlay = document.getElementById('calc-modal-overlay');
   overlay.style.display = 'flex';
 
-  calcSetTab(_calcTab);
+  // Open first tool by default if none open
+  if (!_calcOpenTool) calcToggleTool('circ', true);
   calcUpdate();
 }
 
@@ -53,7 +54,7 @@ function closeCalculator() {
   document.getElementById('calc-modal-overlay').style.display = 'none';
 }
 
-// Close on overlay background click (deferred so DOM is ready)
+// Close on overlay background click
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('calc-modal-overlay')?.addEventListener('click', e => {
     if (e.target === document.getElementById('calc-modal-overlay')) closeCalculator();
@@ -76,7 +77,6 @@ function _calcPopulateBodies() {
     sel.innerHTML = '<option value="">— no bodies loaded —</option>';
     return;
   }
-  // Sort: center first, then alphabetical
   names.sort((a, b) => {
     const ac = bodies[a]?.isCenter ? -1 : 1;
     const bc = bodies[b]?.isCenter ? -1 : 1;
@@ -86,7 +86,6 @@ function _calcPopulateBodies() {
   sel.innerHTML = names.map(n =>
     `<option value="${n}">${n}${bodies[n]?.isCenter ? ' ★' : ''}</option>`
   ).join('');
-  // Auto-select selectedBody if open
   if (typeof selectedBody !== 'undefined' && selectedBody && bodies[selectedBody]) {
     sel.value = selectedBody;
   }
@@ -97,7 +96,6 @@ function calcBodyChanged() {
   calcUpdate();
 }
 
-// Returns { radius_m, cloudStartHeight_m, name } for selected body, or null
 function _calcGetBodyData() {
   const sel  = document.getElementById('calc-body-sel');
   const name = sel?.value;
@@ -108,20 +106,174 @@ function _calcGetBodyData() {
   return { name, radius_m, cloudStartHeight_m };
 }
 
-function calcSetTab(tab) {
-  _calcTab = tab;
+// ── New: toggle tool panel (accordion-style) ──────────────────
+function calcToggleTool(tool, forceOpen) {
+  const isOpen = _calcOpenTool === tool;
+  const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen;
+
+  // Close all panels first
   ['circ', 'cloud', 'hm'].forEach(t => {
     const panel = document.getElementById('calc-panel-' + t);
-    const btn   = document.getElementById('calc-tab-'   + t);
-    if (panel) panel.style.display = t === tab ? 'block' : 'none';
-    if (btn) {
-      btn.classList.toggle('calc-tab-active', t === tab);
-    }
+    const arrow = document.getElementById('calc-arrow-' + t);
+    const item  = document.getElementById('calc-tool-' + t);
+    if (panel) panel.style.display = 'none';
+    if (arrow) arrow.style.transform = '';
+    if (item)  item.classList.remove('calc-tool-open');
   });
-  calcUpdate();
+
+  if (shouldOpen) {
+    _calcOpenTool = tool;
+    const panel = document.getElementById('calc-panel-' + tool);
+    const arrow = document.getElementById('calc-arrow-' + tool);
+    const item  = document.getElementById('calc-tool-' + tool);
+    if (panel) panel.style.display = 'block';
+    if (arrow) arrow.style.transform = 'rotate(90deg)';
+    if (item)  item.classList.add('calc-tool-open');
+    calcUpdate();
+  } else {
+    _calcOpenTool = null;
+  }
 }
 
-// Format metres — always outputs raw metres only
+// ── Legacy tab API shim (keep compat if anything still calls it) ─
+function calcSetTab(tab) {
+  calcToggleTool(tab, true);
+}
+
+// ── Scientific calculator toggle ──────────────────────────────
+function calcToggleSci() {
+  _calcSciOpen = !_calcSciOpen;
+  const panel   = document.getElementById('calc-sci-panel');
+  const chevron = document.getElementById('calc-sci-chevron');
+  if (panel)   panel.style.display = _calcSciOpen ? 'block' : 'none';
+  if (chevron) chevron.style.transform = _calcSciOpen ? 'rotate(90deg)' : '';
+}
+
+// ── Scientific calculator logic ───────────────────────────────
+let _sciExpr    = '';
+let _sciResult  = null;
+let _sciNewNum  = false;  // after = was pressed, fresh input clears
+
+function _sciRender() {
+  const disp = document.getElementById('calc-sci-display');
+  const expr = document.getElementById('calc-sci-expr');
+  if (disp) disp.textContent = _sciExpr || '0';
+  if (expr) expr.textContent = '';
+}
+
+function sciInsert(ch) {
+  if (_sciNewNum && /[\d.]/.test(ch)) { _sciExpr = ''; }
+  _sciNewNum = false;
+  _sciExpr += ch;
+  _sciRender();
+}
+
+function sciConst(c) {
+  const val = c === 'Math.PI' ? Math.PI : Math.E;
+  if (_sciNewNum) { _sciExpr = ''; }
+  _sciNewNum = false;
+  _sciExpr += val.toString();
+  _sciRender();
+}
+
+function sciDel() {
+  _sciNewNum = false;
+  _sciExpr = _sciExpr.slice(0, -1);
+  _sciRender();
+}
+
+function sciClear() {
+  _sciExpr = '';
+  _sciResult = null;
+  _sciNewNum = false;
+  const disp = document.getElementById('calc-sci-display');
+  const expr = document.getElementById('calc-sci-expr');
+  if (disp) disp.textContent = '0';
+  if (expr) expr.textContent = '';
+}
+
+function sciFunc(fn) {
+  // If there's already an expression, wrap it; otherwise start fresh
+  const src = _sciExpr || '0';
+  const num = parseFloat(src);
+
+  const wrapFns = {
+    sin:   () => `sin(${src})`,
+    cos:   () => `cos(${src})`,
+    tan:   () => `tan(${src})`,
+    log:   () => `log(${src})`,
+    ln:    () => `ln(${src})`,
+    sqrt:  () => `√(${src})`,
+    abs:   () => `|${src}|`,
+    floor: () => `⌊${src}⌋`,
+    pow2:  () => `(${src})²`,
+    pow3:  () => `(${src})³`,
+    inv:   () => `1/(${src})`,
+  };
+
+  const exprLabel = document.getElementById('calc-sci-expr');
+  if (exprLabel) exprLabel.textContent = wrapFns[fn] ? wrapFns[fn]() : src;
+
+  let result;
+  try {
+    switch(fn) {
+      case 'sin':   result = Math.sin(num); break;
+      case 'cos':   result = Math.cos(num); break;
+      case 'tan':   result = Math.tan(num); break;
+      case 'log':   result = Math.log10(num); break;
+      case 'ln':    result = Math.log(num); break;
+      case 'sqrt':  result = Math.sqrt(num); break;
+      case 'abs':   result = Math.abs(num); break;
+      case 'floor': result = Math.floor(num); break;
+      case 'pow2':  result = Math.pow(num, 2); break;
+      case 'pow3':  result = Math.pow(num, 3); break;
+      case 'inv':   result = 1 / num; break;
+      default:      result = NaN;
+    }
+    _sciExpr   = isFinite(result) ? _sciPretty(result) : 'Error';
+    _sciResult = result;
+    _sciNewNum = true;
+  } catch(err) {
+    _sciExpr = 'Error';
+  }
+  const disp = document.getElementById('calc-sci-display');
+  if (disp) disp.textContent = _sciExpr;
+}
+
+function sciEval() {
+  try {
+    // Replace display operators and power operator before eval
+    let expr = _sciExpr
+      .replace(/×/g, '*')
+      .replace(/÷/g, '/')
+      .replace(/−/g, '-')
+      .replace(/\^/g, '**');
+
+    const exprLabel = document.getElementById('calc-sci-expr');
+    if (exprLabel) exprLabel.textContent = _sciExpr + ' =';
+
+    // Safe eval via Function constructor
+    // eslint-disable-next-line no-new-func
+    const result = Function('"use strict"; return (' + expr + ')')();
+    _sciResult = result;
+    _sciExpr   = isFinite(result) ? _sciPretty(result) : 'Error';
+    _sciNewNum = true;
+  } catch(e) {
+    _sciExpr = 'Error';
+    _sciNewNum = true;
+  }
+  const disp = document.getElementById('calc-sci-display');
+  if (disp) disp.textContent = _sciExpr;
+}
+
+function _sciPretty(n) {
+  if (!isFinite(n)) return 'Error';
+  // Show up to 10 sig figs, strip trailing zeros
+  const s = parseFloat(n.toPrecision(10)).toString();
+  return s;
+}
+
+// Format metres
 function _fmtMetres(m) {
   if (!isFinite(m) || m <= 0) return '—';
   return `${parseFloat(m.toFixed(7))} m`;
@@ -143,7 +295,6 @@ function calcUpdate() {
 
   const { radius_m, cloudStartHeight_m } = bd;
 
-  // Body info strip
   if (info) {
     info.style.display = '';
     infoR.textContent  = `r = ${_fmtMetres(radius_m)}`;
@@ -152,11 +303,11 @@ function calcUpdate() {
       : 'No cloud layer defined';
   }
 
-  // ── Circumference ──────────────────────────────────────
+  // Circumference
   const circ = 2 * Math.PI * radius_m;
   document.getElementById('calc-res-circ').textContent = _fmtMetres(circ);
 
-  // ── Cloud width ────────────────────────────────────────
+  // Cloud width
   const cloudN = Math.max(1, parseInt(document.getElementById('calc-cloud-n')?.value) || 8);
   const cloudNote = document.getElementById('calc-cloud-sh-note');
   if (cloudStartHeight_m > 0) {
@@ -165,13 +316,12 @@ function calcUpdate() {
     document.getElementById('calc-res-cloud').textContent = _fmtMetres(cloudWidth);
     if (cloudNote) cloudNote.textContent = `cloudStartHeight = ${_fmtMetres(cloudStartHeight_m)}`;
   } else {
-    // Fallback: use surface circumference with a note
     const cloudWidth = circ / cloudN;
     document.getElementById('calc-res-cloud').textContent = _fmtMetres(cloudWidth) + '  (no cloud layer — using surface r)';
     if (cloudNote) cloudNote.textContent = 'No CLOUDS.startHeight found for this body';
   }
 
-  // ── Heightmap width ────────────────────────────────────
+  // Heightmap width
   const hmN    = Math.max(1, parseInt(document.getElementById('calc-hm-n')?.value) || 1024);
   const hmWidth = circ / hmN;
   document.getElementById('calc-res-hm').textContent = _fmtMetres(hmWidth);

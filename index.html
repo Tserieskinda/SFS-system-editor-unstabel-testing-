@@ -3248,278 +3248,277 @@ document.addEventListener('keydown', function(e){
 </div>
 
 <!-- ══════════════ CALCULATOR MODAL ══════════════ -->
-<!-- Calculator Modal -->
-<div id="calc-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100000;
-  align-items:center;justify-content:center;padding:16px">
-  <div id="calc-modal" style="background:rgba(6,10,22,.98);border:1px solid rgba(100,220,180,.25);
-    border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,.8);width:100%;max-width:480px;
-    max-height:90vh;display:flex;flex-direction:column;font-family:'JetBrains Mono',monospace">
-    
-    <!-- Header -->
+<div id="calc-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100000;
+  align-items:center;justify-content:center;padding:12px;backdrop-filter:blur(2px)">
+  <div id="calc-modal" style="background:rgba(6,10,22,.99);border:1px solid rgba(100,220,180,.22);
+    border-radius:10px;box-shadow:0 24px 64px rgba(0,0,0,.9),0 0 0 1px rgba(100,220,180,.06);
+    width:100%;max-width:480px;max-height:92vh;display:flex;flex-direction:column;
+    font-family:'JetBrains Mono',monospace;overflow:hidden">
+
+    <!-- ── Header ── -->
     <div style="display:flex;align-items:center;justify-content:space-between;
-      padding:14px 18px;border-bottom:1px solid rgba(100,220,180,.12);flex-shrink:0">
-      <span style="font-family:'Orbitron',sans-serif;font-size:.7rem;letter-spacing:.12em;color:rgba(100,220,180,.9)">🧮 CALCULATOR</span>
+      padding:13px 16px;border-bottom:1px solid rgba(100,220,180,.12);flex-shrink:0">
+      <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.13em;
+        color:rgba(100,220,180,.9)">🧮 CALCULATOR</span>
       <button onclick="closeCalculator()" style="background:none;border:none;cursor:pointer;
-        color:rgba(180,180,210,.5);font-size:1.2rem;padding:0 6px;line-height:1" title="Close">✕</button>
+        color:rgba(180,180,210,.45);font-size:1.15rem;padding:2px 6px;line-height:1;
+        border-radius:4px;transition:color .15s" title="Close (Esc)"
+        onmouseover="this.style.color='rgba(220,100,100,.8)'"
+        onmouseout="this.style.color='rgba(180,180,210,.45)'">✕</button>
     </div>
 
-    <!-- Back button (shown when in function view) -->
-    <div id="calc-back-bar" style="display:none;padding:10px 18px;border-bottom:1px solid rgba(100,220,180,.08);flex-shrink:0">
-      <button onclick="calcShowMenu()" class="calc-back-btn">
-        <span style="font-size:1rem">←</span>
-        <span>Back to menu</span>
-      </button>
-    </div>
+    <!-- ── Scrollable body ── -->
+    <div style="overflow-y:auto;flex:1;overscroll-behavior:contain">
 
-    <!-- Body picker -->
-    <div id="calc-body-picker" style="padding:14px 18px;border-bottom:1px solid rgba(100,220,180,.08);flex-shrink:0">
-      <div style="font-size:.6rem;color:rgba(100,220,180,.6);letter-spacing:.1em;margin-bottom:6px">SELECT BODY</div>
-      <select id="calc-body-sel" onchange="calcBodyChanged()"
-        style="width:100%;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
-        border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
-        font-size:.7rem;padding:9px 12px;outline:none;cursor:pointer">
-        <option value="">— no bodies loaded —</option>
-      </select>
-      <!-- Selected body info display -->
-      <div id="calc-body-info" style="display:none;margin-top:8px;padding:8px 12px;
-        background:rgba(100,220,180,.06);border:1px solid rgba(100,220,180,.12);border-radius:4px;
-        font-size:.6rem;color:rgba(150,190,170,.8);line-height:1.8">
-        <span id="calc-info-r"></span><br>
-        <span id="calc-info-cloud"></span>
-      </div>
-    </div>
+      <!-- Scientific Calculator CTA button -->
+      <div style="padding:12px 14px 0">
+        <button id="calc-sci-toggle" onclick="calcToggleSci()"
+          style="width:100%;padding:14px 16px;background:linear-gradient(135deg,rgba(100,220,180,.12),rgba(60,140,120,.08));
+          border:1px solid rgba(100,220,180,.28);border-radius:8px;cursor:pointer;
+          display:flex;align-items:center;gap:12px;transition:all .2s;
+          font-family:'JetBrains Mono',monospace;text-align:left"
+          onmouseover="this.style.background='linear-gradient(135deg,rgba(100,220,180,.2),rgba(60,140,120,.14))';this.style.borderColor='rgba(100,220,180,.5)'"
+          onmouseout="this.style.background='linear-gradient(135deg,rgba(100,220,180,.12),rgba(60,140,120,.08))';this.style.borderColor='rgba(100,220,180,.28)'">
+          <span style="font-size:1.35rem;line-height:1">🔬</span>
+          <div style="flex:1">
+            <div style="font-size:.72rem;color:rgba(100,220,180,.95);letter-spacing:.06em;
+              font-family:'Orbitron',sans-serif">SCIENTIFIC CALCULATOR</div>
+            <div style="font-size:.55rem;color:rgba(140,160,190,.6);margin-top:2px;letter-spacing:.04em">
+              Basic ops · π · exp · ln · trig · and more</div>
+          </div>
+          <span id="calc-sci-chevron" style="color:rgba(100,220,180,.5);font-size:.9rem;transition:transform .2s">▶</span>
+        </button>
 
-    <!-- Function menu (list view) -->
-    <div id="calc-menu" style="flex:1;overflow-y:auto;padding:6px">
-      <button onclick="calcShowFunction('circ')" class="calc-menu-btn">
-        <div class="calc-menu-icon">⭕</div>
-        <div class="calc-menu-content">
-          <div class="calc-menu-title">Circumference</div>
-          <div class="calc-menu-desc">Planet surface circumference (2πr)</div>
-        </div>
-        <div class="calc-menu-arrow">→</div>
-      </button>
-      
-      <button onclick="calcShowFunction('cloud')" class="calc-menu-btn">
-        <div class="calc-menu-icon">☁️</div>
-        <div class="calc-menu-content">
-          <div class="calc-menu-title">Cloud Tile Width</div>
-          <div class="calc-menu-desc">Width per tile around cloud layer</div>
-        </div>
-        <div class="calc-menu-arrow">→</div>
-      </button>
-      
-      <button onclick="calcShowFunction('hm')" class="calc-menu-btn">
-        <div class="calc-menu-icon">🗻</div>
-        <div class="calc-menu-content">
-          <div class="calc-menu-title">Heightmap Column Width</div>
-          <div class="calc-menu-desc">Width per heightmap column</div>
-        </div>
-        <div class="calc-menu-arrow">→</div>
-      </button>
-    </div>
+        <!-- Scientific Calculator panel (collapsed by default) -->
+        <div id="calc-sci-panel" style="display:none;margin-top:10px">
+          <!-- Display -->
+          <div style="background:rgba(4,8,18,.95);border:1px solid rgba(100,220,180,.2);
+            border-radius:6px;padding:10px 14px;margin-bottom:8px">
+            <div id="calc-sci-expr" style="font-size:.55rem;color:rgba(100,220,180,.4);
+              min-height:14px;letter-spacing:.04em;overflow-x:auto;white-space:nowrap;
+              text-align:right;margin-bottom:3px"></div>
+            <div id="calc-sci-display" style="font-size:1.6rem;color:rgba(200,240,220,.95);
+              text-align:right;letter-spacing:.02em;word-break:break-all;line-height:1.2">0</div>
+          </div>
 
-    <!-- Function panels (detail views) -->
-    <div id="calc-panels" style="flex:1;overflow-y:auto;display:none">
-      
-      <!-- CIRCUMFERENCE panel -->
-      <div id="calc-panel-circ" class="calc-panel">
-        <div class="calc-formula-box">2 π r</div>
-        <div class="calc-desc">Full equatorial circumference of the planet surface.</div>
-        <div class="calc-result-wrap">
-          <div class="calc-result-label">RESULT</div>
-          <div id="calc-res-circ" class="calc-result">—</div>
-        </div>
-      </div>
+          <!-- Sci function rows -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:5px">
+            <button class="csci-fn" onclick="sciFunc('sin')">sin</button>
+            <button class="csci-fn" onclick="sciFunc('cos')">cos</button>
+            <button class="csci-fn" onclick="sciFunc('tan')">tan</button>
+            <button class="csci-fn" onclick="sciFunc('sqrt')">√</button>
+            <button class="csci-fn" onclick="sciFunc('log')">log</button>
+            <button class="csci-fn" onclick="sciFunc('ln')">ln</button>
+            <button class="csci-fn" onclick="sciConst('Math.PI')">π</button>
+            <button class="csci-fn" onclick="sciConst('Math.E')">e</button>
+            <button class="csci-fn" onclick="sciFunc('pow2')">x²</button>
+            <button class="csci-fn" onclick="sciFunc('pow3')">x³</button>
+            <button class="csci-fn" onclick="sciInsert('^')">xʸ</button>
+            <button class="csci-fn" onclick="sciFunc('inv')">1/x</button>
+            <button class="csci-fn" onclick="sciInsert('(')">( </button>
+            <button class="csci-fn" onclick="sciInsert(')')"> )</button>
+            <button class="csci-fn" onclick="sciFunc('abs')">|x|</button>
+            <button class="csci-fn" onclick="sciFunc('floor')">⌊x⌋</button>
+          </div>
+          <!-- Main numpad + ops -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
+            <button class="csci-ac"  onclick="sciClear()">AC</button>
+            <button class="csci-op"  onclick="sciDel()">⌫</button>
+            <button class="csci-op"  onclick="sciInsert('%')">%</button>
+            <button class="csci-op"  onclick="sciInsert('/')">÷</button>
 
-      <!-- CLOUD WIDTH panel -->
-      <div id="calc-panel-cloud" class="calc-panel" style="display:none">
-        <div class="calc-formula-box">2 π (r + cloudStartHeight) / N</div>
-        <div class="calc-desc">Width of one cloud tile for N tiles covering the full cloud layer circumference.</div>
-        <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
-          <label style="font-size:.62rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (TILES)</label>
-          <input id="calc-cloud-n" type="text" inputmode="decimal" min="1" step="1" value="8" oninput="calcUpdate()"
-            style="flex:1;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
-            border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
-            font-size:.72rem;padding:8px 12px;outline:none;max-width:140px">
-        </div>
-        <div id="calc-cloud-sh-note" style="font-size:.57rem;color:rgba(150,150,200,.5);margin-bottom:12px"></div>
-        <div class="calc-result-wrap">
-          <div class="calc-result-label">RESULT (per tile)</div>
-          <div id="calc-res-cloud" class="calc-result">—</div>
+            <button class="csci-num" onclick="sciInsert('7')">7</button>
+            <button class="csci-num" onclick="sciInsert('8')">8</button>
+            <button class="csci-num" onclick="sciInsert('9')">9</button>
+            <button class="csci-op"  onclick="sciInsert('*')">×</button>
+
+            <button class="csci-num" onclick="sciInsert('4')">4</button>
+            <button class="csci-num" onclick="sciInsert('5')">5</button>
+            <button class="csci-num" onclick="sciInsert('6')">6</button>
+            <button class="csci-op"  onclick="sciInsert('-')">−</button>
+
+            <button class="csci-num" onclick="sciInsert('1')">1</button>
+            <button class="csci-num" onclick="sciInsert('2')">2</button>
+            <button class="csci-num" onclick="sciInsert('3')">3</button>
+            <button class="csci-op"  onclick="sciInsert('+')">+</button>
+
+            <button class="csci-num" onclick="sciInsert('0')" style="grid-column:span 2">0</button>
+            <button class="csci-num" onclick="sciInsert('.')">.</button>
+            <button class="csci-eq"  onclick="sciEval()">=</button>
+          </div>
         </div>
       </div>
 
-      <!-- HEIGHTMAP WIDTH panel -->
-      <div id="calc-panel-hm" class="calc-panel" style="display:none">
-        <div class="calc-formula-box">2 π r / N</div>
-        <div class="calc-desc">Width covered by one column of a heightmap PNG with N total columns.</div>
-        <div style="display:flex;align-items:center;gap:12px;margin:14px 0 6px">
-          <label style="font-size:.62rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (COLUMNS)</label>
-          <input id="calc-hm-n" type="text" inputmode="decimal" min="1" step="1" value="1024" oninput="calcUpdate()"
-            style="flex:1;background:rgba(15,20,40,.9);border:1px solid rgba(100,220,180,.2);
-            border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
-            font-size:.72rem;padding:8px 12px;outline:none;max-width:140px">
-        </div>
-        <div class="calc-result-wrap">
-          <div class="calc-result-label">RESULT (per column)</div>
-          <div id="calc-res-hm" class="calc-result">—</div>
+      <!-- ── Divider ── -->
+      <div style="margin:12px 14px 0;height:1px;background:rgba(100,220,180,.08)"></div>
+
+      <!-- ── Body picker ── -->
+      <div style="padding:10px 14px 0">
+        <div style="font-size:.56rem;color:rgba(100,220,180,.55);letter-spacing:.11em;margin-bottom:5px">SELECT BODY</div>
+        <select id="calc-body-sel" onchange="calcBodyChanged()"
+          style="width:100%;background:rgba(12,18,38,.95);border:1px solid rgba(100,220,180,.18);
+          border-radius:5px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
+          font-size:.65rem;padding:9px 10px;outline:none;cursor:pointer;
+          -webkit-appearance:none;appearance:none">
+          <option value="">— no bodies loaded —</option>
+        </select>
+        <div id="calc-body-info" style="display:none;margin-top:6px;padding:7px 11px;
+          background:rgba(100,220,180,.05);border:1px solid rgba(100,220,180,.11);border-radius:5px;
+          font-size:.57rem;color:rgba(150,190,170,.8);line-height:1.8">
+          <span id="calc-info-r"></span><br>
+          <span id="calc-info-cloud"></span>
         </div>
       </div>
-    </div>
 
+      <!-- ── Tool list ── -->
+      <div style="padding:10px 14px 14px">
+        <div style="font-size:.56rem;color:rgba(100,220,180,.55);letter-spacing:.11em;margin-bottom:7px">
+          PLANET TOOLS</div>
+
+        <!-- Tool items — each is a large tappable row that expands a panel -->
+        <div class="calc-tool-item" id="calc-tool-circ" onclick="calcToggleTool('circ')">
+          <div class="calc-tool-header">
+            <div>
+              <div class="calc-tool-name">Circumference</div>
+              <div class="calc-tool-formula">2 π r</div>
+            </div>
+            <div class="calc-tool-arrow" id="calc-arrow-circ">▶</div>
+          </div>
+          <div class="calc-tool-panel" id="calc-panel-circ" style="display:none">
+            <div class="calc-desc">Full equatorial circumference of the planet surface.</div>
+            <div class="calc-result-wrap">
+              <div class="calc-result-label">RESULT</div>
+              <div id="calc-res-circ" class="calc-result">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="calc-tool-item" id="calc-tool-cloud" onclick="calcToggleTool('cloud')">
+          <div class="calc-tool-header">
+            <div>
+              <div class="calc-tool-name">Cloud Width</div>
+              <div class="calc-tool-formula">2 π (r + cloudStartHeight) / N</div>
+            </div>
+            <div class="calc-tool-arrow" id="calc-arrow-cloud">▶</div>
+          </div>
+          <div class="calc-tool-panel" id="calc-panel-cloud" style="display:none">
+            <div class="calc-desc">Width of one cloud tile for N tiles covering the full cloud layer circumference.</div>
+            <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
+              <label style="font-size:.58rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (TILES)</label>
+              <input id="calc-cloud-n" type="text" inputmode="decimal" min="1" step="1" value="8" oninput="calcUpdate()"
+                style="flex:1;background:rgba(12,18,38,.95);border:1px solid rgba(100,220,180,.18);
+                border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
+                font-size:.68rem;padding:8px 10px;outline:none;max-width:130px">
+            </div>
+            <div id="calc-cloud-sh-note" style="font-size:.55rem;color:rgba(150,150,200,.5);margin-bottom:8px"></div>
+            <div class="calc-result-wrap">
+              <div class="calc-result-label">RESULT (per tile)</div>
+              <div id="calc-res-cloud" class="calc-result">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="calc-tool-item" id="calc-tool-hm" onclick="calcToggleTool('hm')">
+          <div class="calc-tool-header">
+            <div>
+              <div class="calc-tool-name">Heightmap Width</div>
+              <div class="calc-tool-formula">2 π r / N</div>
+            </div>
+            <div class="calc-tool-arrow" id="calc-arrow-hm">▶</div>
+          </div>
+          <div class="calc-tool-panel" id="calc-panel-hm" style="display:none">
+            <div class="calc-desc">Width covered by one column of a heightmap PNG with N total columns.</div>
+            <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
+              <label style="font-size:.58rem;color:rgba(100,220,180,.7);letter-spacing:.08em;white-space:nowrap">N (COLUMNS)</label>
+              <input id="calc-hm-n" type="text" inputmode="decimal" min="1" step="1" value="1024" oninput="calcUpdate()"
+                style="flex:1;background:rgba(12,18,38,.95);border:1px solid rgba(100,220,180,.18);
+                border-radius:4px;color:rgba(200,220,255,.9);font-family:'JetBrains Mono',monospace;
+                font-size:.68rem;padding:8px 10px;outline:none;max-width:130px">
+            </div>
+            <div class="calc-result-wrap">
+              <div class="calc-result-label">RESULT (per column)</div>
+              <div id="calc-res-hm" class="calc-result">—</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end tool list -->
+    </div><!-- end scrollable body -->
   </div>
 </div>
 
 <style>
-/* Calculator menu buttons */
-.calc-menu-btn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  background: rgba(15,20,40,.6);
-  border: 1px solid rgba(100,220,180,.15);
-  border-radius: 6px;
-  padding: 14px 16px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: all .15s;
-  font-family: 'JetBrains Mono', monospace;
-  text-align: left;
-  min-height: 72px;
+/* ── Calculator tool rows ── */
+.calc-tool-item {
+  border:1px solid rgba(100,220,180,.13);border-radius:7px;margin-bottom:7px;
+  overflow:hidden;cursor:pointer;transition:border-color .18s,background .18s;
+  background:rgba(100,220,180,.025);
 }
-.calc-menu-btn:hover {
-  background: rgba(100,220,180,.08);
-  border-color: rgba(100,220,180,.3);
-  transform: translateX(2px);
+.calc-tool-item:hover { border-color:rgba(100,220,180,.3);background:rgba(100,220,180,.05); }
+.calc-tool-item.calc-tool-open { border-color:rgba(100,220,180,.32);background:rgba(100,220,180,.04); }
+.calc-tool-header {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:13px 14px;min-height:52px;
 }
-.calc-menu-btn:active {
-  transform: translateX(4px) scale(.98);
+.calc-tool-name {
+  font-size:.72rem;color:rgba(200,220,255,.9);letter-spacing:.05em;margin-bottom:3px;
 }
-.calc-menu-icon {
-  font-size: 1.6rem;
-  line-height: 1;
-  flex-shrink: 0;
-  width: 40px;
-  text-align: center;
+.calc-tool-formula {
+  font-size:.58rem;color:rgba(100,220,180,.65);letter-spacing:.06em;
 }
-.calc-menu-content {
-  flex: 1;
-  min-width: 0;
+.calc-tool-arrow {
+  color:rgba(100,220,180,.45);font-size:.75rem;transition:transform .2s;flex-shrink:0;margin-left:8px;
 }
-.calc-menu-title {
-  font-size: .78rem;
-  color: rgba(200,220,255,.95);
-  letter-spacing: .04em;
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-.calc-menu-desc {
-  font-size: .6rem;
-  color: rgba(150,160,190,.65);
-  line-height: 1.4;
-}
-.calc-menu-arrow {
-  font-size: 1.2rem;
-  color: rgba(100,220,180,.4);
-  flex-shrink: 0;
-  transition: transform .15s;
-}
-.calc-menu-btn:hover .calc-menu-arrow {
-  transform: translateX(4px);
-  color: rgba(100,220,180,.7);
-}
+.calc-tool-open .calc-tool-arrow { transform:rotate(90deg);color:rgba(100,220,180,.8); }
+.calc-tool-panel { padding:0 14px 13px;cursor:default; }
+.calc-tool-panel:not([style*="display:none"]) { border-top:1px solid rgba(100,220,180,.09); }
 
-/* Back button */
-.calc-back-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(15,20,40,.6);
-  border: 1px solid rgba(100,220,180,.2);
-  border-radius: 4px;
-  padding: 6px 12px;
-  color: rgba(100,220,180,.8);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: .68rem;
-  cursor: pointer;
-  transition: all .15s;
-}
-.calc-back-btn:hover {
-  background: rgba(100,220,180,.08);
-  border-color: rgba(100,220,180,.35);
-}
-
-/* Function panels */
-.calc-panel {
-  padding: 18px;
-}
+/* ── Shared result styles ── */
 .calc-formula-box {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: .85rem;
-  color: rgba(100,220,180,.9);
-  background: rgba(100,220,180,.07);
-  border: 1px solid rgba(100,220,180,.15);
-  border-radius: 4px;
-  padding: 10px 16px;
-  text-align: center;
-  letter-spacing: .08em;
-  margin-bottom: 10px;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;color:rgba(100,220,180,.9);
+  background:rgba(100,220,180,.07);border:1px solid rgba(100,220,180,.15);
+  border-radius:4px;padding:8px 14px;text-align:center;letter-spacing:.08em;margin-bottom:8px;
 }
-.calc-desc {
-  font-size: .62rem;
-  color: rgba(150,160,190,.65);
-  line-height: 1.7;
-  margin-bottom: 6px;
-}
+.calc-desc { font-size:.57rem;color:rgba(150,160,190,.6);line-height:1.6;margin-bottom:4px;margin-top:10px; }
 .calc-result-wrap {
-  margin-top: 16px;
-  padding: 14px 16px;
-  background: rgba(100,220,180,.06);
-  border: 1px solid rgba(100,220,180,.18);
-  border-radius: 6px;
+  margin-top:12px;padding:11px 14px;background:rgba(100,220,180,.06);
+  border:1px solid rgba(100,220,180,.18);border-radius:6px;
 }
-.calc-result-label {
-  font-size: .56rem;
-  color: rgba(100,220,180,.5);
-  letter-spacing: .1em;
-  margin-bottom: 6px;
-}
+.calc-result-label { font-size:.52rem;color:rgba(100,220,180,.5);letter-spacing:.1em;margin-bottom:4px; }
 .calc-result {
-  font-size: 1.1rem;
-  font-family: 'JetBrains Mono', monospace;
-  color: rgba(200,240,220,.95);
-  letter-spacing: .04em;
-  word-break: break-all;
+  font-size:1.05rem;font-family:'JetBrains Mono',monospace;color:rgba(200,240,220,.95);
+  letter-spacing:.04em;word-break:break-all;
 }
 
-/* Mobile responsiveness */
-@media (max-width: 520px) {
-  #calc-modal {
-    max-height: 88vh;
-    border-radius: 6px;
-  }
-  .calc-menu-btn {
-    min-height: 80px;
-    padding: 16px 14px;
-  }
-  .calc-menu-icon {
-    font-size: 1.8rem;
-    width: 44px;
-  }
-  .calc-menu-title {
-    font-size: .82rem;
-  }
-  .calc-menu-desc {
-    font-size: .62rem;
-  }
-  .calc-result {
-    font-size: .92rem;
-  }
-  .calc-formula-box {
-    font-size: .75rem;
-  }
+/* ── Scientific calc buttons ── */
+.csci-num, .csci-op, .csci-fn, .csci-ac, .csci-eq {
+  padding:13px 6px;border:none;border-radius:6px;cursor:pointer;
+  font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.03em;
+  transition:all .12s;min-height:44px;display:flex;align-items:center;justify-content:center;
+}
+.csci-num { background:rgba(30,40,70,.9);color:rgba(200,220,255,.9); }
+.csci-num:hover { background:rgba(50,65,100,.95); }
+.csci-op  { background:rgba(60,80,60,.7);color:rgba(100,220,180,.9); }
+.csci-op:hover { background:rgba(80,110,85,.8); }
+.csci-fn  { background:rgba(20,30,55,.9);color:rgba(160,190,230,.8);font-size:.65rem; }
+.csci-fn:hover { background:rgba(40,55,90,.95);color:rgba(100,220,180,.9); }
+.csci-ac  { background:rgba(120,40,40,.7);color:rgba(255,140,130,.9);font-size:.7rem; }
+.csci-ac:hover { background:rgba(160,50,50,.8); }
+.csci-eq  { background:rgba(60,170,120,.85);color:rgba(10,30,20,.95);font-size:.8rem;font-weight:700; }
+.csci-eq:hover { background:rgba(80,200,150,.9); }
+.csci-num:active,.csci-op:active,.csci-fn:active,.csci-ac:active,.csci-eq:active {
+  transform:scale(.93);
+}
+
+/* ── Removed old tab styles, kept for JS compat ── */
+.calc-tab { display:none; }
+.calc-tab-active {}
+
+@media (max-width:520px){
+  #calc-modal { max-height:88vh;border-radius:8px; }
+  .calc-result { font-size:.88rem; }
+  .csci-num,.csci-op,.csci-fn,.csci-ac,.csci-eq { min-height:48px;font-size:.75rem; }
+  .calc-tool-name { font-size:.75rem; }
 }
 </style>
 
@@ -3527,9 +3526,18 @@ document.addEventListener('keydown', function(e){
 <!-- ── Body Context Menu (hold-click) ─────────────────────────────── -->
 <div id="body-ctx-menu" style="display:none">
   <div class="bctx-title" id="bctx-title">PLANET</div>
-  <button class="bctx-btn" id="bctx-add"      onclick="bctxAddBody()">＋ Add Body</button>
-  <button class="bctx-btn" id="bctx-replace"  onclick="bctxReplace()">⇄ Replace</button>
-  <button class="bctx-btn bctx-danger" id="bctx-delete" onclick="bctxDelete()">✕ Delete</button>
+  <button class="bctx-btn bctx-cut"   id="bctx-cut"   onclick="bctxCut()">
+    <span class="bctx-icon">✂</span> Cut
+    <span class="bctx-shortcut">⌘X</span>
+  </button>
+  <button class="bctx-btn bctx-copy"  id="bctx-copy"  onclick="bctxCopy()">
+    <span class="bctx-icon">⎘</span> Copy
+    <span class="bctx-shortcut">⌘C</span>
+  </button>
+  <button class="bctx-btn bctx-paste" id="bctx-paste" onclick="bctxPaste()">
+    <span class="bctx-icon">📋</span> Paste
+    <span class="bctx-shortcut">⌘V</span>
+  </button>
   <div class="bctx-divider"></div>
   <button class="bctx-btn bctx-group" id="bctx-group" onclick="bctxGroupSelect()">◉ Group Select</button>
 </div>
@@ -3574,19 +3582,33 @@ document.addEventListener('keydown', function(e){
   border: none;
   color: var(--ink3);
   font-family: 'Exo 2', system-ui, sans-serif;
-  font-size: .72rem;
+  font-size: .75rem;
   letter-spacing: .06em;
-  padding: 8px 14px;
+  padding: 11px 14px;
   text-align: left;
   cursor: pointer;
   transition: background .1s, color .1s;
+  min-height: 40px;
+  line-height: 1.2;
 }
 .bctx-btn:hover, .bctx-btn:active {
   background: var(--ac12);
   color: var(--ink3);
 }
-.bctx-btn.bctx-danger { color: rgba(220,80,70,.85); }
-.bctx-btn.bctx-danger:hover { background: rgba(200,60,50,.15); color: rgba(240,100,90,1); }
+.bctx-btn.bctx-cut   { color: rgba(255, 180, 80, .9); }
+.bctx-btn.bctx-cut:hover   { background: rgba(255,160,50,.12); color: rgba(255,200,100,1); }
+.bctx-btn.bctx-copy  { color: var(--ink3); }
+.bctx-btn.bctx-paste { color: var(--ink3); }
+.bctx-btn.bctx-paste.disabled { opacity: .35; pointer-events: none; }
+.bctx-icon { display: inline-block; width: 16px; text-align: center; margin-right: 2px; font-style: normal; }
+.bctx-shortcut {
+  float: right;
+  font-size: .58rem;
+  opacity: .38;
+  letter-spacing: .03em;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 1px;
+}
 .bctx-btn.bctx-group { color: rgba(255,160,50,.9); }
 .bctx-btn.bctx-group:hover { background: rgba(255,150,40,.12); color: rgba(255,180,80,1); }
 /* Active group-select state — button lights up */
