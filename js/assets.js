@@ -412,8 +412,8 @@ function buildDropdownItems(pickId, query){
     return;
   }
 
-  // Show at most 5 results — keeps DOM tiny and images small on mobile.
-  const MAX_VISIBLE = 5;
+  // Show at most 15 results
+  const MAX_VISIBLE = 15;
   const visible = filtered.slice(0, MAX_VISIBLE);
   visible.forEach(name => {
     const el = document.createElement('div');

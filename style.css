@@ -128,7 +128,7 @@ body {
 .tpick-dropdown {
   position: fixed; z-index: 9999;
   background: var(--panel); border: 1px solid var(--rim2);
-  max-height: 220px; overflow-y: auto; display: none;
+  max-height: 550px; overflow-y: auto; display: none;
   box-shadow: 0 4px 12px rgba(0,0,0,.5);
   min-width: 180px;
   will-change: transform;
@@ -145,11 +145,11 @@ body {
 }
 .tpick-opt:hover, .tpick-opt.active { background: var(--panel3); color: var(--ink3); }
 .tpick-opt-thumb {
-  width: 36px; height: 36px; object-fit: cover; flex-shrink: 0;
+  width: 28px; height: 28px; object-fit: cover; flex-shrink: 0;
   image-rendering: pixelated; border: 1px solid var(--rim); background: #111;
 }
 .tpick-opt-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tpick-opt-nothumb { width: 36px; height: 36px; flex-shrink: 0; background: var(--ac10); border: 1px solid var(--rim); }
+.tpick-opt-nothumb { width: 28px; height: 28px; flex-shrink: 0; background: var(--ac10); border: 1px solid var(--rim); }
 .tpick-none { color: var(--ink4); font-style: italic; }
 .tpick-empty { padding: 10px; font-size: .65rem; color: var(--ink4); text-align: center; font-family: monospace; }
 
@@ -565,7 +565,7 @@ body {
 }
 .tpick-opt:hover, .tpick-opt.active { background: var(--ac15); color: var(--sky2); }
 .tpick-opt-thumb {
-  width: 36px; height: 36px; object-fit: cover; flex-shrink: 0;
+  width: 28px; height: 28px; object-fit: cover; flex-shrink: 0;
   image-rendering: pixelated; border: 1px solid var(--rim); background: #111;
 }
 .tpick-opt-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
