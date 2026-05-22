@@ -169,15 +169,27 @@ const SFX = (() => {
     patch('replaceBodyPrompt', select);
     patch('hmInsertMap',       select);
     patch('openCalculator',    select);
+    patch('openImagePanel',    select);
+
     patch('toggleUtilsDropdown', select);
 
     // ── CLICK (neutral actions) ───────────────────────────────────
     patch('closeCalculator',   click);
+    patch('closeImagePanel',   click);
+    patch('imgBringForward',   click);
+    patch('imgSendBackward',   click);
+    patch('imgSelectFromList', select);
     patch('prsOnParentChange', click);
 
     // ── SELECT (toggle-style actions) ─────────────────────────────
     patch('astToggleEffect',   select);
     patch('calcSetTab',        select);
+    patch('calcToggleTool',    select);
+    patch('calcToggleSci',     select);
+    patch('bctxGroupSelect',   select);
+
+    // ── CLICK (context menu neutral) ──────────────────────────────
+    patch('bctxCopy',          click);
 
     // ── POSITIVE (meaningful confirms — 2 s cooldown) ─────────────
     patch('goNew',              positive);
@@ -200,6 +212,9 @@ const SFX = (() => {
     patch('astSetHeightRange',  select);
     patch('prsNext',            positive);
     patch('clearAssetCache',    positive);
+    patch('bctxPaste',          positive);
+    patch('imgDuplicateSelected', positive);
+    patch('imgTriggerFileInput',  select);
 
     // ── WARNING ───────────────────────────────────────────────────
     patch('confirmClearAll',   warning);
@@ -212,11 +227,18 @@ const SFX = (() => {
     patch('delFlatZone',       warning);
     patch('hmRemoveLine',      warning);
     patch('astClearCanvas',    warning);
+    patch('bctxCut',           warning);
 
     // ── Event delegation — elements without named global functions ─
     document.addEventListener('click', e => {
       const t   = e.target;
       const oc  = t.getAttribute ? (t.getAttribute('onclick') || '') : '';
+
+      // fs-btn (Featured Systems — Import / Open in Editor)
+      if (t.classList.contains('fs-btn')) {
+        if (t.classList.contains('fs-btn-open')) { positive(); return; }
+        if (t.classList.contains('fs-btn-dl'))   { select();   return; }
+      }
 
       // .tog toggles (atmos, rings, terrain, water, etc.)
       if (t.classList.contains('tog')) { select(); return; }
@@ -315,4 +337,3 @@ function sfxSettingToggle(key) {
   const tog = document.getElementById('sfx-tog-' + key);
   if (tog) tog.classList.toggle('on', !_sfxMuted[key]);
 }
-

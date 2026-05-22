@@ -18,6 +18,7 @@ let viewDifficulty = 'normal'; // 'normal' | 'hard' | 'realistic'
 // Data files use Title Case keys ('Normal','Hard','Realistic') — compute once on change
 let viewDiffKey = 'Normal'; // Title-case version used for smaDifficultyScale / radiusDifficultyScale lookups
 let dragging = false, dragSX, dragSY;
+let _imgConsumedDown = false; // true when imgMouseDown consumed the last mousedown — suppresses the click handler
 const BODY_PX = { star:28, planet:16, gasgiant:22, ringedgiant:22, marslike:14, mercurylike:12, moon:11, asteroid:7, blackhole:18, barycentre:5 };
 
 // Draw a high-sided polygon approximating a circle — avoids the per-frame bezier

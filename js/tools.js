@@ -365,8 +365,10 @@ vp.addEventListener('mousedown', e => {
   // Image overlay: consume mousedown if it hits an image or its handles
   const _rect0 = vp.getBoundingClientRect();
   const _mx0 = e.clientX - _rect0.left, _my0 = e.clientY - _rect0.top;
+  _imgConsumedDown = false;
   if(typeof imgMouseDown === 'function' && imgMouseDown(_mx0, _my0, e.clientX, e.clientY)){
     dragging = false; // don't pan while dragging an image
+    _imgConsumedDown = true;
   }
 });
 addEventListener('mousemove', e => {
@@ -401,6 +403,7 @@ addEventListener('mousemove', e => {
 });
 addEventListener('mouseup', e => {
   if(typeof imgMouseUp === 'function') imgMouseUp();
+  _imgConsumedDown = false;
   if(dragOrbitMode && _gdob_active){ _gdob_end(); return; }
   if(dragOrbitMode && _dob_active && _dob_body){
     _dob_active = false;
@@ -439,6 +442,8 @@ vp.addEventListener('click', e => {
   if(dragOrbitMode) return; // click does nothing in drag orbit mode
   // Ignore drag moves
   if(Math.abs(e.clientX - dragSX) > 4 || Math.abs(e.clientY - dragSY) > 4) return;
+  // If the image overlay handled the mousedown (select/deselect/drag), don't body-select
+  if(_imgConsumedDown) { _imgConsumedDown = false; return; }
   // In group-select mode, taps toggle selection instead of opening sidebar
   if(_groupSelHandleTap(e.clientX, e.clientY)) return;
   const rect = vp.getBoundingClientRect();
