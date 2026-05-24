@@ -35,7 +35,11 @@ function openProceduralGen() {
   document.getElementById('utils-dropdown').style.display = 'none';
   document.getElementById('procgen-modal').style.display = 'flex';
   pgBuildUI();
-  pgInitCanvas();
+  // rAF x2: first frame triggers layout, second reads correct clientHeight
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    pgInitCanvas();
+    pgDrawCanvas();
+  }));
 }
 function closeProceduralGen() {
   document.getElementById('procgen-modal').style.display = 'none';
@@ -59,12 +63,20 @@ function pgRenderBodyTypeGrid() {
   const grid = document.getElementById('pg-body-type-grid');
   if (!grid) return;
   grid.innerHTML = Object.entries(PG.types).map(([key, t]) => `
-    <label class="pg-body-btn ${t.enabled?'pg-body-btn--on':''}" data-type="${key}"
-      onclick="pgToggleType('${key}',this)">
-      <span class="pg-body-icon">${t.icon}</span>
-      <span class="pg-body-label">${t.label}</span>
-      <span class="pg-body-check">${t.enabled?'✓':''}</span>
-    </label>`).join('');
+    <div class="pg-body-row">
+      <label class="pg-body-btn ${t.enabled?'pg-body-btn--on':''}" data-type="${key}"
+        onclick="pgToggleType('${key}',this)">
+        <span class="pg-body-icon">${t.icon}</span>
+        <span class="pg-body-label">${t.label}</span>
+        <span class="pg-body-check">${t.enabled?'✓':''}</span>
+      </label>
+      <div class="pg-body-sub-btns">
+        <button class="pg-sub-btn pg-sub-btn--gradient" title="UI Gradient / Theme settings"
+          onclick="event.stopPropagation();openAppSettings();switchAppTab('theme')">Gradient</button>
+        <button class="pg-sub-btn pg-sub-btn--sfc" title="Sound effects settings"
+          onclick="event.stopPropagation();openAppSettings();switchAppTab('sound')">Sfc</button>
+      </div>
+    </div>`).join('');
 }
 
 function pgToggleType(key, el) {
