@@ -4294,8 +4294,15 @@ document.addEventListener('keydown', function(e){
 
 .pg-tune-label   { font-size:.58rem;color:rgba(140,160,210,.7);margin-bottom:4px;letter-spacing:.03em; }
 .pg-tune-controls{ display:flex;align-items:center;gap:8px; }
-.pg-tune-slider  { flex:1;height:4px;cursor:pointer;accent-color:#64dcb4; }
-.pg-tune-val     { min-width:36px;text-align:right;font-size:.6rem;color:rgba(100,220,180,.9);font-weight:700; }
+.pg-tune-input   {
+  flex:1;background:rgba(10,16,40,.8);border:1px solid rgba(100,150,255,.25);
+  border-radius:3px;color:rgba(100,220,180,.95);font-family:'JetBrains Mono',monospace;
+  font-size:.65rem;padding:5px 8px;width:100%;box-sizing:border-box;
+  -moz-appearance:textfield;
+}
+.pg-tune-input::-webkit-outer-spin-button,
+.pg-tune-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.pg-tune-input:focus { outline:none;border-color:rgba(100,220,180,.5); }
 
 .pg-misc-row {
   display:flex;align-items:center;gap:9px;cursor:pointer;

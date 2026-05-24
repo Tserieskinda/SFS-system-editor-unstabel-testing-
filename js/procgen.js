@@ -6,19 +6,19 @@ const AU = 1.496e11;
 
 const PG = {
   types: {
-    star:        { label:'Stars',        icon:'⭐', enabled:true,  weight:20, color:'#ffd060' },
-    planet:      { label:'Planets',      icon:'🌍', enabled:true,  weight:55, color:'#4488ff' },
-    moon:        { label:'Moons',        icon:'🌙', enabled:true,  weight:18, color:'#aaaaaa' },
-    asteroid:    { label:'Asteroids',    icon:'☄️', enabled:false, weight:5,  color:'#886644' },
-    brown_dwarf: { label:'Brown Dwarfs', icon:'🟤', enabled:false, weight:3,  color:'#cc6622' },
-    blackhole:   { label:'Black Holes',  icon:'⚫', enabled:false, weight:2,  color:'#8800ff' },
+    star:        { label:'Stars',        icon:'⭐', enabled:true,  weight:20, color:'#ffd060', eccMax:0.05 },
+    planet:      { label:'Planets',      icon:'🌍', enabled:true,  weight:55, color:'#4488ff', eccMax:0.15 },
+    moon:        { label:'Moons',        icon:'🌙', enabled:true,  weight:18, color:'#aaaaaa', eccMax:0.05 },
+    asteroid:    { label:'Asteroids',    icon:'☄️', enabled:false, weight:5,  color:'#886644', eccMax:0.55 },
+    brown_dwarf: { label:'Brown Dwarfs', icon:'🟤', enabled:false, weight:3,  color:'#cc6622', eccMax:0.10 },
+    blackhole:   { label:'Black Holes',  icon:'⚫', enabled:false, weight:2,  color:'#8800ff', eccMax:0.05 },
   },
   tune: {
-    bodyCount:    { min:2,  max:16,  val:6,    step:1,    label:'Body Count' },
-    orbitMin:     { min:0.1,max:5,   val:0.3,  step:0.1,  label:'Min Orbit (AU)' },
-    orbitMax:     { min:1,  max:60,  val:15,   step:1,    label:'Max Orbit (AU)' },
-    radiusScale:  { min:0.1,max:3,   val:1.0,  step:0.1,  label:'Radius Scale' },
-    eccentricity: { min:0,  max:0.9, val:0.15, step:0.05, label:'Max Eccentricity' },
+    bodyCount:    { min:1,    max:9999, val:6,    step:1,    label:'Body Count' },
+    orbitMin:     { min:0,    max:9999, val:0.3,  step:0.1,  label:'Min Orbit (AU)' },
+    orbitMax:     { min:0.1,  max:9999, val:15,   step:1,    label:'Max Orbit (AU)' },
+    radiusScale:  { min:0.01, max:9999, val:1.0,  step:0.1,  label:'Radius Scale' },
+    eccentricity: { min:0,    max:0.99, val:0.9,  step:0.01, label:'Ecc Ceiling (all types)' },
   },
   misc: {
     addMoons:       true,
@@ -114,22 +114,42 @@ function pgSetWeight(key, val) {
 function pgRenderFineTuning() {
   const container = document.getElementById('pg-fine-tuning');
   if (!container) return;
-  container.innerHTML = Object.entries(PG.tune).map(([key,t]) => `
+
+  const globalInputs = Object.entries(PG.tune).map(([key,t]) => `
     <div>
       <div class="pg-tune-label">${t.label}</div>
       <div class="pg-tune-controls">
-        <input type="range" class="pg-tune-slider"
-          min="${t.min}" max="${t.max}" step="${t.step}" value="${t.val}"
-          oninput="pgSetTune('${key}',this.value)">
-        <span class="pg-tune-val" id="pg-tune-val-${key}">${t.val}</span>
+        <input type="number" class="pg-tune-input"
+          step="${t.step}" value="${t.val}"
+          onchange="pgSetTune('${key}',this.value)" id="pg-tune-input-${key}">
       </div>
     </div>`).join('');
+
+  const eccInputs = Object.entries(PG.types).map(([key,t]) => `
+    <div>
+      <div class="pg-tune-label" style="display:flex;align-items:center;gap:5px">
+        <span>${t.icon}</span><span>${t.label} Ecc</span>
+      </div>
+      <div class="pg-tune-controls">
+        <input type="number" class="pg-tune-input"
+          min="0" max="0.99" step="0.01" value="${t.eccMax}"
+          onchange="pgSetTypeEcc('${key}',this.value)" id="pg-ecc-input-${key}">
+      </div>
+    </div>`).join('');
+
+  container.innerHTML = globalInputs
+    + `<div style="margin-top:4px;padding-top:8px;border-top:1px solid rgba(100,150,255,.12);">
+         <div class="pg-title" style="margin-bottom:8px">ECCENTRICITY BY TYPE</div>
+         <div style="display:flex;flex-direction:column;gap:10px">${eccInputs}</div>
+       </div>`;
+}
+
+function pgSetTypeEcc(key, val) {
+  PG.types[key].eccMax = parseFloat(val) || 0;
 }
 
 function pgSetTune(key, val) {
-  PG.tune[key].val = parseFloat(val);
-  const el = document.getElementById(`pg-tune-val-${key}`);
-  if (el) el.textContent = parseFloat(val).toFixed(val%1===0?0:2);
+  PG.tune[key].val = parseFloat(val) || 0;
 }
 
 function pgRenderMiscOptions() {
@@ -199,15 +219,25 @@ function pgGenerate() {
     const baseSma = orbitMin + spacing * i;
     const jitter  = spacing * (0.4 * Math.random() - 0.2);
     const sma     = Math.max(safeClearance, Math.min(orbitMax, baseSma + jitter));
-    const ecc  = Math.random() * PG.tune.eccentricity.val;
+    // Use per-type eccMax (capped at global eccentricity slider as an overall ceiling)
+    const typeEccMax = Math.min(PG.types[type]?.eccMax ?? 0.15, PG.tune.eccentricity.val);
+    const ecc  = Math.random() * typeEccMax;
     const name = NameGen.generate();
     const radius = (preset.data.BASE_DATA?.radius||600000) * PG.tune.radiusScale.val;
+
+    // SOI: Hill sphere approximation using surface gravity as mass proxy (g ∝ M/R²)
+    const bodyGrav   = preset.data.BASE_DATA?.gravity  || 9.8;
+    const centerGrav = center.preset.data.BASE_DATA?.gravity || 274;
+    const centerR    = center.radius;
+    const massRatio  = (bodyGrav * radius * radius) / (centerGrav * centerR * centerR);
+    const soiRadius  = sma * Math.pow(massRatio, 0.4);
 
     const body = {
       name, type, preset, isCenter:false,
       parent:   centerName,
       orbitSMA: sma, orbitEcc:ecc, orbitDir: Math.random()>0.1?1:-1,
-      radius, color:PG.types[type]?.color||'#aaaaaa', icon:PG.types[type]?.icon||'🌍',
+      radius, soiRadius,
+      color:PG.types[type]?.color||'#aaaaaa', icon:PG.types[type]?.icon||'🌍',
       _angle: Math.random()*Math.PI*2,
       children: [],
     };
@@ -217,12 +247,13 @@ function pgGenerate() {
       const moonPreset = pgPickPreset('moon');
       if (moonPreset) {
         const moonCount = Math.floor(Math.random()*3)+1;
+        const moonEccMax = PG.types['moon']?.eccMax ?? 0.05;
         for (let m=0; m<moonCount; m++) {
           body.children.push({
             name: NameGen.generate(), type:'moon',
             parent: name, preset: moonPreset,
             orbitSMA: radius*(8+m*6+Math.random()*3),
-            orbitEcc: Math.random()*0.05, orbitDir:1,
+            orbitEcc: Math.random()*moonEccMax, orbitDir:1,
             radius: (moonPreset.data?.BASE_DATA?.radius||300000)*0.3,
             color:'#999999', icon:'🌙', _angle:Math.random()*Math.PI*2, children:[],
           });
@@ -365,9 +396,26 @@ function _pgAddBody(body, parentName) {
 
   const bd = JSON.parse(JSON.stringify(body.preset?.data||{}));
   if (bd.BASE_DATA) bd.BASE_DATA.radius = body.radius;
+
+  // Compute multiplierSOI so the viewport's Hill-sphere display is physically reasonable.
+  // We stored soiRadius on the body during generation using the star's mass as parent.
+  // Back it out: multiplierSOI = soiRadius / (SMA × massRatio^0.4)
+  let multiplierSOI = 1.0;
+  if (body.soiRadius && body.orbitSMA > 0) {
+    const parentData = bodies[parentName]?.data;
+    const parentGrav = parentData?.BASE_DATA?.gravity || 274;
+    const parentR    = parentData?.BASE_DATA?.radius  || 34817000;
+    const bodyGrav   = body.preset?.data?.BASE_DATA?.gravity || 9.8;
+    const bodyR      = body.radius;
+    const massRatio  = (bodyGrav * bodyR * bodyR) / (parentGrav * parentR * parentR);
+    const rawHill    = body.orbitSMA * Math.pow(Math.max(massRatio, 1e-12), 0.4);
+    multiplierSOI    = Math.max(0.01, Math.min(20, body.soiRadius / rawHill));
+  }
+
   bd.ORBIT_DATA = {
     parent: parentName, semiMajorAxis:body.orbitSMA, SMA:body.orbitSMA,
     E:body.orbitEcc||0, direction:body.orbitDir||1,
+    multiplierSOI,
   };
   if (!PG.misc.addRings)       delete bd.RINGS_DATA;
   if (!PG.misc.addAtmospheres) { delete bd.ATMOSPHERE_PHYSICS_DATA; delete bd.ATMOSPHERE_VISUALS_DATA; }
