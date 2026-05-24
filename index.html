@@ -4315,10 +4315,35 @@ document.addEventListener('keydown', function(e){
 .pg-btn--danger:hover { background:rgba(255,80,80,.16); }
 
 @media (max-width:700px) {
+  /* Make the whole modal inner container scrollable on mobile */
+  #procgen-modal > div {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Top strip: stack Frequencies + Options vertically */
   #procgen-modal > div > div:nth-child(2) { flex-direction:column; }
-  #procgen-modal > div > div:nth-child(3) { flex-direction:column; }
+  /* Middle section: stack Body Select | Map | Fine Tuning vertically, allow shrink */
+  #procgen-modal > div > div:nth-child(3) {
+    flex-direction: column;
+    overflow: visible !important;
+    min-height: 0;
+    flex-shrink: 0;
+  }
+  /* Body Select and Fine Tuning: full width, auto height on mobile */
   #procgen-modal > div > div:nth-child(3) > div:first-child,
-  #procgen-modal > div > div:nth-child(3) > div:last-child { width:100%!important;border:none!important; }
+  #procgen-modal > div > div:nth-child(3) > div:last-child {
+    width:100%!important;
+    border:none!important;
+    overflow-y: visible !important;
+    max-height: none !important;
+  }
+  /* Map canvas: give it a fixed height on mobile instead of flex:1 */
+  #procgen-modal > div > div:nth-child(3) > div:nth-child(2) {
+    min-height: 260px;
+    flex-shrink: 0;
+  }
+  /* Bottom strip: stack vertically */
   #procgen-modal > div > div:nth-child(4) { flex-direction:column; }
 }
 </style>
