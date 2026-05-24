@@ -33,9 +33,8 @@ const PG = {
 function openProceduralGen() {
   _utilsDropOpen = false;
   document.getElementById('utils-dropdown').style.display = 'none';
-  document.getElementById('procgen-modal').style.display = 'flex';
+  document.getElementById('procgen-modal').style.display = 'block';
   pgBuildUI();
-  // rAF x2: first frame triggers layout, second reads correct clientHeight
   requestAnimationFrame(() => requestAnimationFrame(() => {
     pgInitCanvas();
     pgDrawCanvas();
@@ -45,13 +44,26 @@ function closeProceduralGen() {
   _pgGenAbort = true;
   _pgHideLoader();
   document.getElementById('procgen-modal').style.display = 'none';
+  document.getElementById('pg-panel')?.classList.remove('open');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('procgen-modal')?.addEventListener('click', e => {
-    if (e.target === document.getElementById('procgen-modal')) closeProceduralGen();
-  });
-});
+function pgTogglePanel() {
+  const panel = document.getElementById('pg-panel');
+  if (!panel) return;
+  panel.classList.toggle('open');
+  const btn = document.getElementById('pg-panel-toggle');
+  if (btn) btn.textContent = panel.classList.contains('open') ? '⚙ HIDE' : '⚙ SETTINGS';
+}
+
+function pgSwitchTab(name, el) {
+  document.querySelectorAll('.pg-tab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.pg-tab-panel').forEach(p => p.classList.remove('on'));
+  if (el) el.classList.add('on');
+  const panel = document.getElementById('pg-tabp-' + name);
+  if (panel) panel.classList.add('on');
+}
+
+document.addEventListener('DOMContentLoaded', () => {});
 
 // ── Build UI ──────────────────────────────────────────────────
 function pgBuildUI() {
@@ -139,11 +151,11 @@ function pgRenderFineTuning() {
       </div>
     </div>`).join('');
 
-  container.innerHTML = globalInputs
-    + `<div style="margin-top:4px;padding-top:8px;border-top:1px solid rgba(100,150,255,.12);">
-         <div class="pg-title" style="margin-bottom:8px">ECCENTRICITY BY TYPE</div>
-         <div style="display:flex;flex-direction:column;gap:10px">${eccInputs}</div>
-       </div>`;
+  container.innerHTML = globalInputs;
+
+  // Ecc-by-type goes into its own container in the tune tab
+  const eccContainer = document.getElementById('pg-ecc-by-type');
+  if (eccContainer) eccContainer.innerHTML = eccInputs;
 }
 
 function pgSetTypeEcc(key, val) {
@@ -189,12 +201,9 @@ function _pgShowLoader(msg, pct) {
         <div id="pg-loader-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#4488ff,#88ccff);border-radius:2px;transition:width .12s"></div>
       </div>
       <div id="pg-loader-sub" style="font-size:.55rem;color:rgba(120,150,210,.5)">0 / 0 bodies</div>`;
-    // Attach to the canvas container (position:relative parent)
-    const cv = document.getElementById('pg-canvas');
-    if (cv && cv.parentElement) {
-      cv.parentElement.style.position = 'relative';
-      cv.parentElement.appendChild(ov);
-    }
+    // Attach to the modal root (canvas is a direct child)
+    const modal = document.getElementById('procgen-modal');
+    if (modal) modal.appendChild(ov);
   }
   ov.style.display = 'flex';
   const msgEl = document.getElementById('pg-loader-msg');
@@ -290,6 +299,7 @@ function pgGenerate() {
         name, type, preset, isCenter:false,
         parent:   centerName,
         orbitSMA: sma, orbitEcc:ecc, orbitDir: Math.random()>0.1?1:-1,
+        orbitAoP: Math.random() * 360,
         radius, soiRadius,
         color:PG.types[type]?.color||'#aaaaaa', icon:PG.types[type]?.icon||'🌍',
         _angle: Math.random()*Math.PI*2,
@@ -306,7 +316,7 @@ function pgGenerate() {
               name: NameGen.generate(), type:'moon',
               parent: name, preset: moonPreset,
               orbitSMA: radius*(8+m*6+Math.random()*3),
-              orbitEcc: Math.random()*moonEccMax, orbitDir:1,
+              orbitEcc: Math.random()*moonEccMax, orbitAoP: Math.random()*360, orbitDir:1,
               radius: (moonPreset.data?.BASE_DATA?.radius||300000)*0.3,
               color:'#999999', icon:'🌙', _angle:Math.random()*Math.PI*2, children:[],
             });
@@ -494,7 +504,7 @@ function pgImportOrbit() {
   const cd = JSON.parse(JSON.stringify(c.preset.data));
   // Give center an orbit around chosen parent
   const parentR = bodies[parentName]?.data?.BASE_DATA?.radius || 34817000;
-  cd.ORBIT_DATA  = { parent:parentName, semiMajorAxis:parentR*80, eccentricity:0.05, argumentOfPeriapsis:0, direction:1 };
+  cd.ORBIT_DATA  = { parent:parentName, semiMajorAxis:parentR*80, eccentricity:0.05, argumentOfPeriapsis:Math.random()*360, direction:1 };
   const cm = typeof inferPresetMeta==='function' ? inferPresetMeta(c.name,cd) : {};
   bodies[c.name] = { data:cd, preset:cm.id||'star', isCenter:false,
     color:cm.color||c.color, glow:cm.glow||c.color, icon:cm.icon||c.icon };
@@ -566,7 +576,7 @@ function _pgAddBody(body, parentName) {
 
   bd.ORBIT_DATA = {
     parent: parentName, semiMajorAxis:body.orbitSMA,
-    eccentricity:body.orbitEcc||0, argumentOfPeriapsis:0,
+    eccentricity:body.orbitEcc||0, argumentOfPeriapsis:body.orbitAoP||0,
     direction:body.orbitDir||1,
     multiplierSOI,
   };
@@ -786,14 +796,19 @@ function _pgBodyPos(body, parent) {
   const b   = a * Math.sqrt(1 - ecc * ecc);
   const c   = a * ecc;
   const ang = body._angle || 0;
-  // Position on ellipse: x from focus = c + a*cos(θ) - c = a*cos(θ) relative to focus; using parametric form
+  const aopB = (body.orbitAoP || 0) * Math.PI / 180;
+  // Parametric position on ellipse rotated by AoP, centre offset from focus by c
+  const localX = c + a * Math.cos(ang);
+  const localY = b * Math.sin(ang);
+  // Rotate by AoP (Y-flipped canvas: rotation is -aop)
+  const rotX = localX * Math.cos(-aopB) - localY * Math.sin(-aopB);
+  const rotY = localX * Math.sin(-aopB) + localY * Math.cos(-aopB);
   let ox = 0, oy = 0;
   if (parent && !parent.isCenter) {
     ox = (parent.orbitSMA / AU) * AU_PX * Math.cos(parent._angle || 0);
     oy = (parent.orbitSMA / AU) * AU_PX * Math.sin(parent._angle || 0);
   }
-  // Parametric ellipse: centre offset by c, so x = c + a*cos, y = b*sin
-  return { x: ox + c + a * Math.cos(ang), y: oy + b * Math.sin(ang) };
+  return { x: ox + rotX, y: oy + rotY };
 }
 
 function _pgOrbit(ctx,body,parent) {
@@ -802,8 +817,9 @@ function _pgOrbit(ctx,body,parent) {
   const b   = a * Math.sqrt(1 - ecc * ecc);
   const c   = a * ecc;   // focus offset from ellipse centre
 
-  // Ellipse centre is shifted +c from the focus (star at origin)
-  let ox = c, oy = 0;
+  const aop = (body.orbitAoP || 0) * Math.PI / 180;  // argument of periapsis in radians
+  // Ellipse centre is shifted +c from the focus along the AoP direction
+  let ox = c * Math.cos(aop), oy = -c * Math.sin(aop);  // -sin: Y flipped in canvas
   if (parent && !parent.isCenter) {
     ox += (parent.orbitSMA / AU) * AU_PX * Math.cos(parent._angle || 0);
     oy += (parent.orbitSMA / AU) * AU_PX * Math.sin(parent._angle || 0);
@@ -814,7 +830,7 @@ function _pgOrbit(ctx,body,parent) {
   ctx.lineWidth   = parent ? 0.5 : 1;
   ctx.setLineDash(parent ? [2, 5] : []);
   ctx.beginPath();
-  ctx.ellipse(ox, oy, a, b, 0, 0, Math.PI * 2);
+  ctx.ellipse(ox, oy, a, b, -aop, 0, Math.PI * 2);  // rotate ellipse by AoP
   ctx.stroke();
   ctx.setLineDash([]); ctx.restore();
 }
