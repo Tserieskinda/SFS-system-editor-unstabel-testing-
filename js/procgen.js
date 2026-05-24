@@ -188,6 +188,11 @@ function pgGenerate() {
   const orbitMin = PG.tune.orbitMin.val * AU;
   const orbitMax = PG.tune.orbitMax.val * AU;
   const spacing  = (orbitMax - orbitMin) / Math.max(count, 1);
+
+  // Minimum safe clearance: star radius + a buffer so planets never overlap it
+  const starRadius = center.radius || 34817000;
+  const safeClearance = Math.max(orbitMin, starRadius * 8);
+
   const orbitTypes = enabled.filter(([k])=> k!=='star' || !PG.types.star.enabled);
   const pickPool   = orbitTypes.length ? orbitTypes : enabled;
 
@@ -196,7 +201,10 @@ function pgGenerate() {
     const preset = pgPickPreset(type);
     if (!preset) continue;
 
-    const sma  = Math.min(orbitMax, orbitMin + spacing*i + spacing*(0.4*Math.random()-0.2));
+    // Jitter is ±20% of spacing but never lets sma drop below safeClearance
+    const baseSma = orbitMin + spacing * i;
+    const jitter  = spacing * (0.4 * Math.random() - 0.2);
+    const sma     = Math.max(safeClearance, Math.min(orbitMax, baseSma + jitter));
     const ecc  = Math.random() * PG.tune.eccentricity.val;
     const name = NameGen.generate();
     const radius = (preset.data.BASE_DATA?.radius||600000) * PG.tune.radiusScale.val;
@@ -428,8 +436,17 @@ function pgInitCanvas() {
     cv.addEventListener('touchmove', e => {
       e.preventDefault();
       if (e.touches.length===2&&_pinchD) {
-        const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-        s.zoom=Math.max(0.05,Math.min(8,s.zoom*(d/_pinchD))); _pinchD=d; pgDrawCanvas();
+        const t0=e.touches[0], t1=e.touches[1];
+        const d=Math.hypot(t0.clientX-t1.clientX, t0.clientY-t1.clientY);
+        const rect=cv.getBoundingClientRect();
+        // midpoint in canvas-local coords
+        const mx=((t0.clientX+t1.clientX)/2 - rect.left  - rect.width /2 - s.pan.x) / s.zoom;
+        const my=((t0.clientY+t1.clientY)/2 - rect.top   - rect.height/2 - s.pan.y) / s.zoom;
+        const nz=Math.max(0.05,Math.min(8,s.zoom*(d/_pinchD)));
+        // pan so the midpoint stays fixed on screen
+        s.pan.x -= mx*(nz-s.zoom);
+        s.pan.y -= my*(nz-s.zoom);
+        s.zoom=nz; _pinchD=d; pgDrawCanvas();
       } else if (e.touches.length===1&&s.drag) {
         s.pan.x+=e.touches[0].clientX-s.lastP.x; s.pan.y+=e.touches[0].clientY-s.lastP.y;
         s.lastP={x:e.touches[0].clientX,y:e.touches[0].clientY}; pgDrawCanvas();
