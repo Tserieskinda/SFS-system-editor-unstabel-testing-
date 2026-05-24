@@ -4330,42 +4330,57 @@ document.addEventListener('keydown', function(e){
 .pg-btn--danger:hover { background:rgba(255,80,80,.16); }
 
 @media (max-width:700px) {
-  /* Make the whole modal inner container scrollable on mobile */
+  /* Inner container: single scrollable column, no clipping */
   #procgen-modal > div {
+    display: block !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch;
+    height: 100%;
+    box-sizing: border-box;
   }
-  /* Top strip: stack Frequencies + Options vertically */
-  #procgen-modal > div > div:nth-child(2) { flex-direction:column; }
-  /* Middle section: stack Body Select | Map | Fine Tuning vertically, allow shrink */
-  #procgen-modal > div > div:nth-child(3) {
-    flex-direction: column;
+
+  /* Every direct child section stacks naturally — no flex tricks */
+  #procgen-modal > div > div {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* Top strip: TYPE FREQUENCIES + OPTIONS — each sub-panel full width */
+  #procgen-modal > div > div:nth-child(2) > div {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(100,150,255,.1);
+  }
+
+  /* Middle section: Body Select | Map | Fine Tuning — stack vertically */
+  #procgen-modal > div > div:nth-child(3) > div {
+    width: 100% !important;
+    border-right: none !important;
+    border-left: none !important;
     overflow: visible !important;
-    min-height: 0;
-    flex-shrink: 0;
-  }
-  /* Body Select and Fine Tuning: full width, auto height on mobile */
-  #procgen-modal > div > div:nth-child(3) > div:first-child,
-  #procgen-modal > div > div:nth-child(3) > div:last-child {
-    width:100%!important;
-    border:none!important;
-    overflow-y: visible !important;
     max-height: none !important;
   }
-  /* Map canvas: give it a fixed height on mobile instead of flex:1 */
+
+  /* Map column: fixed height so canvas renders */
   #procgen-modal > div > div:nth-child(3) > div:nth-child(2) {
-    min-height: 460px;
-    height: 460px;
-    flex-shrink: 0;
+    display: flex !important;
+    flex-direction: column;
+    height: 420px;
   }
-  /* Force the canvas itself to fill its container */
-  #pg-canvas {
-    height: 100% !important;
-    min-height: 400px;
+  #procgen-modal > div > div:nth-child(3) > div:nth-child(2) > div:nth-child(2) {
+    flex: 1;
+    min-height: 0;
   }
+  #pg-canvas { height: 100% !important; }
+
   /* Bottom strip: stack vertically */
-  #procgen-modal > div > div:nth-child(4) { flex-direction:column; }
+  #procgen-modal > div > div:nth-child(4) > div {
+    width: 100% !important;
+    border-right: none !important;
+    text-align: center;
+  }
 }
 </style>
 

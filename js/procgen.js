@@ -70,12 +70,6 @@ function pgRenderBodyTypeGrid() {
         <span class="pg-body-label">${t.label}</span>
         <span class="pg-body-check">${t.enabled?'✓':''}</span>
       </label>
-      <div class="pg-body-sub-btns">
-        <button class="pg-sub-btn pg-sub-btn--gradient" title="UI Gradient / Theme settings"
-          onclick="event.stopPropagation();openAppSettings();switchAppTab('theme')">Gradient</button>
-        <button class="pg-sub-btn pg-sub-btn--sfc" title="Sound effects settings"
-          onclick="event.stopPropagation();openAppSettings();switchAppTab('sound')">Sfc</button>
-      </div>
     </div>`).join('');
 }
 
