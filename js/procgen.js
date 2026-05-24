@@ -35,16 +35,18 @@ function openProceduralGen() {
   document.getElementById('utils-dropdown').style.display = 'none';
   document.getElementById('procgen-modal').style.display = 'block';
   pgBuildUI();
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    pgInitCanvas();
-    pgDrawCanvas();
-  }));
+  // Open the settings panel by default
+  requestAnimationFrame(() => {
+    document.getElementById('pg-panel')?.classList.add('open');
+  });
 }
 function closeProceduralGen() {
   _pgGenAbort = true;
   _pgHideLoader();
   document.getElementById('procgen-modal').style.display = 'none';
   document.getElementById('pg-panel')?.classList.remove('open');
+  // Clear the preview when closing
+  pgClear();
 }
 
 function pgTogglePanel() {
@@ -177,7 +179,7 @@ function pgRenderMiscOptions() {
   container.innerHTML = opts.map(o => `
     <label class="pg-misc-row">
       <input type="checkbox" ${PG.misc[o.key]?'checked':''}
-        onchange="PG.misc['${o.key}']=this.checked" style="accent-color:#64dcb4;width:15px;height:15px">
+        onchange="PG.misc['${o.key}']=this.checked" style="accent-color:#64dcb4">
       <span>${o.label}</span>
     </label>`).join('');
 }
@@ -265,7 +267,7 @@ function pgGenerate() {
   const pickPool   = orbitTypes.length ? orbitTypes : enabled;
 
   if (count === 0) {
-    pgDrawCanvas();
+    if (typeof drawViewport === 'function') drawViewport();
     pgShowStatus(`✓ ${PG.preview.bodies.length} bodies ready — click APPLY TO SYSTEM`, 'ok');
     return;
   }
@@ -351,7 +353,7 @@ function pgGenerate() {
       }
 
       _pgHideLoader();
-      pgDrawCanvas();
+      if (typeof drawViewport === 'function') drawViewport();
       pgShowStatus(`✓ ${PG.preview.bodies.length} bodies ready — click APPLY TO SYSTEM`, 'ok');
     }
   }
@@ -595,7 +597,7 @@ function _pgFinish(selectName) {
   if (typeof updateStatusBar==='function') updateStatusBar();
   if (selectName && typeof selectBody==='function') selectBody(selectName);
   pgShowStatus(`✓ System imported successfully!`, 'ok');
-  setTimeout(closeProceduralGen, 1400);
+  // Don't close procedural gen - user can continue generating
 }
 
 function pgClear() {
@@ -603,7 +605,8 @@ function pgClear() {
   _pgHideLoader();
   PG.preview.bodies=[];PG.preview.center=null;
   PG.canvas.selected=null;PG.canvas.hovered=null;
-  pgDrawCanvas(); pgShowStatus('','');
+  if (typeof drawViewport === 'function') drawViewport();
+  pgShowStatus('','');
 }
 
 function pgShowStatus(msg, type) {

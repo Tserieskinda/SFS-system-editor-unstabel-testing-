@@ -4083,39 +4083,34 @@ document.addEventListener('keydown', function(e){
 <!-- ══════════════ PROCEDURAL GENERATION MODAL ══════════════ -->
 <!-- ══ Procgen: full-screen overlay with canvas + collapsible panel ══ -->
 <div id="procgen-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;
-  z-index:99999;font-family:'JetBrains Mono',monospace;overflow:hidden">
-
-  <!-- Canvas fills entire overlay -->
-  <div style="position:absolute;inset:0">
-    <canvas id="pg-canvas" style="width:100%;height:100%;display:block;cursor:grab"></canvas>
-  </div>
+  z-index:99999;font-family:'JetBrains Mono',monospace;pointer-events:none">
 
   <!-- Floating header bar -->
   <div id="pg-header" style="position:absolute;top:0;left:0;right:0;
     display:flex;align-items:center;justify-content:space-between;
-    padding:10px 16px;background:rgba(4,8,20,.82);backdrop-filter:blur(8px);
-    border-bottom:1px solid rgba(100,150,255,.12);z-index:2;gap:10px">
-    <div style="font-family:'Orbitron',sans-serif;font-size:.75rem;letter-spacing:.15em;color:var(--sky2);white-space:nowrap">
-      ✨ PROC GEN
+    padding:12px 20px;background:rgba(4,8,20,.85);backdrop-filter:blur(8px);
+    border-bottom:1px solid rgba(100,150,255,.15);z-index:2;gap:12px;pointer-events:auto">
+    <div style="font-family:'Orbitron',sans-serif;font-size:.95rem;letter-spacing:.15em;color:var(--sky2);white-space:nowrap">
+      ✨ PROCEDURAL GENERATION
     </div>
     <!-- Action buttons always visible -->
-    <div style="display:flex;gap:8px;align-items:center;flex:1;justify-content:center;flex-wrap:wrap">
+    <div style="display:flex;gap:10px;align-items:center;flex:1;justify-content:center;flex-wrap:wrap">
       <button onclick="pgGenerate()" class="pg-btn pg-btn--primary">🎲 GENERATE</button>
       <button onclick="pgApply()"    class="pg-btn pg-btn--apply">✅ APPLY</button>
-      <button onclick="pgClear()"    class="pg-btn pg-btn--danger">🗑</button>
+      <button onclick="pgClear()"    class="pg-btn pg-btn--danger">🗑 CLEAR</button>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <div id="pg-status" style="display:none;font-size:.58rem;max-width:200px;text-align:right"></div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <div id="pg-status" style="display:none;font-size:.75rem;max-width:200px;text-align:right"></div>
       <!-- Panel toggle -->
       <button id="pg-panel-toggle" onclick="pgTogglePanel()"
-        style="background:rgba(100,150,255,.1);border:1px solid rgba(100,150,255,.3);border-radius:4px;
-          cursor:pointer;color:rgba(160,185,255,.9);font-size:.6rem;padding:6px 10px;white-space:nowrap;
+        style="background:rgba(100,150,255,.12);border:1px solid rgba(100,150,255,.35);border-radius:5px;
+          cursor:pointer;color:rgba(160,185,255,.95);font-size:.8rem;padding:8px 14px;white-space:nowrap;
           font-family:'JetBrains Mono',monospace;letter-spacing:.04em;transition:all .15s"
         title="Toggle settings panel">⚙ SETTINGS</button>
       <button onclick="closeProceduralGen()"
         style="background:none;border:none;cursor:pointer;color:rgba(180,180,210,.4);
-          font-size:1.3rem;padding:4px 8px;line-height:1;transition:color .15s"
-        onmouseover="this.style.color='rgba(220,80,80,.8)'"
+          font-size:1.5rem;padding:4px 10px;line-height:1;transition:color .15s"
+        onmouseover="this.style.color='rgba(220,80,80,.9)'"
         onmouseout="this.style.color='rgba(180,180,210,.4)'">✕</button>
     </div>
   </div>
@@ -4138,27 +4133,27 @@ document.addEventListener('keydown', function(e){
     <div class="pg-tab-panel on" id="pg-tabp-types">
       <div class="pg-section-title">BODY TYPES</div>
       <div class="pg-hint">Enable which body types may appear</div>
-      <div id="pg-body-type-grid" style="display:flex;flex-direction:column;gap:6px;margin-top:10px"></div>
-      <div id="pg-body-info" style="display:none;margin-top:10px;padding:10px 12px;
-        background:rgba(100,220,180,.06);border:1px solid rgba(100,220,180,.2);
-        border-radius:4px;font-size:.65rem;line-height:1.8;color:rgba(180,200,255,.85)"></div>
+      <div id="pg-body-type-grid" style="display:flex;flex-direction:column;gap:7px;margin-top:12px"></div>
+      <div id="pg-body-info" style="display:none;margin-top:12px;padding:12px 14px;
+        background:rgba(100,220,180,.08);border:1px solid rgba(100,220,180,.25);
+        border-radius:5px;font-size:.8rem;line-height:1.9;color:rgba(180,200,255,.88)"></div>
     </div>
 
     <!-- Tab: Frequencies -->
     <div class="pg-tab-panel" id="pg-tabp-freq">
       <div class="pg-section-title">TYPE FREQUENCIES</div>
       <div class="pg-hint">Relative chance each type appears</div>
-      <div id="pg-freq-controls" style="display:flex;flex-direction:column;gap:9px;margin-top:10px"></div>
+      <div id="pg-freq-controls" style="display:flex;flex-direction:column;gap:11px;margin-top:12px"></div>
     </div>
 
     <!-- Tab: Fine Tuning -->
     <div class="pg-tab-panel" id="pg-tabp-tune">
       <div class="pg-section-title">FINE TUNING</div>
       <div class="pg-hint">Orbit, size &amp; eccentricity</div>
-      <div id="pg-fine-tuning" style="display:flex;flex-direction:column;gap:12px;margin-top:10px"></div>
-      <div style="margin-top:14px">
-        <div class="pg-section-title" style="margin-bottom:8px">ECCENTRICITY BY TYPE</div>
-        <div id="pg-ecc-by-type" style="display:flex;flex-direction:column;gap:10px"></div>
+      <div id="pg-fine-tuning" style="display:flex;flex-direction:column;gap:14px;margin-top:12px"></div>
+      <div style="margin-top:16px">
+        <div class="pg-section-title" style="margin-bottom:10px">ECCENTRICITY BY TYPE</div>
+        <div id="pg-ecc-by-type" style="display:flex;flex-direction:column;gap:12px"></div>
       </div>
     </div>
 
@@ -4166,9 +4161,9 @@ document.addEventListener('keydown', function(e){
     <div class="pg-tab-panel" id="pg-tabp-options">
       <div class="pg-section-title">OPTIONS</div>
       <div class="pg-hint">Moons, rings, atmospheres</div>
-      <div id="pg-misc-options" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
-      <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(100,150,255,.08)">
-        <div class="pg-section-title" style="margin-bottom:6px">COMING SOON</div>
+      <div id="pg-misc-options" style="display:flex;flex-direction:column;gap:10px;margin-top:12px"></div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(100,150,255,.1)">
+        <div class="pg-section-title" style="margin-bottom:8px">COMING SOON</div>
         <div class="pg-hint">Heightmap · Watermask · Cloud textures · Texture select</div>
       </div>
     </div>
@@ -4235,16 +4230,17 @@ document.addEventListener('keydown', function(e){
 /* ── Panel: desktop right drawer ── */
 .pg-panel {
   position: absolute;
-  top: 48px; right: 0; bottom: 0;
-  width: 280px;
-  background: rgba(4,8,20,.94);
-  border-left: 1px solid rgba(100,150,255,.14);
-  backdrop-filter: blur(12px);
+  top: 60px; right: 0; bottom: 0;
+  width: 340px;
+  background: rgba(4,8,20,.96);
+  border-left: 1px solid rgba(100,150,255,.18);
+  backdrop-filter: blur(14px);
   display: flex; flex-direction: column;
   transform: translateX(100%);
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
   z-index: 2;
   overflow: hidden;
+  pointer-events: auto;
 }
 .pg-panel.open { transform: translateX(0); }
 
@@ -4253,132 +4249,134 @@ document.addEventListener('keydown', function(e){
 /* ── Tab bar ── */
 .pg-panel-tabs {
   display: flex;
-  border-bottom: 1px solid rgba(100,150,255,.12);
+  border-bottom: 1px solid rgba(100,150,255,.15);
   flex-shrink: 0;
 }
 .pg-tab {
-  flex: 1; padding: 9px 4px;
+  flex: 1; padding: 11px 6px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: .52rem; letter-spacing: .06em;
+  font-size: .7rem; letter-spacing: .06em;
   background: none; border: none; cursor: pointer;
-  color: rgba(120,140,200,.55);
+  color: rgba(120,140,200,.6);
   border-bottom: 2px solid transparent;
   transition: all .14s;
 }
-.pg-tab:hover { color: rgba(160,185,255,.85); }
+.pg-tab:hover { color: rgba(160,185,255,.9); }
 .pg-tab.on {
-  color: rgba(100,220,180,.95);
-  border-bottom-color: rgba(100,220,180,.6);
+  color: rgba(100,220,180,.98);
+  border-bottom-color: rgba(100,220,180,.65);
 }
 
 /* ── Tab panels ── */
 .pg-tab-panel {
   display: none;
   flex: 1; overflow-y: auto;
-  padding: 14px 14px 20px;
+  padding: 16px 16px 24px;
   overscroll-behavior: contain;
 }
 .pg-tab-panel.on { display: block; }
 
 /* ── Shared component styles ── */
 .pg-section-title {
-  font-size: .62rem;
-  color: rgba(100,220,180,.8);
+  font-size: .8rem;
+  color: rgba(100,220,180,.85);
   letter-spacing: .1em;
   font-family: 'Orbitron', sans-serif;
 }
 .pg-hint {
-  font-size: .56rem;
-  color: rgba(120,140,190,.5);
-  margin-top: 3px;
+  font-size: .72rem;
+  color: rgba(120,140,190,.55);
+  margin-top: 4px;
 }
 
-.pg-body-row { display: flex; flex-direction: column; gap: 3px; }
+.pg-body-row { display: flex; flex-direction: column; gap: 4px; }
 .pg-body-btn {
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px 11px; border-radius: 5px; cursor: pointer;
-  border: 1px solid rgba(100,150,255,.18);
-  background: rgba(10,16,40,.6);
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 13px; border-radius: 6px; cursor: pointer;
+  border: 1px solid rgba(100,150,255,.22);
+  background: rgba(10,16,40,.65);
   transition: all .12s; user-select: none;
-  font-size: .62rem; color: rgba(150,170,220,.7);
+  font-size: .8rem; color: rgba(150,170,220,.75);
 }
-.pg-body-btn:hover { background: rgba(100,150,255,.1); border-color: rgba(100,150,255,.32); }
-.pg-body-btn--on { background: rgba(100,220,180,.1)!important; border-color: rgba(100,220,180,.5)!important; color: rgba(100,220,180,.95)!important; }
-.pg-body-icon  { font-size: .9rem; }
+.pg-body-btn:hover { background: rgba(100,150,255,.12); border-color: rgba(100,150,255,.35); }
+.pg-body-btn--on { background: rgba(100,220,180,.12)!important; border-color: rgba(100,220,180,.55)!important; color: rgba(100,220,180,.98)!important; }
+.pg-body-icon  { font-size: 1.1rem; }
 .pg-body-label { flex: 1; letter-spacing: .04em; }
-.pg-body-check { font-size: .75rem; min-width: 14px; }
+.pg-body-check { font-size: .9rem; min-width: 16px; }
 
 .pg-freq-row {
-  display: flex; align-items: center; gap: 8px;
-  font-size: .6rem; color: rgba(160,180,220,.85);
+  display: flex; align-items: center; gap: 10px;
+  font-size: .78rem; color: rgba(160,180,220,.88);
 }
-.pg-freq-icon  { font-size: .8rem; min-width: 16px; }
-.pg-freq-name  { min-width: 60px; }
-.pg-freq-slider{ flex: 1; height: 4px; cursor: pointer; }
-.pg-freq-pct   { min-width: 32px; text-align: right; color: rgba(100,220,180,.85); font-size: .58rem; }
+.pg-freq-icon  { font-size: 1rem; min-width: 18px; }
+.pg-freq-name  { min-width: 70px; }
+.pg-freq-slider{ flex: 1; height: 5px; cursor: pointer; }
+.pg-freq-pct   { min-width: 38px; text-align: right; color: rgba(100,220,180,.88); font-size: .75rem; }
 
-.pg-tune-label    { font-size: .58rem; color: rgba(140,160,210,.7); margin-bottom: 4px; letter-spacing: .03em; }
-.pg-tune-controls { display: flex; align-items: center; gap: 8px; }
+.pg-tune-label    { font-size: .75rem; color: rgba(140,160,210,.75); margin-bottom: 5px; letter-spacing: .03em; }
+.pg-tune-controls { display: flex; align-items: center; gap: 10px; }
 .pg-tune-input {
-  flex: 1; background: rgba(10,16,40,.8); border: 1px solid rgba(100,150,255,.25);
-  border-radius: 3px; color: rgba(100,220,180,.95); font-family: 'JetBrains Mono', monospace;
-  font-size: .65rem; padding: 5px 8px; width: 100%; box-sizing: border-box;
+  flex: 1; background: rgba(10,16,40,.85); border: 1px solid rgba(100,150,255,.28);
+  border-radius: 4px; color: rgba(100,220,180,.98); font-family: 'JetBrains Mono', monospace;
+  font-size: .82rem; padding: 7px 10px; width: 100%; box-sizing: border-box;
   -moz-appearance: textfield;
 }
 .pg-tune-input::-webkit-outer-spin-button,
 .pg-tune-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.pg-tune-input:focus { outline: none; border-color: rgba(100,220,180,.5); }
+.pg-tune-input:focus { outline: none; border-color: rgba(100,220,180,.55); }
 
 .pg-misc-row {
-  display: flex; align-items: center; gap: 9px; cursor: pointer;
-  font-size: .6rem; color: rgba(160,180,220,.85); padding: 2px 0;
+  display: flex; align-items: center; gap: 11px; cursor: pointer;
+  font-size: .78rem; color: rgba(160,180,220,.88); padding: 3px 0;
 }
-.pg-misc-row:hover { color: rgba(210,225,255,.95); }
+.pg-misc-row:hover { color: rgba(210,225,255,.98); }
+.pg-misc-row input[type="checkbox"] {
+  width: 18px; height: 18px; cursor: pointer;
+}
 
 .pg-btn {
   font-family: 'JetBrains Mono', monospace;
-  font-size: .6rem; padding: 8px 14px; border-radius: 4px; cursor: pointer;
+  font-size: .78rem; padding: 10px 16px; border-radius: 5px; cursor: pointer;
   letter-spacing: .06em; border-width: 1px; border-style: solid;
   transition: all .12s; font-weight: 600;
 }
-.pg-btn--primary { border-color: rgba(100,220,180,.5); background: rgba(100,220,180,.12); color: rgba(100,220,180,.95); }
-.pg-btn--primary:hover { background: rgba(100,220,180,.22); }
-.pg-btn--apply   { border-color: rgba(80,140,255,.5); background: rgba(80,140,255,.1); color: rgba(130,185,255,.9); }
-.pg-btn--apply:hover { background: rgba(80,140,255,.22); }
-.pg-btn--danger  { border-color: rgba(255,80,80,.32); background: rgba(255,80,80,.07); color: rgba(255,130,130,.85); }
-.pg-btn--danger:hover { background: rgba(255,80,80,.16); }
+.pg-btn--primary { border-color: rgba(100,220,180,.55); background: rgba(100,220,180,.14); color: rgba(100,220,180,.98); }
+.pg-btn--primary:hover { background: rgba(100,220,180,.24); }
+.pg-btn--apply   { border-color: rgba(80,140,255,.55); background: rgba(80,140,255,.12); color: rgba(130,185,255,.95); }
+.pg-btn--apply:hover { background: rgba(80,140,255,.24); }
+.pg-btn--danger  { border-color: rgba(255,80,80,.35); background: rgba(255,80,80,.08); color: rgba(255,130,130,.88); }
+.pg-btn--danger:hover { background: rgba(255,80,80,.18); }
 
 /* ── Mobile: bottom sheet ── */
 @media (max-width: 700px) {
   .pg-panel {
     top: auto; right: 0; left: 0; bottom: 0;
     width: 100%;
-    height: 52vh;
-    max-height: 52vh;
+    height: 54vh;
+    max-height: 54vh;
     border-left: none;
-    border-top: 1px solid rgba(100,150,255,.2);
-    border-radius: 14px 14px 0 0;
+    border-top: 1px solid rgba(100,150,255,.25);
+    border-radius: 16px 16px 0 0;
     transform: translateY(100%);
   }
   .pg-panel.open { transform: translateY(0); }
 
   .pg-panel-handle {
     display: block;
-    width: 38px; height: 4px;
-    background: rgba(100,150,255,.3);
-    border-radius: 2px;
-    margin: 10px auto 6px;
+    width: 42px; height: 5px;
+    background: rgba(100,150,255,.35);
+    border-radius: 2.5px;
+    margin: 12px auto 8px;
     flex-shrink: 0;
     cursor: pointer;
   }
 
   /* Header: compact on mobile */
-  #pg-header { padding: 8px 12px; }
-  .pg-btn { padding: 7px 10px; font-size: .55rem; }
-
-  /* Canvas: pull down so header doesn't cover it */
-  #procgen-modal > div:first-child { top: 44px !important; }
+  #pg-header { padding: 10px 14px; }
+  .pg-btn { padding: 9px 12px; font-size: .7rem; }
+  #pg-header > div:first-child { font-size: .82rem; }
 }
+</style>
 </style>
 
 </body>
