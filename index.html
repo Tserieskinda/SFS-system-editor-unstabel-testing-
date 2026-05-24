@@ -4085,213 +4085,242 @@ document.addEventListener('keydown', function(e){
   background:rgba(0,0,0,.88);z-index:99999;font-family:'JetBrains Mono',monospace;
   flex-direction:column;align-items:stretch">
 
-  <!-- ── Outer container ── -->
   <div style="display:flex;flex-direction:column;width:100%;height:100%;max-width:1600px;
     margin:0 auto;background:rgba(4,8,20,.98);overflow:hidden">
 
-    <!-- ── Header ── -->
+    <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;
-      padding:12px 18px;border-bottom:1px solid rgba(100,150,255,.15);flex-shrink:0">
-      <div>
-        <div style="font-family:'Orbitron',sans-serif;font-size:.72rem;letter-spacing:.18em;
-          color:var(--sky2)">✨ PROCEDURAL GENERATION</div>
-        <div style="font-size:.5rem;color:rgba(130,150,200,.5);letter-spacing:.04em;margin-top:3px">
-          Generate full planetary systems with complete control</div>
+      padding:14px 20px;border-bottom:1px solid rgba(100,150,255,.15);flex-shrink:0">
+      <div style="font-family:'Orbitron',sans-serif;font-size:.85rem;letter-spacing:.15em;color:var(--sky2)">
+        ✨ PROCEDURAL GENERATION
       </div>
       <button onclick="closeProceduralGen()" style="background:none;border:none;cursor:pointer;
-        color:rgba(180,180,210,.4);font-size:1.3rem;padding:4px 8px;line-height:1;transition:color .15s"
+        color:rgba(180,180,210,.4);font-size:1.4rem;padding:4px 10px;line-height:1;transition:color .15s"
         onmouseover="this.style.color='rgba(220,80,80,.8)'"
         onmouseout="this.style.color='rgba(180,180,210,.4)'">✕</button>
     </div>
 
-    <!-- ── Top row: Frequencies + Misc ── -->
-    <div class="pg-top-row" style="display:flex;gap:0;border-bottom:1px solid rgba(100,150,255,.1);
-      flex-shrink:0;min-height:0">
+    <!-- Top strip: Frequencies + Misc -->
+    <div style="display:flex;border-bottom:1px solid rgba(100,150,255,.1);flex-shrink:0">
 
-      <!-- Object Type Frequencies -->
-      <div style="flex:1;padding:12px 14px;border-right:1px solid rgba(100,150,255,.1)">
-        <div class="pg-section-title">OBJECT TYPE FREQUENCIES</div>
-        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-bottom:8px">
-          % of each body type out of selected types — e.g. 10% stars, 90% planets
-        </div>
-        <div id="pg-freq-controls" style="display:flex;flex-direction:column;gap:5px"></div>
+      <!-- Frequencies -->
+      <div style="flex:1;padding:14px 16px;border-right:1px solid rgba(100,150,255,.1)">
+        <div class="pg-title">TYPE FREQUENCIES</div>
+        <div class="pg-hint">% chance each body type appears</div>
+        <div id="pg-freq-controls" style="display:flex;flex-direction:column;gap:7px;margin-top:10px"></div>
       </div>
 
       <!-- Misc -->
-      <div style="flex:1;padding:12px 14px">
-        <div class="pg-section-title">MISC</div>
-        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-bottom:8px">
-          Post-generation options and behaviors
-        </div>
-        <div id="pg-misc-options" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div style="flex:1;padding:14px 16px">
+        <div class="pg-title">OPTIONS</div>
+        <div id="pg-misc-options" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
       </div>
     </div>
 
-    <!-- ── Middle row: Body Select | Map View | Fine Tuning ── -->
+    <!-- Middle: Body Select | Map | Fine Tuning -->
     <div style="flex:1;display:flex;overflow:hidden;min-height:0">
 
-      <!-- Body Select (left) -->
-      <div class="pg-side-panel" style="width:170px;min-width:140px;border-right:1px solid rgba(100,150,255,.1);
-        overflow-y:auto;flex-shrink:0">
-        <div style="padding:12px 12px 8px">
-          <div class="pg-section-title">BODY SELECT</div>
-          <div style="font-size:.47rem;color:rgba(130,150,200,.45);margin-bottom:10px;line-height:1.5">
-            Select body types to include. Can mix multiple for completely random systems.
-          </div>
-          <div id="pg-body-type-grid" style="display:flex;flex-direction:column;gap:5px"></div>
+      <!-- Body Select -->
+      <div style="width:180px;flex-shrink:0;border-right:1px solid rgba(100,150,255,.1);
+        overflow-y:auto;background:rgba(2,5,14,.5)">
+        <div style="padding:14px 14px 8px">
+          <div class="pg-title">BODY TYPES</div>
+          <div class="pg-hint" style="margin-bottom:12px">Pick one or more</div>
+          <div id="pg-body-type-grid" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
-        <!-- Body info panel (shows when clicking on map) -->
-        <div id="pg-body-info" style="display:none;margin:10px 12px;padding:10px;
+        <div id="pg-body-info" style="display:none;margin:10px 12px;padding:10px 12px;
           background:rgba(100,220,180,.06);border:1px solid rgba(100,220,180,.2);
-          border-radius:4px;font-size:.5rem;line-height:1.7;color:rgba(180,200,255,.85)"></div>
+          border-radius:4px;font-size:.65rem;line-height:1.8;color:rgba(180,200,255,.85)"></div>
       </div>
 
-      <!-- Map View (center) -->
-      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative">
-        <div style="padding:8px 14px;border-bottom:1px solid rgba(100,150,255,.08);flex-shrink:0;
+      <!-- Map View -->
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:8px 16px;border-bottom:1px solid rgba(100,150,255,.08);flex-shrink:0;
           display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:.52rem;color:var(--sky2);letter-spacing:.1em">MAP VIEW</span>
-          <span style="font-size:.46rem;color:rgba(100,120,180,.4)">scroll/pinch to zoom · drag to pan · click body for info</span>
+          <span style="font-size:.65rem;color:var(--sky2);letter-spacing:.08em">MAP VIEW</span>
+          <span style="font-size:.55rem;color:rgba(100,120,180,.45)">scroll to zoom · drag to pan · click body</span>
         </div>
         <div style="flex:1;position:relative;overflow:hidden">
           <canvas id="pg-canvas" style="width:100%;height:100%;display:block;cursor:grab"></canvas>
         </div>
-        <!-- Status bar -->
-        <div style="padding:8px 14px;border-top:1px solid rgba(100,150,255,.08);flex-shrink:0;
+        <!-- Action bar -->
+        <div style="padding:10px 16px;border-top:1px solid rgba(100,150,255,.08);flex-shrink:0;
           display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <button onclick="pgGenerate()" class="pg-btn pg-btn--primary">🎲 GENERATE SYSTEM</button>
+          <button onclick="pgGenerate()" class="pg-btn pg-btn--primary">🎲 GENERATE</button>
           <button onclick="pgApply()"    class="pg-btn pg-btn--apply">✅ APPLY TO SYSTEM</button>
           <button onclick="pgClear()"    class="pg-btn pg-btn--danger">🗑 CLEAR</button>
-          <div id="pg-status" style="display:none;font-size:.52rem;margin-left:auto"></div>
+          <div id="pg-status" style="display:none;font-size:.6rem;margin-left:auto;max-width:260px;text-align:right"></div>
         </div>
       </div>
 
-      <!-- Fine Tuning (right) -->
-      <div class="pg-side-panel" style="width:200px;min-width:160px;border-left:1px solid rgba(100,150,255,.1);
-        overflow-y:auto;flex-shrink:0">
-        <div style="padding:12px 12px 8px">
-          <div class="pg-section-title">FINE TUNING</div>
-          <div style="font-size:.47rem;color:rgba(130,150,200,.45);margin-bottom:10px;line-height:1.5">
-            Control orbit ranges, SOI, planet radius, eccentricity, and more.
-          </div>
-          <div id="pg-fine-tuning" style="display:flex;flex-direction:column;gap:10px"></div>
+      <!-- Fine Tuning -->
+      <div style="width:210px;flex-shrink:0;border-left:1px solid rgba(100,150,255,.1);
+        overflow-y:auto;background:rgba(2,5,14,.5)">
+        <div style="padding:14px 14px 8px">
+          <div class="pg-title">FINE TUNING</div>
+          <div class="pg-hint" style="margin-bottom:12px">Orbit, size & shape</div>
+          <div id="pg-fine-tuning" style="display:flex;flex-direction:column;gap:12px"></div>
         </div>
       </div>
     </div>
 
-    <!-- ── Bottom row: Misc Selections | Generate | Texture Select ── -->
-    <div class="pg-bottom-row" style="display:flex;gap:0;border-top:1px solid rgba(100,150,255,.1);
-      flex-shrink:0">
-
-      <!-- Miscellaneous Selections -->
-      <div style="flex:1;padding:12px 14px;border-right:1px solid rgba(100,150,255,.1)">
-        <div class="pg-section-title">MISCELLANEOUS SELECTIONS</div>
-        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-top:3px">
-          Heightmap, watermask, front clouds — coming soon
-        </div>
+    <!-- Bottom strip -->
+    <div style="display:flex;border-top:1px solid rgba(100,150,255,.1);flex-shrink:0">
+      <div style="flex:1;padding:12px 16px;border-right:1px solid rgba(100,150,255,.1)">
+        <div class="pg-title">MISC SELECTIONS</div>
+        <div class="pg-hint">Heightmap, watermask, front clouds — coming soon</div>
       </div>
-
-      <!-- Center generate button area -->
-      <div style="display:flex;align-items:center;justify-content:center;padding:12px 20px;
+      <div style="display:flex;align-items:center;justify-content:center;padding:12px 24px;
         border-right:1px solid rgba(100,150,255,.1)">
-        <button onclick="pgGenerate()" style="font-family:'JetBrains Mono',monospace;
-          font-size:.65rem;padding:14px 28px;border-radius:4px;cursor:pointer;letter-spacing:.1em;
-          border:1px solid rgba(100,220,180,.5);background:rgba(100,220,180,.14);
-          color:rgba(100,220,180,.95);font-weight:700;white-space:nowrap;
-          box-shadow:0 0 20px rgba(100,220,180,.08);transition:all .15s"
-          onmouseover="this.style.background='rgba(100,220,180,.22)'"
-          onmouseout="this.style.background='rgba(100,220,180,.14)'">
+        <button onclick="pgGenerate()" class="pg-btn pg-btn--primary" style="font-size:.7rem;padding:12px 26px">
           🎲 GENERATE
         </button>
       </div>
-
-      <!-- Texture Select -->
-      <div style="flex:1;padding:12px 14px">
-        <div class="pg-section-title">TEXTURE SELECT</div>
-        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-top:3px">
-          Planet, Atmosphere, normal cloud textures — coming soon
-        </div>
+      <div style="flex:1;padding:12px 16px">
+        <div class="pg-title">TEXTURE SELECT</div>
+        <div class="pg-hint">Planet, atmosphere, cloud textures — coming soon</div>
       </div>
     </div>
 
   </div>
 </div>
 
-<!-- ── Procgen CSS ── -->
+<!-- ══ Import Options Dialog ══ -->
+<div id="pg-import-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,.7);z-index:199999;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace">
+  <div style="background:rgba(6,10,24,.98);border:1px solid rgba(100,220,180,.3);border-radius:8px;
+    padding:28px 30px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.8)">
+    <div style="font-family:'Orbitron',sans-serif;font-size:.8rem;letter-spacing:.15em;
+      color:var(--sky2);margin-bottom:6px">APPLY SYSTEM</div>
+    <div id="pg-import-body-count" style="font-size:.65rem;color:rgba(150,170,220,.6);margin-bottom:20px"></div>
+
+    <!-- Option A: Replace -->
+    <button onclick="pgImportReplace()" style="display:flex;flex-direction:column;width:100%;
+      text-align:left;padding:14px 16px;margin-bottom:10px;border-radius:6px;cursor:pointer;
+      border:1px solid rgba(255,100,100,.35);background:rgba(255,100,100,.07);transition:all .14s"
+      onmouseover="this.style.background='rgba(255,100,100,.16)'"
+      onmouseout="this.style.background='rgba(255,100,100,.07)'">
+      <span style="font-size:.68rem;color:rgba(255,150,150,.95);font-weight:700;letter-spacing:.06em">
+        🗑 REPLACE CURRENT SYSTEM
+      </span>
+      <span style="font-size:.58rem;color:rgba(200,150,150,.6);margin-top:4px">
+        Clears everything and loads the generated system fresh
+      </span>
+    </button>
+
+    <!-- Option B: Orbit existing -->
+    <button onclick="pgImportOrbit()" style="display:flex;flex-direction:column;width:100%;
+      text-align:left;padding:14px 16px;margin-bottom:10px;border-radius:6px;cursor:pointer;
+      border:1px solid rgba(100,180,255,.35);background:rgba(100,180,255,.07);transition:all .14s"
+      onmouseover="this.style.background='rgba(100,180,255,.16)'"
+      onmouseout="this.style.background='rgba(100,180,255,.07)'">
+      <span style="font-size:.68rem;color:rgba(140,200,255,.95);font-weight:700;letter-spacing:.06em">
+        🔗 ADD ORBITING EXISTING BODY
+      </span>
+      <span style="font-size:.58rem;color:rgba(140,180,220,.6);margin-top:4px">
+        The generated center orbits a body you choose from the current system
+      </span>
+      <div id="pg-orbit-parent-wrap" style="margin-top:10px">
+        <select id="pg-orbit-parent-sel" style="width:100%;padding:7px 10px;
+          background:rgba(8,14,36,.95);border:1px solid rgba(100,150,255,.3);
+          border-radius:4px;color:rgba(180,200,255,.9);font-family:'JetBrains Mono',monospace;
+          font-size:.6rem;cursor:pointer">
+        </select>
+      </div>
+    </button>
+
+    <!-- Option C: Merge -->
+    <button onclick="pgImportMerge()" style="display:flex;flex-direction:column;width:100%;
+      text-align:left;padding:14px 16px;margin-bottom:20px;border-radius:6px;cursor:pointer;
+      border:1px solid rgba(100,220,180,.35);background:rgba(100,220,180,.07);transition:all .14s"
+      onmouseover="this.style.background='rgba(100,220,180,.16)'"
+      onmouseout="this.style.background='rgba(100,220,180,.07)'">
+      <span style="font-size:.68rem;color:rgba(100,220,180,.95);font-weight:700;letter-spacing:.06em">
+        ➕ MERGE INTO CURRENT SYSTEM
+      </span>
+      <span style="font-size:.58rem;color:rgba(100,180,160,.6);margin-top:4px">
+        Adds generated bodies alongside existing ones, center stays the same
+      </span>
+    </button>
+
+    <button onclick="pgImportCancel()" style="width:100%;padding:10px;background:none;
+      border:1px solid rgba(100,120,180,.2);border-radius:4px;cursor:pointer;
+      color:rgba(130,150,200,.55);font-family:'JetBrains Mono',monospace;font-size:.6rem;
+      transition:all .12s"
+      onmouseover="this.style.borderColor='rgba(130,150,200,.4)';this.style.color='rgba(180,190,220,.8)'"
+      onmouseout="this.style.borderColor='rgba(100,120,180,.2)';this.style.color='rgba(130,150,200,.55)'">
+      CANCEL
+    </button>
+  </div>
+</div>
+
+<!-- Procgen styles -->
 <style>
-/* Section titles */
-.pg-section-title {
-  font-size:.52rem;
-  color:rgba(100,220,180,.75);
+.pg-title {
+  font-size:.65rem;
+  color:rgba(100,220,180,.8);
   letter-spacing:.1em;
-  margin-bottom:6px;
   font-family:'Orbitron',sans-serif;
 }
-
-/* Body type buttons */
+.pg-hint {
+  font-size:.58rem;
+  color:rgba(120,140,190,.5);
+  margin-top:3px;
+}
 .pg-body-btn {
-  display:flex;align-items:center;gap:8px;
-  padding:7px 10px;border-radius:4px;cursor:pointer;
-  border:1px solid rgba(100,150,255,.15);
+  display:flex;align-items:center;gap:9px;
+  padding:8px 11px;border-radius:5px;cursor:pointer;
+  border:1px solid rgba(100,150,255,.18);
   background:rgba(10,16,40,.6);
   transition:all .12s;user-select:none;
-  font-size:.54rem;color:rgba(160,180,220,.7);
+  font-size:.62rem;color:rgba(150,170,220,.7);
 }
-.pg-body-btn:hover { background:rgba(100,150,255,.1); border-color:rgba(100,150,255,.3); }
-.pg-body-btn--on   { background:rgba(100,220,180,.1)!important; border-color:rgba(100,220,180,.45)!important; color:rgba(100,220,180,.95)!important; }
-.pg-body-icon { font-size:.85rem; }
-.pg-body-label{ flex:1; letter-spacing:.05em; }
-.pg-body-check{ font-size:.7rem; min-width:12px; }
+.pg-body-btn:hover { background:rgba(100,150,255,.1);border-color:rgba(100,150,255,.32); }
+.pg-body-btn--on   { background:rgba(100,220,180,.1)!important;border-color:rgba(100,220,180,.5)!important;color:rgba(100,220,180,.95)!important; }
+.pg-body-icon  { font-size:.9rem; }
+.pg-body-label { flex:1;letter-spacing:.04em; }
+.pg-body-check { font-size:.75rem;min-width:14px; }
 
-/* Frequency rows */
 .pg-freq-row {
-  display:flex;align-items:center;gap:7px;
-  font-size:.52rem;color:rgba(160,180,220,.8);
+  display:flex;align-items:center;gap:8px;
+  font-size:.6rem;color:rgba(160,180,220,.85);
 }
-.pg-freq-icon  { font-size:.7rem; min-width:14px; }
-.pg-freq-name  { min-width:62px; }
-.pg-freq-slider{ flex:1;height:3px;cursor:pointer; }
-.pg-freq-pct   { min-width:32px;text-align:right;color:rgba(100,220,180,.8);font-size:.5rem; }
+.pg-freq-icon  { font-size:.8rem;min-width:16px; }
+.pg-freq-name  { min-width:70px; }
+.pg-freq-slider{ flex:1;height:4px;cursor:pointer; }
+.pg-freq-pct   { min-width:36px;text-align:right;color:rgba(100,220,180,.85);font-size:.58rem; }
 
-/* Fine tuning */
-.pg-tune-row { }
-.pg-tune-label   { font-size:.5rem;color:rgba(140,160,210,.65);margin-bottom:3px;letter-spacing:.03em; }
-.pg-tune-controls{ display:flex;align-items:center;gap:7px; }
-.pg-tune-slider  { flex:1;height:3px;cursor:pointer;accent-color:#64dcb4; }
-.pg-tune-val     { min-width:30px;text-align:right;font-size:.5rem;color:rgba(100,220,180,.85); }
+.pg-tune-label   { font-size:.58rem;color:rgba(140,160,210,.7);margin-bottom:4px;letter-spacing:.03em; }
+.pg-tune-controls{ display:flex;align-items:center;gap:8px; }
+.pg-tune-slider  { flex:1;height:4px;cursor:pointer;accent-color:#64dcb4; }
+.pg-tune-val     { min-width:36px;text-align:right;font-size:.6rem;color:rgba(100,220,180,.9);font-weight:700; }
 
-/* Misc options */
 .pg-misc-row {
-  display:flex;align-items:center;gap:8px;cursor:pointer;
-  font-size:.52rem;color:rgba(160,180,220,.8);
-  padding:3px 0;
+  display:flex;align-items:center;gap:9px;cursor:pointer;
+  font-size:.6rem;color:rgba(160,180,220,.85);padding:2px 0;
 }
-.pg-misc-row:hover { color:rgba(200,220,255,.95); }
+.pg-misc-row:hover { color:rgba(210,225,255,.95); }
 
-/* Action buttons */
 .pg-btn {
   font-family:'JetBrains Mono',monospace;
-  font-size:.55rem;padding:8px 14px;border-radius:4px;cursor:pointer;
-  letter-spacing:.06em;border-width:1px;border-style:solid;transition:all .12s;
+  font-size:.62rem;padding:9px 16px;border-radius:4px;cursor:pointer;
+  letter-spacing:.06em;border-width:1px;border-style:solid;transition:all .12s;font-weight:600;
 }
-.pg-btn--primary { border-color:rgba(100,220,180,.45);background:rgba(100,220,180,.12);color:rgba(100,220,180,.95);font-weight:600; }
-.pg-btn--primary:hover { background:rgba(100,220,180,.2); }
-.pg-btn--apply   { border-color:rgba(80,140,255,.45);background:rgba(80,140,255,.1);color:rgba(120,180,255,.9); }
-.pg-btn--apply:hover { background:rgba(80,140,255,.2); }
-.pg-btn--danger  { border-color:rgba(255,80,80,.3);background:rgba(255,80,80,.07);color:rgba(255,130,130,.8); }
-.pg-btn--danger:hover { background:rgba(255,80,80,.15); }
+.pg-btn--primary { border-color:rgba(100,220,180,.5);background:rgba(100,220,180,.12);color:rgba(100,220,180,.95); }
+.pg-btn--primary:hover { background:rgba(100,220,180,.22); }
+.pg-btn--apply   { border-color:rgba(80,140,255,.5);background:rgba(80,140,255,.1);color:rgba(130,185,255,.9); }
+.pg-btn--apply:hover { background:rgba(80,140,255,.22); }
+.pg-btn--danger  { border-color:rgba(255,80,80,.32);background:rgba(255,80,80,.07);color:rgba(255,130,130,.85); }
+.pg-btn--danger:hover { background:rgba(255,80,80,.16); }
 
-/* Responsive mobile layout */
-@media (max-width: 700px) {
-  .pg-top-row    { flex-direction:column; }
-  .pg-bottom-row { flex-direction:column; }
-  .pg-side-panel { width:100%!important;min-width:0!important;border-right:none!important;
-    border-left:none!important;border-bottom:1px solid rgba(100,150,255,.1); }
-  #procgen-modal > div { flex-direction:column; }
+@media (max-width:700px) {
+  #procgen-modal > div > div:nth-child(2) { flex-direction:column; }
   #procgen-modal > div > div:nth-child(3) { flex-direction:column; }
+  #procgen-modal > div > div:nth-child(3) > div:first-child,
+  #procgen-modal > div > div:nth-child(3) > div:last-child { width:100%!important;border:none!important; }
+  #procgen-modal > div > div:nth-child(4) { flex-direction:column; }
 }
 </style>
 
 </body>
-
-</html>
