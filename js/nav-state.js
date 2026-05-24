@@ -13,6 +13,7 @@ function goStart(){
   document.getElementById('viewport').classList.remove('active');
   _syncThemeBtns();
   closeSidebar();
+  if(typeof exitGroupSelect === 'function') exitGroupSelect();
   // Always reset to main nav when returning to start
   const mainNav = document.getElementById('s-start-main-nav');
   const createNav = document.getElementById('s-start-create-nav');
@@ -38,6 +39,7 @@ function goNew(){
 }
 function goOpen(){
   show('s-open');
+  if(typeof exitGroupSelect === 'function') exitGroupSelect();
   // Show/hide the warning banner based on whether bodies are loaded
   const hasSession = Object.keys(bodies).length > 0;
   const warn = document.getElementById('open-session-warn');
@@ -68,4 +70,5 @@ function goNewFromOpen(){
 
 function goFeatured(){
   show('s-featured');
+  if(typeof exitGroupSelect === 'function') exitGroupSelect();
 }

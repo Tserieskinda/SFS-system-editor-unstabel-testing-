@@ -442,6 +442,9 @@ vp.addEventListener('click', e => {
   if(dragOrbitMode) return; // click does nothing in drag orbit mode
   // Ignore drag moves
   if(Math.abs(e.clientX - dragSX) > 4 || Math.abs(e.clientY - dragSY) > 4) return;
+  // If a hold just opened the context menu, swallow the trailing click so the sidebar
+  // doesn't open on top of it
+  if(_ctxEl().style.display !== 'none') return;
   // If the image overlay handled the mousedown (select/deselect/drag), don't body-select
   if(_imgConsumedDown) { _imgConsumedDown = false; return; }
   // In group-select mode, taps toggle selection instead of opening sidebar
@@ -550,23 +553,36 @@ vp.addEventListener('touchstart', e => {
   if(ids.length === 2){
     const t0 = _touches[ids[0]], t1 = _touches[ids[1]];
     const dist = Math.hypot(t1.x - t0.x, t1.y - t0.y);
-    _pinchStartDist = dist;
-    _lastPinchDist  = dist;
-    _pinchStartZ    = vpZ;
-    _pinchMidX = (t0.x + t1.x) / 2;
-    _pinchMidY = (t0.y + t1.y) / 2;
-    _wasPinching = true;
-    _pinchMoved  = false; // reset — will be set true on first actual movement
-    // Group-select: start SMA pinch snapshot
-    _gsPinchStart(dist);
+    // Check if both fingers land on the same image — if so, hand off to image pinch
+    const rect2 = vp.getBoundingClientRect();
+    const _imgPinchConsumed = typeof imgPinchStart === 'function'
+      && imgPinchStart(t0.x - rect2.left, t0.y - rect2.top, t1.x - rect2.left, t1.y - rect2.top);
+    if(!_imgPinchConsumed) {
+      // Normal viewport pinch-zoom
+      _pinchStartDist = dist;
+      _lastPinchDist  = dist;
+      _pinchStartZ    = vpZ;
+      _pinchMidX = (t0.x + t1.x) / 2;
+      _pinchMidY = (t0.y + t1.y) / 2;
+      _wasPinching = true;
+      _pinchMoved  = false;
+      _gsPinchStart(dist);
+    } else {
+      // Image pinch active — suppress viewport pinch
+      _pinchStartDist = null;
+      _lastPinchDist  = null;
+      _wasPinching = true;
+      _pinchMoved  = false;
+    }
   }
   if(ids.length === 1){
     dragSX = e.touches[0].clientX; dragSY = e.touches[0].clientY;
-    // Image overlay touch — consume if it hits an image
+    // Image overlay touch — consume if it hits an image; suppress viewport pan if so
     const _t0 = e.touches[0];
     const _rect1 = vp.getBoundingClientRect();
     if(typeof imgMouseDown === 'function'){
-      imgMouseDown(_t0.clientX - _rect1.left, _t0.clientY - _rect1.top, _t0.clientX, _t0.clientY);
+      const _imgConsumed = imgMouseDown(_t0.clientX - _rect1.left, _t0.clientY - _rect1.top, _t0.clientX, _t0.clientY);
+      if(_imgConsumed) { _imgConsumedDown = true; }
     }
   }
 }, {passive: false});
@@ -576,9 +592,18 @@ vp.addEventListener('touchmove', e => {
   Array.from(e.changedTouches).forEach(t => { _touches[t.identifier] = {x: t.clientX, y: t.clientY}; });
   const ids = Object.keys(_touches);
 
-  if(ids.length === 2 && _pinchStartDist && _lastPinchDist){
+  if(ids.length === 2 && _lastPinchDist){
     const t0 = _touches[ids[0]], t1 = _touches[ids[1]];
     const dist = Math.hypot(t1.x - t0.x, t1.y - t0.y);
+
+    // If an image pinch is active, route to it instead of viewport zoom
+    if(typeof imgPinchMove === 'function') {
+      const rect2 = vp.getBoundingClientRect();
+      if(imgPinchMove(t0.x - rect2.left, t0.y - rect2.top, t1.x - rect2.left, t1.y - rect2.top)){
+        _pinchMoved = true;
+        return;
+      }
+    }
 
     // Guard: skip frame if dist is degenerate (fingers overlapping during lag)
     if(dist > 1){
@@ -691,6 +716,9 @@ vp.addEventListener('touchend', e => {
         return;
       }
 
+      // Suppress tap if a hold-context-menu just fired on this same touch
+      if(_holdFired){ _holdFired = false; return; }
+
       // Group-select mode: tap toggles body selection
       if(_groupSelHandleTap(t.clientX, t.clientY)) return;
 
@@ -759,7 +787,8 @@ function updateStatusBar(){
 
 const _PSC = {           // namespace object for all comparison-tool state
   open: false,
-  mode: 'all',           // 'all' | 'two'
+  mode: 'all',           // 'all' | 'select'
+  selected: new Set(),   // body names chosen in 'select' mode
   bodyA: null,
   bodyB: null,
   animFrame: null,
@@ -782,6 +811,7 @@ function openPlanetComparison(){
   _PSC.open = true;
   _PSC.zoom = 1; _PSC.panX = 0; _PSC.panY = 0;
   _PSC.mode = 'all';
+  _PSC.selected = new Set();
   _PSC.bodyA = null; _PSC.bodyB = null;
 
   const modal = document.getElementById('psc-modal');
@@ -806,31 +836,9 @@ function closePlanetComparison(){
   if(_PSC.animFrame){ cancelAnimationFrame(_PSC.animFrame); _PSC.animFrame = null; }
 }
 
-// ── Populate the two dropdowns with current body names ────────────────────
-function _pscPopulateSelects(){
-  const names = Object.keys(bodies);
-  ['psc-sel-a','psc-sel-b'].forEach((id,idx) => {
-    const sel = document.getElementById(id);
-    sel.innerHTML = names.map(n=>`<option value="${n}">${n}</option>`).join('');
-    if(names[idx]) sel.value = names[idx];
-  });
-  _PSC.bodyA = document.getElementById('psc-sel-a').value || names[0] || null;
-  _PSC.bodyB = document.getElementById('psc-sel-b').value || names[Math.min(1,names.length-1)] || null;
-}
-
-function _pscOnModeChange(m){
-  _PSC.mode = m;
-  document.getElementById('psc-two-row').style.display = m === 'two' ? 'flex' : 'none';
-  _PSC.zoom=1; _PSC.panX=0; _PSC.panY=0;
-  _pscScheduleDraw();
-}
-
-function _pscOnSelChange(){
-  _PSC.bodyA = document.getElementById('psc-sel-a').value;
-  _PSC.bodyB = document.getElementById('psc-sel-b').value;
-  _PSC.zoom=1; _PSC.panX=0; _PSC.panY=0;
-  _pscScheduleDraw();
-}
+function _pscOnModeChange(m){ _PSC.mode = m; _PSC.zoom=1; _PSC.panX=0; _PSC.panY=0; _pscScheduleDraw(); }
+function _pscOnSelChange(){ _PSC.zoom=1; _PSC.panX=0; _PSC.panY=0; _pscScheduleDraw(); }
+function _pscPopulateSelects(){}
 
 // ── Drawing ───────────────────────────────────────────────────────────────
 function _pscScheduleDraw(){
@@ -851,11 +859,17 @@ function _pscDraw(){
   ctx.fillRect(0,0,W,H);
   _pscStars(ctx,W,H);
 
-  const allNames = _PSC.mode === 'two'
-    ? [_PSC.bodyA, _PSC.bodyB].filter(Boolean)
+  const allNames = _PSC.mode === 'select'
+    ? [..._PSC.selected].filter(n => bodies[n])
     : Object.keys(bodies);
 
-  if(!allNames.length) return;
+  if(!allNames.length){
+    ctx.fillStyle = 'rgba(150,160,200,.45)';
+    ctx.font = '13px "JetBrains Mono",monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(_PSC.mode === 'select' ? 'Select at least one body above.' : 'No bodies in system.', W/2, H/2);
+    return;
+  }
 
   // Gather radii and sort smallest to largest
   const items = allNames.map(n => {
@@ -931,11 +945,6 @@ function _pscDraw(){
     ctx.restore();
   });
 
-  // Scale bar in two-body mode
-  if(_PSC.mode === 'two' && layout.length === 2){
-    _pscDrawScaleBar(ctx, layout.map(l => l.name), layout.map(l => l.r_m), totalW, H);
-  }
-
   ctx.restore();
 
   // Scroll hint when content overflows
@@ -973,150 +982,33 @@ function _pscDrawBody(ctx, b, name, cx, cy, displayR, r_m){
   const mb = Math.round((mc.b||0.7)*255);
   const baseColor = `rgb(${mr},${mg},${mb})`;
 
-  // Correct texture key path
-  const TTD        = d.TERRAIN_DATA?.TERRAIN_TEXTURE_DATA;
-  const ptex       = TTD?.planetTexture;
-  const surfTexA   = TTD?.surfaceTexture_A;
-  const hasTerrain = !!d.TERRAIN_DATA;
-  const hasAtmo    = !!(d.ATMOSPHERE_PHYSICS_DATA && d.ATMOSPHERE_VISUALS_DATA?.GRADIENT);
-  const hasClouds  = !!(d.ATMOSPHERE_VISUALS_DATA?.CLOUDS?.texture &&
-                        d.ATMOSPHERE_VISUALS_DATA.CLOUDS.texture !== 'None');
-  const hasFCloud  = !!(d.FRONT_CLOUDS_DATA?.cloudsTexture &&
-                        d.FRONT_CLOUDS_DATA.cloudsTexture !== 'None');
-  const hasFog     = !!(d.ATMOSPHERE_VISUALS_DATA?.FOG?.keys?.length);
-
-  const isStar = b.preset === 'star';
-  const isBH   = b.preset === 'blackhole';
-
   ctx.save();
 
-  // ── Atmosphere halo (behind body) ────────────────────────────────────────
-  if(hasAtmo && !isStar){
-    const GRD = d.ATMOSPHERE_VISUALS_DATA.GRADIENT;
-    const atmoH = (d.ATMOSPHERE_PHYSICS_DATA.height || 0);
-    const atmoRatio = atmoH > 0 ? Math.min(1 + atmoH / Math.max(r_m,1), 2.5) : 1.15;
-    const atmoR = displayR * atmoRatio;
-    const atmoTex = GRD.texture;
-    const apx = atmoTex && atmoTex !== 'None' && texPixelCache[atmoTex+'_atmos'];
+  // ── Lighted circle: base color fill + rim shadow for spherical lighting ──
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(displayR, 1.5), 0, Math.PI*2);
+  ctx.fillStyle = baseColor;
+  ctx.fill();
 
-    if(apx){
-      // Sample the atmo texture column for a radial gradient approximation
-      const grad = ctx.createRadialGradient(cx,cy,displayR*0.9,cx,cy,atmoR);
-      // Row 63 = surface (inner), Row 0 = outer edge
-      const inner = [apx[63*4],apx[63*4+1],apx[63*4+2],apx[63*4+3]/255];
-      const mid   = [apx[32*4],apx[32*4+1],apx[32*4+2],apx[32*4+3]/255];
-      const outer = [apx[4],apx[5],apx[6],apx[7]/255];
-      grad.addColorStop(0,   `rgba(${inner[0]},${inner[1]},${inner[2]},${(inner[3]*0.7).toFixed(2)})`);
-      grad.addColorStop(0.4, `rgba(${mid[0]},${mid[1]},${mid[2]},${(mid[3]*0.5).toFixed(2)})`);
-      grad.addColorStop(1,   `rgba(${outer[0]},${outer[1]},${outer[2]},0)`);
-      ctx.beginPath(); ctx.arc(cx,cy,atmoR,0,Math.PI*2);
-      ctx.fillStyle = grad; ctx.fill();
-    } else {
-      // Fallback: soft coloured halo
-      const grad = ctx.createRadialGradient(cx,cy,displayR*0.85,cx,cy,displayR*1.5);
-      grad.addColorStop(0,'rgba(100,170,255,.25)'); grad.addColorStop(1,'rgba(60,120,220,0)');
-      ctx.beginPath(); ctx.arc(cx,cy,displayR*1.5,0,Math.PI*2);
-      ctx.fillStyle=grad; ctx.fill();
-    }
-  }
+  // Rim shadow to simulate lighting
+  const rim = ctx.createRadialGradient(cx, cy, displayR*0.55, cx, cy, displayR);
+  rim.addColorStop(0, 'rgba(0,0,0,0)');
+  rim.addColorStop(1, 'rgba(0,0,0,.60)');
+  ctx.beginPath();
+  ctx.arc(cx, cy, displayR, 0, Math.PI*2);
+  ctx.fillStyle = rim;
+  ctx.fill();
 
-  // ── Fog glow (tint over planet edge) ─────────────────────────────────────
-  if(hasFog){
-    const fogKeys = d.ATMOSPHERE_VISUALS_DATA.FOG.keys;
-    if(fogKeys.length){
-      const fk = fogKeys[0];
-      const fc = fk.color || {r:200,g:200,b:255,a:0.3};
-      const grad = ctx.createRadialGradient(cx,cy,displayR*0.6,cx,cy,displayR*1.1);
-      grad.addColorStop(0,`rgba(${fc.r|0},${fc.g|0},${fc.b|0},0)`);
-      grad.addColorStop(1,`rgba(${fc.r|0},${fc.g|0},${fc.b|0},${Math.min((fc.a||0.3)*0.6,0.5)})`);
-      ctx.beginPath(); ctx.arc(cx,cy,displayR*1.1,0,Math.PI*2);
-      ctx.fillStyle=grad; ctx.fill();
-    }
-  }
-
-  // ── Planet disc ───────────────────────────────────────────────────────────
-  // Layer order: baseColor → surface texture → rim shadow → clouds → specular
-
-  // Step 1: always paint baseColor as the foundation
-  ctx.beginPath(); ctx.arc(cx, cy, Math.max(displayR, 1.5), 0, Math.PI*2);
-  if(isStar){
-    const sg = ctx.createRadialGradient(cx-displayR*0.25, cy-displayR*0.25, 0, cx, cy, displayR);
-    sg.addColorStop(0, 'rgba(255,255,240,1)');
-    sg.addColorStop(0.4, baseColor);
-    sg.addColorStop(1, `rgb(${Math.min(mr*1.5,255)|0},${mg|0},0)`);
-    ctx.fillStyle = sg;
-    ctx.fill();
-  } else if(isBH){
-    ctx.fillStyle = '#000';
-    ctx.fill();
-  } else {
-    ctx.fillStyle = baseColor;
-    ctx.fill();
-
-    // Step 2: surface texture — try planetTexture first, then surfaceTexture_A
-    if(hasTerrain && displayR > 4){
-      const texName = (ptex && ptex !== 'None') ? ptex
-                    : (surfTexA && surfTexA !== 'None') ? surfTexA
-                    : null;
-      const texImg = texName && textureCache[texName]?.complete
-                     && textureCache[texName].naturalWidth > 0
-                     ? textureCache[texName] : null;
-      if(texImg){
-        ctx.save();
-        ctx.beginPath(); ctx.arc(cx, cy, displayR, 0, Math.PI*2); ctx.clip();
-        ctx.drawImage(texImg, cx-displayR, cy-displayR, displayR*2, displayR*2);
-        ctx.restore();
-      }
-    }
-
-    // Step 3: rim shadow
-    const rim = ctx.createRadialGradient(cx, cy, displayR*0.55, cx, cy, displayR);
-    rim.addColorStop(0, 'rgba(0,0,0,0)');
-    rim.addColorStop(1, 'rgba(0,0,0,.60)');
-    ctx.beginPath(); ctx.arc(cx, cy, displayR, 0, Math.PI*2);
-    ctx.fillStyle = rim; ctx.fill();
-
-    // Step 4: cloud overlay
-    if((hasClouds || hasFCloud) && displayR > 5){
-      const cTex = hasClouds ? d.ATMOSPHERE_VISUALS_DATA.CLOUDS.texture
-                             : d.FRONT_CLOUDS_DATA.cloudsTexture;
-      const cImg = cTex && cTex !== 'None' && textureCache[cTex]?.complete &&
-                   textureCache[cTex].naturalWidth > 0 ? textureCache[cTex] : null;
-      if(cImg){
-        ctx.save();
-        ctx.beginPath(); ctx.arc(cx, cy, displayR, 0, Math.PI*2); ctx.clip();
-        ctx.globalAlpha = 0.55;
-        ctx.drawImage(cImg, cx-displayR, cy-displayR, displayR*2, displayR*2);
-        ctx.restore();
-      }
-    }
-  }
-
-  // Step 5: specular highlight
-  if(!isBH && displayR > 3){
+  // Specular highlight for extra depth
+  if(displayR > 3){
     const hl = ctx.createRadialGradient(cx-displayR*0.3, cy-displayR*0.3, 0, cx, cy, displayR);
     hl.addColorStop(0, 'rgba(255,255,255,.18)');
     hl.addColorStop(0.5, 'rgba(255,255,255,.04)');
     hl.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.beginPath(); ctx.arc(cx, cy, displayR, 0, Math.PI*2);
-    ctx.fillStyle = hl; ctx.fill();
-  }
-
-  // ── Star glow corona ──────────────────────────────────────────────────────
-  if(isStar && displayR > 2){
-    const sg2 = ctx.createRadialGradient(cx,cy,displayR,cx,cy,displayR*1.8);
-    sg2.addColorStop(0,`rgba(${mr},${mg},${mb},.35)`);
-    sg2.addColorStop(1,'rgba(255,160,40,0)');
-    ctx.beginPath(); ctx.arc(cx,cy,displayR*1.8,0,Math.PI*2);
-    ctx.fillStyle=sg2; ctx.fill();
-  }
-
-  // ── Black hole accretion disc ─────────────────────────────────────────────
-  if(isBH && displayR > 3){
-    const ag = ctx.createRadialGradient(cx,cy,displayR*0.9,cx,cy,displayR*1.6);
-    ag.addColorStop(0,'rgba(255,120,30,.6)'); ag.addColorStop(0.5,'rgba(255,60,0,.25)'); ag.addColorStop(1,'rgba(255,20,0,0)');
-    ctx.beginPath(); ctx.arc(cx,cy,displayR*1.6,0,Math.PI*2);
-    ctx.fillStyle=ag; ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, displayR, 0, Math.PI*2);
+    ctx.fillStyle = hl;
+    ctx.fill();
   }
 
   ctx.restore();
@@ -1227,12 +1119,11 @@ let _ctxMenu       = null;   // the DOM element (fetched on first use)
 let _ctxMenuBody   = null;   // which body the menu is showing for
 let _holdTimer     = null;   // setTimeout handle
 let _holdMoved     = false;  // pointer moved too far during hold → cancel
+let _holdFired     = false;  // hold completed and ctx menu opened — suppress next touchend tap
 let _holdStartX    = 0;
 let _holdStartY    = 0;
-const HOLD_MS       = 500;    // hold duration
-const HOLD_MAX_MOVE = 10;     // px — mouse (precise pointer)
-const HOLD_MAX_MOVE_TOUCH = 22; // px — touch (finger naturally drifts more)
-const HOLD_DEAD_MS  = 160;    // ms — ignore movement during initial touch settle
+const HOLD_MS               = 400;   // hold duration (ms)
+const HOLD_MAX_MOVE_TOUCH   = 20;    // px movement cancels hold
 
 function _ctxEl(){ return _ctxMenu || (_ctxMenu = document.getElementById('body-ctx-menu')); }
 
@@ -1242,8 +1133,8 @@ function _hitBodyAt(clientX, clientY){
   const sc2 = getSMAScale();
   const hits = [];
   Object.entries(bodyScreenPos).forEach(([name, sp]) => {
-    if(!bodyVisibleMap[name]) return;
     const b = bodies[name];
+    if(!b) return;
     const br = (b.data.BASE_DATA||{}).radius || 1;
     const iconR = (b.isCenter?18 : b.preset==='star'?14 : (b.preset==='gasgiant'||b.preset==='ringedgiant')?10 :
                   (b.preset==='planet'||b.preset==='marslike'||b.preset==='mercurylike')?7 : b.preset==='moon'?5:4) * iconScale;
@@ -1256,9 +1147,19 @@ function _hitBodyAt(clientX, clientY){
 }
 
 function openBodyCtxMenu(bodyName, clientX, clientY){
+  _updatePasteState();
   _ctxMenuBody = bodyName;
   const el = _ctxEl();
   document.getElementById('bctx-title').textContent = bodyName.toUpperCase();
+
+  // Disable Cut and Group Select for the system centre
+  const isCenter = !!(bodies[bodyName]?.isCenter);
+  const cutBtn   = document.getElementById('bctx-cut');
+  const grpBtn   = document.getElementById('bctx-group');
+  const copyBtn  = document.getElementById('bctx-copy');
+  if(cutBtn)  cutBtn.classList.toggle('disabled', isCenter);
+  if(copyBtn) copyBtn.classList.toggle('disabled', isCenter);
+  if(grpBtn)  grpBtn.classList.toggle('disabled', isCenter);
 
   // Position: keep inside viewport
   el.style.display = 'block';
@@ -1281,155 +1182,144 @@ function closeBodyCtxMenu(){
   _ctxMenuBody = null;
 }
 
-// Dismiss when clicking outside
-document.addEventListener('pointerdown', e => {
-  if(_ctxEl().style.display !== 'none' && !_ctxEl().contains(e.target)){
-    closeBodyCtxMenu();
-  }
-}, true);
+// Dismiss when clicking/tapping outside
+function _dismissCtxIfOutside(target) {
+  if(_ctxEl().style.display !== 'none' && !_ctxEl().contains(target)) closeBodyCtxMenu();
+}
+document.addEventListener('mousedown', e => _dismissCtxIfOutside(e.target), true);
+document.addEventListener('touchstart', e => _dismissCtxIfOutside(e.target), { capture: true, passive: true });
 
-// ── Hold-detect on mouse (desktop) ───────────────────────────────────────
-vp.addEventListener('mousedown', e => {
-  if(e.button !== 0) return;
-  _holdMoved = false;
-  _holdStartX = e.clientX; _holdStartY = e.clientY;
+// ── Hold-detect (mouse + touch) ───────────────────────────────────────────
+function _startHold(clientX, clientY, isTouch) {
+  _holdMoved  = false;
+  _holdFired  = false;
+  _holdStartX = clientX;
+  _holdStartY = clientY;
+  clearTimeout(_holdTimer);
   _holdTimer = setTimeout(() => {
     if(_holdMoved) return;
-    const hit = _hitBodyAt(e.clientX, e.clientY);
-    if(hit) openBodyCtxMenu(hit, e.clientX, e.clientY);
-  }, HOLD_MS);
-}, true); // capture so we see it before the regular mousedown
-
-vp.addEventListener('mousemove', e => {
-  if(Math.hypot(e.clientX - _holdStartX, e.clientY - _holdStartY) > HOLD_MAX_MOVE){
-    _holdMoved = true;
-    clearTimeout(_holdTimer);
-  }
-}, true);
-
-vp.addEventListener('mouseup', () => { clearTimeout(_holdTimer); }, true);
-
-// ── Hold-detect on touch (mobile) ────────────────────────────────────────
-// We install on capture so we can inspect touches before the regular handler.
-// _holdTouchDeadUntil: ignore touchmove cancellation during initial finger-settle window
-let _holdTouchDeadUntil = 0;
-
-vp.addEventListener('touchstart', e => {
-  if(e.touches.length !== 1) { clearTimeout(_holdTimer); return; }
-  const t = e.touches[0];
-  _holdMoved = false;
-  _holdStartX = t.clientX; _holdStartY = t.clientY;
-  _holdTouchDeadUntil = Date.now() + HOLD_DEAD_MS;
-  _holdTimer = setTimeout(() => {
-    if(_holdMoved) return;
-    const hit = _hitBodyAt(t.clientX, t.clientY);
-    if(hit){
-      if(navigator.vibrate) navigator.vibrate(40);
-      openBodyCtxMenu(hit, t.clientX, t.clientY);
+    const hit = _hitBodyAt(clientX, clientY);
+    if(hit) {
+      if(isTouch && navigator.vibrate) navigator.vibrate(40);
+      _holdFired = true;
+      openBodyCtxMenu(hit, clientX, clientY);
     }
   }, HOLD_MS);
-}, { capture: true, passive: true });
+}
+
+function _cancelHold() {
+  clearTimeout(_holdTimer);
+}
+
+// Mouse
+vp.addEventListener('mousedown', e => {
+  if(e.button !== 0) return;
+  _startHold(e.clientX, e.clientY, false);
+});
+vp.addEventListener('mousemove', e => {
+  if(Math.hypot(e.clientX - _holdStartX, e.clientY - _holdStartY) > HOLD_MAX_MOVE_TOUCH) {
+    _holdMoved = true; _cancelHold();
+  }
+});
+vp.addEventListener('mouseup', _cancelHold);
+
+// Touch — piggyback on the existing touchstart/touchend (non-capture, after e.preventDefault)
+// We attach with capture:false so the existing handler's e.preventDefault() doesn't affect us,
+// and passive:true so we don't block scrolling.
+vp.addEventListener('touchstart', e => {
+  if(e.touches.length !== 1) { _cancelHold(); return; }
+  const t = e.touches[0];
+  _startHold(t.clientX, t.clientY, true);
+}, { passive: true });
 
 vp.addEventListener('touchmove', e => {
-  if(e.touches.length !== 1) { clearTimeout(_holdTimer); return; }
-  // Dead-zone: don't cancel during initial finger-settle
-  if(Date.now() < _holdTouchDeadUntil) return;
+  if(e.touches.length !== 1) { _holdMoved = true; _cancelHold(); return; }
   const t = e.touches[0];
-  if(Math.hypot(t.clientX - _holdStartX, t.clientY - _holdStartY) > HOLD_MAX_MOVE_TOUCH){
-    _holdMoved = true;
-    clearTimeout(_holdTimer);
+  if(Math.hypot(t.clientX - _holdStartX, t.clientY - _holdStartY) > HOLD_MAX_MOVE_TOUCH) {
+    _holdMoved = true; _cancelHold();
   }
-}, { capture: true, passive: true });
+}, { passive: true });
 
-vp.addEventListener('touchend',    () => clearTimeout(_holdTimer), { capture: true, passive: true });
-vp.addEventListener('touchcancel', () => clearTimeout(_holdTimer), { capture: true, passive: true });
+vp.addEventListener('touchend',    _cancelHold, { passive: true });
+vp.addEventListener('touchcancel', _cancelHold, { passive: true });
 
 // ── Menu action functions ─────────────────────────────────────────────────
 // ── Clipboard state ───────────────────────────────────────────────────────
-let _bodyClipboard = null;  // deep-copy of a body's data, or null
+// Array of { name, data, preset } — persists across cuts/copies
+let _bodyClipboard = [];
+
+function _clipboardAdd(name, removeFromSystem){
+  if(!name || !bodies[name] || bodies[name].isCenter) return;
+  const entry = {
+    name,
+    data:   JSON.parse(JSON.stringify(bodies[name].data)),
+    preset: bodies[name].preset
+  };
+  // Avoid duplicates by name — replace if already in clipboard
+  const idx = _bodyClipboard.findIndex(e => e.name === name);
+  if(idx !== -1) _bodyClipboard.splice(idx, 1, entry);
+  else _bodyClipboard.push(entry);
+
+  if(removeFromSystem){
+    pushUndo();
+    delete bodies[name];
+    if(typeof selectedBody !== 'undefined' && selectedBody === name){
+      selectedBody = null;
+      const sbSel = document.getElementById('sb-sel');
+      if(sbSel) sbSel.textContent = '—';
+    }
+    if(typeof drawViewport === 'function') drawViewport();
+    if(typeof updateStatusBar === 'function') updateStatusBar();
+  }
+  // Refresh clipboard tab badge
+  _updateClipboardBadge();
+}
+
+function _updateClipboardBadge(){
+  const tab = document.getElementById('prs-tab-clipboard');
+  if(!tab) return;
+  const n = _bodyClipboard.length;
+  tab.textContent = n > 0 ? `📋 CLIPBOARD (${n})` : '📋 CLIPBOARD';
+}
 
 function bctxCut(){
   const name = _ctxMenuBody;
   closeBodyCtxMenu();
   if(!name || !bodies[name]) return;
-  // Copy data then delete
-  _bodyClipboard = { name, data: JSON.parse(JSON.stringify(bodies[name].data)), preset: bodies[name].preset };
-  _updatePasteState();
-  pushUndo();
-  delete bodies[name];
-  if(typeof selectedBody !== 'undefined' && selectedBody === name){
-    selectedBody = null;
-    const sbSel = document.getElementById('sb-sel');
-    if(sbSel) sbSel.textContent = '—';
-  }
-  if(typeof drawViewport === 'function') drawViewport();
-  if(typeof updateStatusBar === 'function') updateStatusBar();
+  if(bodies[name].isCenter) return;
+  _clipboardAdd(name, true);
 }
 
 function bctxCopy(){
   const name = _ctxMenuBody;
   closeBodyCtxMenu();
   if(!name || !bodies[name]) return;
-  _bodyClipboard = { name, data: JSON.parse(JSON.stringify(bodies[name].data)), preset: bodies[name].preset };
-  _updatePasteState();
+  if(bodies[name].isCenter) return;
+  _clipboardAdd(name, false);
 }
 
-function bctxPaste(){
-  closeBodyCtxMenu();
-  if(!_bodyClipboard) return;
-  // Generate a unique name: "<original>_copy", "<original>_copy2", etc.
-  let newName = _bodyClipboard.name + '_copy';
-  let n = 2;
-  while(bodies[newName]) { newName = _bodyClipboard.name + '_copy' + n++; }
-  pushUndo();
-  bodies[newName] = {
-    preset: _bodyClipboard.preset,
-    data:   JSON.parse(JSON.stringify(_bodyClipboard.data))
-  };
-  if(typeof drawViewport === 'function') drawViewport();
-  if(typeof updateStatusBar === 'function') updateStatusBar();
-}
+// _updatePasteState kept as no-op for compatibility
+function _updatePasteState(){}
 
-// Grey-out Paste when clipboard is empty
-function _updatePasteState(){
-  const btn = document.getElementById('bctx-paste');
-  if(!btn) return;
-  if(_bodyClipboard) btn.classList.remove('disabled');
-  else               btn.classList.add('disabled');
-}
-
-// Also update paste state every time the menu opens
-const _origOpenBodyCtxMenu = openBodyCtxMenu;
-function openBodyCtxMenu(bodyName, clientX, clientY){
-  _updatePasteState();
-  _origOpenBodyCtxMenu(bodyName, clientX, clientY);
-}
-
-// Keyboard shortcuts: Ctrl/Cmd + X / C / V when a body is selected or menu open
+// Keyboard shortcuts: Ctrl/Cmd + X / C
 document.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey;
   if(!mod) return;
-  // Only trigger if not focused on an input/textarea
   if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
 
   if(e.key === 'x' || e.key === 'X'){
     const name = _ctxMenuBody || (typeof selectedBody !== 'undefined' ? selectedBody : null);
-    if(name && bodies[name]){
+    if(name && bodies[name] && !bodies[name].isCenter){
       _ctxMenuBody = name;
       e.preventDefault();
       bctxCut();
     }
   } else if(e.key === 'c' || e.key === 'C'){
     const name = _ctxMenuBody || (typeof selectedBody !== 'undefined' ? selectedBody : null);
-    if(name && bodies[name]){
+    if(name && bodies[name] && !bodies[name].isCenter){
       _ctxMenuBody = name;
       e.preventDefault();
       bctxCopy();
-    }
-  } else if(e.key === 'v' || e.key === 'V'){
-    if(_bodyClipboard){
-      e.preventDefault();
-      bctxPaste();
     }
   }
 });
@@ -1438,7 +1328,7 @@ function bctxGroupSelect(){
   const name = _ctxMenuBody;
   closeBodyCtxMenu();
   if(!name || !bodies[name]) return;
-  // Activate group-select mode, seeding with this body
+  if(bodies[name].isCenter) return; // cannot group-select the system centre
   enterGroupSelect(name);
 }
 
@@ -1455,6 +1345,8 @@ let groupSelectMode = false;
 function _gsPanel(){ return document.getElementById('group-sel-panel'); }
 
 function enterGroupSelect(seedBody){
+  // Don't activate if no system is loaded (viewport not active)
+  if(!document.getElementById('viewport').classList.contains('active')) return;
   groupSelectMode = true;
   groupSelected   = new Set();
   if(seedBody) groupSelected.add(seedBody);
@@ -1486,7 +1378,10 @@ function exitGroupSelect(){
 function _gsOpenPanel(){
   const p = _gsPanel();
   if(p) p.classList.add('open');
-  document.getElementById('statusbar').style.right = '240px';
+  // On mobile the statusbar always stays full-width (CSS override), so only
+  // push it on desktop.
+  const isMobile = window.matchMedia('(max-width:640px)').matches;
+  if(!isMobile) document.getElementById('statusbar').style.right = '190px';
   setTimeout(resizeViewport, 360);
   _gsRebuildPanel();
 }
@@ -1506,6 +1401,7 @@ function _gsRebuildPanel(){
 // Toggle a body in/out of group selection (called on tap while in group mode)
 function groupSelToggle(name){
   if(!groupSelectMode) return;
+  if(bodies[name]?.isCenter) return; // centre can never be group-selected
   if(groupSelected.has(name)) groupSelected.delete(name);
   else groupSelected.add(name);
   _gsRebuildPanel();

@@ -4,93 +4,60 @@ const textureCache  = {};
 const texPixelCache = {};
 let _sfsDbgLogged   = {}; // throttle per-body NODRAW warnings to once per load
 
+// Pending decode queue — process images in batches to avoid overwhelming mobile
+const _decodeQueue = [];
+let   _decodeRunning = false;
+
 function cacheTexture(name, dataUrl){
-  const img = new Image();
-  img.onload = () => {
-    textureCache[name] = img;
-    // ── Fast path: 64×64 strip samples (cheap, done immediately) ───────────
-    try {
-      const c = document.createElement('canvas');
-      c.width = 64; c.height = 64;
-      const x = c.getContext('2d');
-      x.drawImage(img, 0, 0, 64, 64);
-      texPixelCache[name + '_ring']  = x.getImageData(0, 0, 64, 1).data;
-      texPixelCache[name + '_atmos'] = x.getImageData(0, 0, 1, 64).data;
-    } catch(e) { console.warn('[SFS|CACHE] strip sample failed:', e); }
+  _decodeQueue.push({ name, dataUrl });
+  _processDecodeQueue();
+}
 
-    // Notify immediately so the viewport can render (without atmo polar warp yet).
-    drawViewport();
-    if(typeof refreshTexPickerLists === 'function') refreshTexPickerLists();
-    if(typeof _PSC !== 'undefined' && _PSC.open && typeof _pscScheduleDraw === 'function'){
-      _pscScheduleDraw();
-    }
+// Process image decode queue with rate limiting for mobile stability
+async function _processDecodeQueue(){
+  if(_decodeRunning) return;
+  _decodeRunning = true;
 
-    // ── Slow path: 256×256 atmosphere polar warp — deferred off main thread ─
-    // requestIdleCallback fires when the browser is idle so it won't block
-    // loading-screen paint, scrolling, or any other interaction.
-    // Falls back to setTimeout(0) on browsers without rIC (rare).
-    const _doPolarWarp = () => {
-      try {
-        // ── Atmosphere polar canvas ──────────────────────────────────────────
-        // Pre-warp the texture into polar coordinates so drawImage() can paint
-        // it directly onto the atmosphere disc at render time.
-        //
-        // SFS wrapping rules:
-        //   - Texture left  edge (U=0) = rightmost point of planet (East, angle=0)
-        //   - Texture right edge (U=1) = wraps back after 360° counter-clockwise
-        //   - Wrapping is CCW: East→North→West→South→East = left→right of texture
-        //   - Texture bottom row (Y=SH-1) = planet surface (radFrac=0)
-        //   - Texture top    row (Y=0)    = outer atmosphere edge (radFrac=1)
-        //
-        // Canvas atan2: angle=0 → East, increases clockwise (CW).
-        // To get CCW from East: u = 1 - normalised_CW_angle  (flip direction)
-        const SZ = 256;
-        const pc = document.createElement('canvas');
-        pc.width = SZ; pc.height = SZ;
-        const px2 = pc.getContext('2d');
-        const srcC = document.createElement('canvas');
-        srcC.width = img.naturalWidth; srcC.height = img.naturalHeight;
-        const srcX = srcC.getContext('2d');
-        srcX.drawImage(img, 0, 0);
-        const srcD = srcX.getImageData(0, 0, srcC.width, srcC.height).data;
-        const SW = srcC.width, SH = srcC.height;
-        const outD = px2.createImageData(SZ, SZ);
-        const od = outD.data;
-        const halfSZ = SZ / 2;
-        for(let py = 0; py < SZ; py++){
-          for(let ppx = 0; ppx < SZ; ppx++){
-            const dx = ppx - halfSZ, dy = py - halfSZ;
-            const radFrac = Math.sqrt(dx*dx + dy*dy) / halfSZ;
-            const oi = (py*SZ + ppx)*4;
-            if(radFrac > 1.0){
-              od[oi]=od[oi+1]=od[oi+2]=od[oi+3]=0;
-              continue;
-            }
-            let cwAngle = Math.atan2(dy, dx) / (Math.PI*2);
-            if(cwAngle < 0) cwAngle += 1;
-            const u = (1 - cwAngle) % 1;
-            const sx = Math.min(SW-1, Math.max(0, Math.round(u * (SW-1))));
-            const sy = Math.min(SH-1, Math.max(0, Math.round((1 - radFrac) * (SH-1))));
-            const si = (sy * SW + sx) * 4;
-            od[oi]   = srcD[si];
-            od[oi+1] = srcD[si+1];
-            od[oi+2] = srcD[si+2];
-            od[oi+3] = srcD[si+3];
-          }
-        }
-        px2.putImageData(outD, 0, 0);
-        texPixelCache[name + '_atmoCanvas'] = pc;
-        // Re-draw now that the atmosphere canvas is ready
+  while(_decodeQueue.length > 0){
+    const { name, dataUrl } = _decodeQueue.shift();
+    
+    await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        textureCache[name] = img;
+        // ── Fast path: 64×64 strip samples (cheap, done immediately) ───────────
+        try {
+          const c = document.createElement('canvas');
+          c.width = 64; c.height = 64;
+          const x = c.getContext('2d');
+          x.drawImage(img, 0, 0, 64, 64);
+          texPixelCache[name + '_ring']  = x.getImageData(0, 0, 64, 1).data;
+          texPixelCache[name + '_atmos'] = x.getImageData(0, 0, 1, 64).data;
+        } catch(e) { console.warn('[SFS|CACHE] strip sample failed:', e); }
+
+        // Notify immediately so the viewport can render
         drawViewport();
-      } catch(e) { console.warn('[SFS|CACHE] atmo polar warp failed:', e); }
-    };
-    if(typeof requestIdleCallback === 'function'){
-      requestIdleCallback(_doPolarWarp, { timeout: 2000 });
-    } else {
-      setTimeout(_doPolarWarp, 0);
+        if(typeof refreshTexPickerLists === 'function') refreshTexPickerLists();
+        if(typeof _PSC !== 'undefined' && _PSC.open && typeof _pscScheduleDraw === 'function'){
+          _pscScheduleDraw();
+        }
+        
+        resolve();
+      };
+      img.onerror = () => {
+        console.warn('[SFS|CACHE] failed to decode:', name);
+        resolve(); // Continue processing queue even on error
+      };
+      img.src = dataUrl;
+    });
+    
+    // Yield every 4 textures to let the browser breathe (mobile optimization)
+    if(_decodeQueue.length % 4 === 0){
+      await new Promise(r => setTimeout(r, 0));
     }
-  };
-  img.src = dataUrl;
+  }
+
+  _decodeRunning = false;
 }
 
 // ════════════════════════════════ ASSETS SYSTEM ════════════════════════════════
@@ -453,21 +420,32 @@ function openTexPicker(pickId){
   const dd = document.getElementById('tpd-'+pickId);
   const inp = document.getElementById(pickId);
   if(!dd || !inp) return;
-  // On touch devices the dropdown is position:absolute (CSS override),
-  // so fixed coords are not needed and would be wrong after keyboard resize.
+  // Position dropdown with fixed coords — works for both desktop and touch since
+  // we now portal the dropdown to <body> on all devices.
+  // On touch we always place the dropdown ABOVE the input to clear the keyboard.
   const isTouch = window.matchMedia('(pointer: coarse)').matches;
-  if(!isTouch){
-    // Desktop: position dropdown using fixed coords (escapes overflow:auto sidebar)
+  {
     const rect = inp.getBoundingClientRect();
+    dd.style.position = 'fixed';
     dd.style.left  = rect.left + 'px';
     dd.style.width = rect.width + 'px';
-    const spaceBelow = window.innerHeight - rect.bottom;
-    if(spaceBelow >= 160 || spaceBelow > window.innerHeight - rect.top){
-      dd.style.top    = (rect.bottom + 2) + 'px';
-      dd.style.bottom = 'auto';
-    } else {
+    dd.style.zIndex = '999999';
+    if(isTouch){
+      // Always open above on mobile (keyboard takes up bottom half)
       dd.style.bottom = (window.innerHeight - rect.top + 2) + 'px';
       dd.style.top    = 'auto';
+      // Cap height so it doesn't overflow the top of the screen
+      dd.style.maxHeight = Math.min(rect.top - 56, window.innerHeight * 0.55) + 'px';
+    } else {
+      dd.style.maxHeight = '';
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if(spaceBelow >= 160 || spaceBelow > window.innerHeight - rect.top){
+        dd.style.top    = (rect.bottom + 2) + 'px';
+        dd.style.bottom = 'auto';
+      } else {
+        dd.style.bottom = (window.innerHeight - rect.top + 2) + 'px';
+        dd.style.top    = 'auto';
+      }
     }
   }
   buildDropdownItems(pickId, '');
@@ -549,15 +527,9 @@ function initTexPickers(){
     let   dd  = document.getElementById('tpd-'+pickId);
     if(!inp || !dd) return;
 
-    // On desktop: move dropdown to <body> so it escapes the sidebar's
-    // transform stacking context (transform:translateX makes position:fixed
-    // relative to the sidebar, not the viewport).
-    // On touch: keep dropdown inside .tpick-wrap so that the CSS
-    // `position:absolute; bottom:calc(100% + 2px)` correctly places it
-    // above the input (above the software keyboard).
-    if(!isTouch){
-      document.body.appendChild(dd);
-    }
+    // Move dropdown to <body> on ALL devices — escapes sidebar overflow/transform
+    // clipping. Touch gets JS-calculated fixed position (above input, clears keyboard).
+    document.body.appendChild(dd);
 
     // mousedown on input: open picker, stop propagation so _tpickOutside doesn't
     // immediately close it on the same event.
@@ -576,11 +548,15 @@ function initTexPickers(){
     // Desktop gets a shorter delay (50 ms) for snappier feel; touch gets 150 ms.
     let _tpickTimer = null;
     inp.addEventListener('input', () => {
-      if(!isTouch){
-        // Reposition dropdown on desktop
-        const rect = inp.getBoundingClientRect();
-        dd.style.left  = rect.left + 'px';
-        dd.style.width = rect.width + 'px';
+      // Reposition on every keystroke (fixed-positioned dropdown can drift if keyboard resizes)
+      const rect = inp.getBoundingClientRect();
+      dd.style.left  = rect.left + 'px';
+      dd.style.width = rect.width + 'px';
+      if(isTouch){
+        dd.style.bottom = (window.innerHeight - rect.top + 2) + 'px';
+        dd.style.top    = 'auto';
+        dd.style.maxHeight = Math.min(rect.top - 56, window.innerHeight * 0.55) + 'px';
+      } else {
         const spaceBelow = window.innerHeight - rect.bottom;
         if(spaceBelow >= 160 || spaceBelow > window.innerHeight - rect.top){
           dd.style.top    = (rect.bottom + 2) + 'px';

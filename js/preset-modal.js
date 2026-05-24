@@ -318,6 +318,21 @@ function prsRebuild(){
   const grid = document.getElementById('prs-grid');
   const searchEl = document.getElementById('prs-search');
   if(!grid) return;
+
+  // Clipboard tab — completely separate rendering path
+  if(_prsTab === 'clipboard'){
+    searchEl && (searchEl.parentElement.style.display = 'none');
+    grid.innerHTML = '';
+    const clip = typeof _bodyClipboard !== 'undefined' ? _bodyClipboard : [];
+    if(clip.length === 0){
+      grid.innerHTML = '<div class="prs-empty">Clipboard is empty.<br>Use <b>Cut/Copy to Clipboard</b> on any body.</div>';
+    } else {
+      clip.forEach((entry, idx) => grid.appendChild(makeClipboardCard(entry, idx)));
+    }
+    return;
+  }
+  searchEl && (searchEl.parentElement.style.display = '');
+
   _prsSearch = (searchEl?.value || '').toLowerCase().trim();
   const all = buildAllPresets();
   const hasCenter = Object.values(bodies).some(b => b.isCenter);
@@ -378,6 +393,61 @@ function prsRebuild(){
   } else {
     filtered.forEach(p => grid.appendChild(makePrsCard(p)));
   }
+}
+
+function makeClipboardCard(entry, idx){
+  const card = document.createElement('div');
+  card.className = 'prs-card prs-card-clipboard';
+
+  // Draw sphere icon same as makePrsCard
+  const p = entry.preset || {};
+  const SZ = 32;
+  const ic = document.createElement('canvas');
+  ic.width = SZ; ic.height = SZ;
+  ic.style.cssText = 'display:block;margin:0 auto 3px';
+  const ix = ic.getContext('2d');
+  const cx = SZ/2, cy = SZ/2;
+  const pid = p.id || 'planet';
+  const cols = (p.color||'#aaaaaa,#555555').split(',');
+  const hi = cols[0]||'#aaaaaa', lo = cols[1]||'#555555', gl = p.glow||hi;
+  const ir = pid==='star'||pid==='blackhole' ? SZ*0.42
+           : pid==='gasgiant'||pid==='ringedgiant' ? SZ*0.36
+           : pid==='planet'||pid==='marslike'||pid==='mercurylike' ? SZ*0.30
+           : pid==='moon' ? SZ*0.24 : SZ*0.20;
+  if(pid==='star'||pid==='blackhole'){
+    const gg = ix.createRadialGradient(cx,cy,ir*0.5,cx,cy,ir*1.9);
+    gg.addColorStop(0, gl+'55'); gg.addColorStop(1, gl+'00');
+    ix.beginPath(); ix.arc(cx,cy,ir*1.9,0,Math.PI*2); ix.fillStyle=gg; ix.fill();
+  }
+  const sg = ix.createRadialGradient(cx-ir*0.28,cy-ir*0.28,ir*0.08,cx,cy,ir);
+  sg.addColorStop(0, hi); sg.addColorStop(0.5, hi); sg.addColorStop(1, lo);
+  ix.beginPath(); ix.arc(cx,cy,ir,0,Math.PI*2); ix.fillStyle=sg; ix.fill();
+
+  const r = entry.data.BASE_DATA?.radius;
+  const g = entry.data.BASE_DATA?.gravity;
+  const sub = r ? `r: ${r >= 1e6 ? (r/1e6).toFixed(2)+'M' : r >= 1e3 ? (r/1e3).toFixed(1)+'k' : r} m  g: ${g}` : '';
+
+  card.innerHTML =
+    `<span class="prs-card-name">${entry.name}</span>` +
+    (sub ? `<span class="prs-card-sub">${sub}</span>` : '') +
+    `<span class="prs-card-badge" style="background:rgba(255,160,50,.18);color:rgba(255,190,80,.9);border-color:rgba(255,160,50,.3)">📋</span>` +
+    `<button class="prs-clip-del" title="Remove from clipboard" onclick="event.stopPropagation();clipboardRemove(${idx})">✕</button>`;
+  card.insertBefore(ic, card.firstChild);
+
+  card.onclick = () => {
+    document.querySelectorAll('.prs-card').forEach(c => c.classList.remove('sel'));
+    card.classList.add('sel');
+    // Store a synthetic preset key that encodes the clipboard index
+    selectedPresetKey = '__clip__' + idx;
+  };
+  return card;
+}
+
+function clipboardRemove(idx){
+  if(typeof _bodyClipboard === 'undefined') return;
+  _bodyClipboard.splice(idx, 1);
+  if(typeof _updateClipboardBadge === 'function') _updateClipboardBadge();
+  prsRebuild();
 }
 
 function makePrsCard(p){
@@ -516,6 +586,30 @@ function addBodyPrompt(){ openPreset(false); }
 
 function confirmPreset(){
   closePreset();
+
+  // Clipboard entry selected
+  if(typeof selectedPresetKey === 'string' && selectedPresetKey.startsWith('__clip__')){
+    const idx = parseInt(selectedPresetKey.slice(8), 10);
+    const entry = (typeof _bodyClipboard !== 'undefined') ? _bodyClipboard[idx] : null;
+    if(!entry){ alert('Clipboard entry not found.'); return; }
+    let newName = entry.name;
+    let n = 2;
+    while(bodies[newName]) { newName = entry.name + '_copy' + (n++); }
+    pushUndo();
+    const newData = JSON.parse(JSON.stringify(entry.data));
+    delete newData.isCenter;
+    if(newData.ORBIT_DATA){
+      newData.ORBIT_DATA.SMA = (parseFloat(newData.ORBIT_DATA.SMA) || 0) * 1.1 || 1e8;
+    } else {
+      const centre = Object.keys(bodies).find(k => bodies[k].isCenter);
+      newData.ORBIT_DATA = { parent: centre || 'Sun', SMA: 1e8, E: 0, direction: 1 };
+    }
+    bodies[newName] = { preset: entry.preset, data: newData };
+    if(typeof drawViewport === 'function') drawViewport();
+    if(typeof updateStatusBar === 'function') updateStatusBar();
+    return;
+  }
+
   const all = buildAllPresets();
   const preset = all.find(p => p.key === selectedPresetKey);
   if(!preset){ alert('No preset selected.'); return; }

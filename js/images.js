@@ -7,6 +7,7 @@
 const _imgOverlays = [];     // array of overlay objects
 let   _imgSelected = null;   // currently selected overlay id
 let   _imgNextId   = 1;
+let   _imgAspectLocked = true; // aspect ratio lock (default on)
 
 // Each overlay: { id, name, img, worldX, worldY, worldW, worldH, rotation,
 //                opacity, clickThrough, lockToBody, _imgEl(HTMLImageElement) }
@@ -96,11 +97,22 @@ function _imgAddOverlay(name, dataUrl) {
 // ── Draw all overlays (called from _drawViewportNow hook) ─────────────────────
 function imgDrawOverlays(ctx, vpZ_, vpOffX_, vpOffY_, vpW, vpH) {
   _imgOverlays.forEach(ov => {
-    // Resolve lock-to-body offset
+    // Resolve lock-to-body: _lockOffX/Y is offset of image TOP-LEFT from body centre
+    // When first locked (image already placed), offset preserves visual position.
+    // The centre of the image = body + offset + (w/2, h/2)
     let wx = ov.worldX, wy = ov.worldY;
-    if(ov.lockToBody && ov.lockToBody !== 'None' && typeof bodyWorldPos !== 'undefined') {
-      const bp = bodyWorldPos[ov.lockToBody];
-      if(bp) { wx = bp.x + ov._lockOffX; wy = bp.y + ov._lockOffY; }
+    if(ov.lockToBody && ov.lockToBody !== 'None') {
+      if(typeof bodyWorldPos === 'undefined'){
+        console.warn('[IMG] bodyWorldPos is undefined!');
+      } else {
+        const bp = bodyWorldPos[ov.lockToBody];
+        if(bp) {
+          wx = bp.x + ov._lockOffX;
+          wy = bp.y + ov._lockOffY;
+        } else {
+          console.warn('[IMG] Body not found in bodyWorldPos:', ov.lockToBody, 'Available:', Object.keys(bodyWorldPos));
+        }
+      }
     }
 
     const sx = (wx + vpOffX_) * vpZ_ + vpW / 2;
@@ -121,19 +133,19 @@ function imgDrawOverlays(ctx, vpZ_, vpOffX_, vpOffY_, vpW, vpH) {
     // Selection outline
     if(_imgSelected === ov.id) {
       ctx.strokeStyle = 'rgba(100,220,180,0.85)';
-      ctx.lineWidth   = 1.5 / vpZ_;
-      ctx.setLineDash([6 / vpZ_, 4 / vpZ_]);
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([6, 4]);
       ctx.strokeRect(-sw / 2, -sh / 2, sw, sh);
       ctx.setLineDash([]);
-      // Corner handles
+      // Corner handles — fixed 5px screen-space squares
+      const hr = 5;
       _imgHandleCorners(sw, sh).forEach(([hx, hy]) => {
         ctx.fillStyle = 'rgba(100,220,180,0.9)';
-        const hr = 5 / vpZ_;
         ctx.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
       });
-      // Rotation handle (top-centre)
+      // Rotation handle (top-centre) — fixed 5px radius, 18px above top edge
       ctx.beginPath();
-      ctx.arc(0, -sh / 2 - 18 / vpZ_, 5 / vpZ_, 0, Math.PI * 2);
+      ctx.arc(0, -sh / 2 - 18, 5, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,200,80,0.9)';
       ctx.fill();
     }
@@ -196,17 +208,81 @@ function _imgHandleAt(sx, sy) {
   const lx = cos * dx - sin * dy;
   const ly = sin * dx + cos * dy;
 
-  // Rotation handle
-  if(Math.hypot(lx, ly - (-sh / 2 - 18)) < 10) return 'rotate';
-  // Corner handles
-  for(const [hx, hy] of _imgHandleCorners(sw, sh)) {
-    if(Math.hypot(lx - hx, ly - hy) < 10) return 'corner';
+  // Rotation handle — 18px above top edge, 11px hit radius
+  if(Math.hypot(lx, ly - (-sh / 2 - 18)) < 11) return 'rotate';
+  // Corner handles — 11px hit radius (fixed screen pixels)
+  const corners = _imgHandleCorners(sw, sh);
+  for(let i = 0; i < corners.length; i++) {
+    const [hx, hy] = corners[i];
+    if(Math.hypot(lx - hx, ly - hy) < 11) return i;
   }
   return null;
 }
 
 // ── Interaction state ─────────────────────────────────────────────────────────
 let _imgDrag    = null; // { type:'move'|'corner'|'rotate', ovId, startX, startY, startWX, startWY, startW, startH, startRot, cornerIdx }
+let _imgPinch   = null; // { ovId, startDist, startW, startH, startWX, startWY, startMidClientX, startMidClientY }
+
+// ── Touch pinch: begin (call when 2 fingers down and both hit the same image) ─
+// Returns true if consumed (both fingers on a non-clickThrough image).
+function imgPinchStart(t0x, t0y, t1x, t1y) {
+  // Both touch points must hit the same non-clickThrough image
+  const id0 = imgHitTest(t0x, t0y);
+  const id1 = imgHitTest(t1x, t1y);
+  if(id0 === null || id0 !== id1) return false;
+  const ov = _imgOverlays.find(o => o.id === id0);
+  if(!ov) return false;
+  _imgSelectOverlay(id0);
+  const dist = Math.hypot(t1x - t0x, t1y - t0y);
+  _imgPinch = {
+    ovId: id0,
+    startDist: dist,
+    startW: ov.worldW,
+    startH: ov.worldH,
+    startWX: ov.worldX,
+    startWY: ov.worldY,
+    aspect: ov.worldH / ov.worldW,
+    startMidClientX: (t0x + t1x) / 2,
+    startMidClientY: (t0y + t1y) / 2,
+  };
+  _imgDrag = null; // cancel any single-finger drag
+  return true;
+}
+
+// Returns true if a pinch is active (caller should skip viewport zoom).
+function imgPinchMove(t0x, t0y, t1x, t1y) {
+  if(!_imgPinch) return false;
+  const ov = _imgOverlays.find(o => o.id === _imgPinch.ovId);
+  if(!ov) { _imgPinch = null; return false; }
+  const dist = Math.hypot(t1x - t0x, t1y - t0y);
+  const scale = dist / _imgPinch.startDist;
+  const newW = Math.max(20 / vpZ, _imgPinch.startW * scale);
+  const newH = _imgAspectLocked ? newW * _imgPinch.aspect
+                                : Math.max(20 / vpZ, _imgPinch.startH * scale);
+  // Keep centre of image pinned to the start midpoint in world coords
+  const rect = vp.getBoundingClientRect();
+  const midSx = _imgPinch.startMidClientX - rect.left;
+  const midSy = _imgPinch.startMidClientY - rect.top;
+  const midWx = (midSx - vp.width  / 2) / vpZ - vpOffX;
+  const midWy = (midSy - vp.height / 2) / vpZ - vpOffY;
+  ov.worldW = newW;
+  ov.worldH = newH;
+  // Place top-left so centre stays at midWx/midWy
+  if(ov.lockToBody && ov.lockToBody !== 'None') {
+    const bp = typeof bodyWorldPos !== 'undefined' ? bodyWorldPos[ov.lockToBody] : null;
+    if(bp) { ov._lockOffX = midWx - bp.x - newW / 2; ov._lockOffY = midWy - bp.y - newH / 2; }
+  } else {
+    ov.worldX = midWx - newW / 2;
+    ov.worldY = midWy - newH / 2;
+  }
+  _imgUpdateSidebar();
+  drawViewport();
+  return true;
+}
+
+function imgPinchEnd() {
+  _imgPinch = null;
+}
 
 function _imgSelectOverlay(id) {
   _imgSelected = id;
@@ -219,16 +295,17 @@ function _imgSelectOverlay(id) {
 function imgMouseDown(mx, my, clientX, clientY) {
   // Check handles first (only if an image is selected)
   const handle = _imgHandleAt(mx, my);
-  if(handle) {
+  if(handle !== null && handle !== false) {
     const ov = _imgOverlays.find(o => o.id === _imgSelected);
     _imgDrag = {
-      type: handle === 'rotate' ? 'rotate' : 'corner',
+      type: typeof handle === 'number' ? 'corner' : handle === 'rotate' ? 'rotate' : 'corner',
       ovId: ov.id,
       startX: clientX, startY: clientY,
       startWX: ov.worldX, startWY: ov.worldY,
       startW: ov.worldW, startH: ov.worldH,
       startRot: ov.rotation,
       aspect: ov.worldH / ov.worldW,
+      cornerIdx: typeof handle === 'number' ? handle : 0,
     };
     return true; // consumed
   }
@@ -271,9 +348,25 @@ function imgMouseMove(clientX, clientY) {
       ov.worldY = _imgDrag.startWY + dy;
     }
   } else if(_imgDrag.type === 'corner') {
-    const newW = Math.max(20 / vpZ, _imgDrag.startW + dx * 2);
+    // Which corner index: 0=TL,1=TR,2=BL,3=BR
+    const ci = _imgDrag.cornerIdx;
+    const signX = (ci === 1 || ci === 3) ? 1 : -1; // right corners → positive X
+    const signY = (ci === 2 || ci === 3) ? 1 : -1; // bottom corners → positive Y
+    // Project drag delta onto the image axes (accounting for rotation)
+    const cos = Math.cos(ov.rotation), sin = Math.sin(ov.rotation);
+    const ldx = cos * dx + sin * dy; // delta in image-local X
+    const ldy = -sin * dx + cos * dy; // delta in image-local Y
+    const newW = Math.max(20 / vpZ, _imgDrag.startW + signX * ldx);
+    const newH = _imgAspectLocked
+      ? newW * _imgDrag.aspect
+      : Math.max(20 / vpZ, _imgDrag.startH + signY * ldy);
+    // Keep centre fixed: adjust worldX/Y so centre (startWX + startW/2) doesn't move
+    const dw = newW - _imgDrag.startW;
+    const dh = newH - _imgDrag.startH;
     ov.worldW = newW;
-    ov.worldH = newW * _imgDrag.aspect;
+    ov.worldH = newH;
+    ov.worldX = _imgDrag.startWX - dw / 2;
+    ov.worldY = _imgDrag.startWY - dh / 2;
   } else if(_imgDrag.type === 'rotate') {
     const { wx, wy } = _imgWorldXY(ov);
     const cx = (wx + vpOffX) * vpZ + vp.width  / 2 + ov.worldW * vpZ / 2;
@@ -288,7 +381,8 @@ function imgMouseMove(clientX, clientY) {
 }
 
 function imgMouseUp() {
-  _imgDrag = null;
+  _imgDrag  = null;
+  _imgPinch = null;
 }
 
 // ── Sidebar panel ─────────────────────────────────────────────────────────────
@@ -311,6 +405,15 @@ function _imgUpdateSidebar() {
   _imgSetField('img-d-height',  Math.round(ov.worldH));
   _imgSetCheck('img-d-clickthrough', ov.clickThrough);
 
+  // Sync aspect lock button
+  const alBtn = document.getElementById('img-d-aspect-lock');
+  if(alBtn) {
+    alBtn.textContent = _imgAspectLocked ? '🔗' : '⛓️‍💥';
+    alBtn.style.borderColor = _imgAspectLocked ? 'var(--ac65)' : 'var(--ac20)';
+    alBtn.style.background  = _imgAspectLocked ? 'var(--hp1)'  : 'var(--dp3)';
+    alBtn.title = _imgAspectLocked ? 'Aspect ratio locked' : 'Aspect ratio unlocked';
+  }
+
   // Sync range sliders
   const osl = document.getElementById('img-d-opacity-sl');
   const rsl = document.getElementById('img-d-rotate-sl');
@@ -320,7 +423,8 @@ function _imgUpdateSidebar() {
   // Lock-to-body dropdown
   const sel = document.getElementById('img-d-lock');
   if(sel) {
-    const names = ['None', ...Object.keys(typeof bodies !== 'undefined' ? bodies : {})].sort();
+    const bodyNames = (typeof bodies !== 'undefined' && bodies) ? Object.keys(bodies) : [];
+    const names = ['None', ...bodyNames].sort();
     sel.innerHTML = names.map(n => `<option value="${n}"${ov.lockToBody===n?' selected':''}>${n}</option>`).join('');
   }
 }
@@ -343,30 +447,49 @@ function imgFieldChange(field, value) {
   if(field === 'rotate')      ov.rotation    = (parseFloat(value) || 0) * Math.PI / 180;
   if(field === 'width')  {
     const w = Math.max(1, parseFloat(value) || 1);
-    ov.worldH = ov.worldH * (w / ov.worldW);
+    if(_imgAspectLocked) ov.worldH = ov.worldH * (w / ov.worldW);
     ov.worldW = w;
   }
   if(field === 'height') {
     const h = Math.max(1, parseFloat(value) || 1);
-    ov.worldW = ov.worldW * (h / ov.worldH);
+    if(_imgAspectLocked) ov.worldW = ov.worldW * (h / ov.worldH);
     ov.worldH = h;
   }
   if(field === 'clickthrough') ov.clickThrough = value;
   if(field === 'lock') {
     const prev = ov.lockToBody;
     ov.lockToBody = value;
-    if(value !== 'None' && prev === 'None') {
-      // Compute offset from body position
+    if(value !== 'None') {
+      // drawViewport populates bodyWorldPos — call it first to ensure positions are current
+      drawViewport();
       const bp = typeof bodyWorldPos !== 'undefined' ? bodyWorldPos[value] : null;
-      if(bp) { ov._lockOffX = ov.worldX - bp.x; ov._lockOffY = ov.worldY - bp.y; }
-    } else if(value === 'None' && prev !== 'None') {
-      // Resolve current position back to worldX/Y
+      if(bp) {
+        // Centre the image on the body: _lockOffX/Y = offset of top-left from body centre
+        ov._lockOffX = -ov.worldW / 2;
+        ov._lockOffY = -ov.worldH / 2;
+        // Bake into worldX/Y so unlocking preserves position
+        ov.worldX = bp.x + ov._lockOffX;
+        ov.worldY = bp.y + ov._lockOffY;
+      }
+    } else if(prev !== 'None') {
+      // Unlocking: bake current locked world position into worldX/Y
       const { wx, wy } = _imgWorldXY(ov);
       ov.worldX = wx; ov.worldY = wy;
     }
   }
   _imgUpdateSidebar();
   drawViewport();
+}
+
+function imgToggleAspectLock() {
+  _imgAspectLocked = !_imgAspectLocked;
+  const btn = document.getElementById('img-d-aspect-lock');
+  if(btn) {
+    btn.textContent = _imgAspectLocked ? '🔗' : '⛓️‍💥';
+    btn.style.borderColor = _imgAspectLocked ? 'var(--ac65)' : 'var(--ac20)';
+    btn.style.background  = _imgAspectLocked ? 'var(--hp1)'  : 'var(--dp3)';
+    btn.title = _imgAspectLocked ? 'Aspect ratio locked' : 'Aspect ratio unlocked';
+  }
 }
 
 function imgDeleteSelected() {

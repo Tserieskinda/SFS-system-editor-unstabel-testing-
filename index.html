@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>SFS System Editor</title>
-<link rel="stylesheet" href="style.css?v=5.9">
+<link rel="stylesheet" href="style.css?v=5.12">
 </head>
 <body>
 
@@ -333,6 +333,7 @@
       <button class="prs-tab" onclick="prsSetTab('vanilla',this)">🌍 VANILLA</button>
       <button class="prs-tab" onclick="prsSetTab('custom',this)">⭐ CUSTOM</button>
       <button class="prs-tab" id="prs-tab-system" onclick="prsSetTab('system',this)" style="display:none">🚀 SYSTEM</button>
+      <button class="prs-tab prs-tab-clipboard" id="prs-tab-clipboard" onclick="prsSetTab('clipboard',this)">📋 CLIPBOARD</button>
     </div>
     <!-- Search -->
     <div class="prs-search-wrap">
@@ -1606,27 +1607,28 @@
   </div>
 </div>
 
-<script src="js/background.js?v=5.9"></script>
-<script src="js/ui-hue.js?v=5.9"></script>
-<script src="js/nav-state.js?v=5.9"></script>
-<script src="js/presets.js?v=5.9"></script>
-<script src="js/state.js?v=5.9"></script>
-<script src="js/settings.js?v=5.9"></script>
-<script src="js/preset-modal.js?v=5.9"></script>
-<script src="js/viewport.js?v=5.9"></script>
-<script src="js/tools.js?v=5.9"></script>
-<script src="js/units.js?v=5.9"></script>
-<script src="js/sidebar.js?v=5.9"></script>
-<script src="js/export.js?v=5.9"></script>
-<script src="js/assets.js?v=5.9"></script>
-<script src="js/idb-cache.js?v=5.9"></script>
-<script src="js/io.js?v=5.9"></script>
-<script src="js/body-search.js?v=5.9"></script>
-<script src="js/namegen.js?v=5.9"></script>
-<script src="js/tex-creator.js?v=5.9"></script>
-<script src="js/sfx.js?v=5.9"></script>
-<script src="js/utils.js?v=5.9"></script>
-<script src="js/images.js?v=5.9"></script>
+<script src="js/background.js?v=5.12"></script>
+<script src="js/ui-hue.js?v=5.12"></script>
+<script src="js/nav-state.js?v=5.12"></script>
+<script src="js/presets.js?v=5.12"></script>
+<script src="js/state.js?v=5.12"></script>
+<script src="js/settings.js?v=5.12"></script>
+<script src="js/preset-modal.js?v=5.12"></script>
+<script src="js/viewport.js?v=5.12"></script>
+<script src="js/tools.js?v=5.12"></script>
+<script src="js/units.js?v=5.12"></script>
+<script src="js/sidebar.js?v=5.12"></script>
+<script src="js/export.js?v=5.12"></script>
+<script src="js/assets.js?v=5.12"></script>
+<script src="js/idb-cache.js?v=5.12"></script>
+<script src="js/io.js?v=5.12"></script>
+<script src="js/body-search.js?v=5.12"></script>
+<script src="js/namegen.js?v=5.12"></script>
+<script src="js/tex-creator.js?v=5.12"></script>
+<script src="js/sfx.js?v=5.12"></script>
+<script src="js/utils.js?v=5.12"></script>
+<script src="js/images.js?v=5.12"></script>
+<script src="js/procgen.js?v=1.0"></script>
 <!-- ══ TERRAIN DETAIL DROPDOWN (body-level to escape topbar stacking context) ══ -->
 <div id="terrain-detail-dropdown" style="display:none;position:fixed;
   min-width:200px;background:rgba(6,10,22,.97);border:1px solid rgba(180,140,255,.25);
@@ -2958,11 +2960,11 @@ astGenerate = function() { _astOrigGenerate(); astUpdateApplyPreview(); };
         border:1px solid rgba(255,180,80,.5);background:rgba(255,180,80,.18);color:#ffb850">
         ALL BODIES
       </button>
-      <button id="psc-btn-two" onclick="_pscSetMode('two')"
+      <button id="psc-btn-sel" onclick="_pscSetMode('select')"
         style="font-family:'JetBrains Mono',monospace;font-size:.55rem;padding:4px 10px;
         border-radius:3px;cursor:pointer;letter-spacing:.06em;
         border:1px solid rgba(255,180,80,.2);background:none;color:rgba(255,180,80,.45)">
-        COMPARE TWO
+        SELECT BODIES
       </button>
     </div>
 
@@ -2971,20 +2973,25 @@ astGenerate = function() { _astOrigGenerate(); astUpdateApplyPreview(); };
       color:rgba(255,100,100,.7);font-size:.75rem;padding:3px 8px;cursor:pointer">✕</button>
   </div>
 
-  <!-- Two-body selectors (hidden in 'all' mode) -->
-  <div id="psc-two-row" style="display:none;width:min(96vw,960px);gap:8px;
+  <!-- Multi-body selector (hidden in 'all' mode) -->
+  <div id="psc-sel-row" style="display:none;width:min(96vw,960px);
     padding:8px 12px;background:rgba(6,10,22,.97);border-left:1px solid rgba(255,180,80,.22);
-    border-right:1px solid rgba(255,180,80,.22);align-items:center;flex-shrink:0;flex-wrap:wrap">
-    <span style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(255,180,80,.6);letter-spacing:.07em">BODY A</span>
-    <select id="psc-sel-a" onchange="_pscOnSelChange()"
-      style="flex:1;min-width:120px;font-family:'JetBrains Mono',monospace;font-size:.6rem;
-      background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
-      border-radius:3px;padding:4px 8px;cursor:pointer"></select>
-    <span style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(255,180,80,.6);letter-spacing:.07em">BODY B</span>
-    <select id="psc-sel-b" onchange="_pscOnSelChange()"
-      style="flex:1;min-width:120px;font-family:'JetBrains Mono',monospace;font-size:.6rem;
-      background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
-      border-radius:3px;padding:4px 8px;cursor:pointer"></select>
+    border-right:1px solid rgba(255,180,80,.22);flex-shrink:0;box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(255,180,80,.6);letter-spacing:.07em">
+        SELECT BODIES TO COMPARE
+      </span>
+      <button onclick="_pscSelAll(true)" style="font-family:'JetBrains Mono',monospace;font-size:.48rem;
+        padding:2px 7px;border-radius:2px;cursor:pointer;border:1px solid rgba(80,140,255,.3);
+        background:none;color:rgba(120,170,255,.7)">ALL</button>
+      <button onclick="_pscSelAll(false)" style="font-family:'JetBrains Mono',monospace;font-size:.48rem;
+        padding:2px 7px;border-radius:2px;cursor:pointer;border:1px solid rgba(255,80,80,.2);
+        background:none;color:rgba(255,120,120,.55)">NONE</button>
+      <span id="psc-sel-count" style="margin-left:auto;font-family:'JetBrains Mono',monospace;
+        font-size:.5rem;color:rgba(150,160,200,.5)"></span>
+    </div>
+    <div id="psc-checklist" style="display:flex;flex-wrap:wrap;gap:5px 8px;max-height:96px;overflow-y:auto;
+      padding-right:4px"></div>
   </div>
 
   <!-- Canvas area -->
@@ -3022,20 +3029,67 @@ astGenerate = function() { _astOrigGenerate(); astUpdateApplyPreview(); };
 
 function _pscSetMode(m){
   _PSC.mode = m;
-  document.getElementById('psc-two-row').style.display = m === 'two' ? 'flex' : 'none';
+  const selRow = document.getElementById('psc-sel-row');
+  selRow.style.display = m === 'select' ? 'block' : 'none';
   // Toggle button styles
   const bAll = document.getElementById('psc-btn-all');
-  const bTwo = document.getElementById('psc-btn-two');
-  if(m === 'all'){
-    bAll.style.background='rgba(255,180,80,.18)'; bAll.style.color='#ffb850'; bAll.style.borderColor='rgba(255,180,80,.5)';
-    bTwo.style.background='none'; bTwo.style.color='rgba(255,180,80,.45)'; bTwo.style.borderColor='rgba(255,180,80,.2)';
-  } else {
-    bTwo.style.background='rgba(255,180,80,.18)'; bTwo.style.color='#ffb850'; bTwo.style.borderColor='rgba(255,180,80,.5)';
-    bAll.style.background='none'; bAll.style.color='rgba(255,180,80,.45)'; bAll.style.borderColor='rgba(255,180,80,.2)';
-  }
+  const bSel = document.getElementById('psc-btn-sel');
+  const activeStyle = ['rgba(255,180,80,.18)', '#ffb850', 'rgba(255,180,80,.5)'];
+  const inactiveStyle = ['none', 'rgba(255,180,80,.45)', 'rgba(255,180,80,.2)'];
+  [bAll, bSel].forEach((b, i) => {
+    const active = (i === 0 && m === 'all') || (i === 1 && m === 'select');
+    const s = active ? activeStyle : inactiveStyle;
+    b.style.background = s[0]; b.style.color = s[1]; b.style.borderColor = s[2];
+  });
   _PSC.zoom=1; _PSC.panX=0; _PSC.panY=0;
-  if(m === 'two') _pscPopulateSelects();
+  if(m === 'select') _pscBuildChecklist();
   _pscScheduleDraw();
+}
+
+function _pscBuildChecklist(){
+  const list = document.getElementById('psc-checklist');
+  if(!list) return;
+  list.innerHTML = '';
+  const names = Object.keys(bodies).sort();
+  // Default: first two selected if nothing chosen yet
+  if(!_PSC.selected || _PSC.selected.size === 0){
+    _PSC.selected = new Set(names.slice(0, Math.min(2, names.length)));
+  }
+  names.forEach(n => {
+    const checked = _PSC.selected.has(n);
+    const chip = document.createElement('label');
+    chip.style.cssText = `display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+      font-family:'JetBrains Mono',monospace;font-size:.55rem;letter-spacing:.04em;
+      padding:3px 8px;border-radius:3px;border:1px solid ${checked ? 'rgba(255,180,80,.45)' : 'rgba(80,100,150,.3)'};
+      background:${checked ? 'rgba(255,180,80,.1)' : 'none'};color:${checked ? '#ffb850' : 'rgba(150,165,210,.6)'};
+      transition:all .12s;user-select:none`;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = checked; cb.style.display = 'none';
+    cb.onchange = () => {
+      if(cb.checked) _PSC.selected.add(n); else _PSC.selected.delete(n);
+      chip.style.border = cb.checked ? '1px solid rgba(255,180,80,.45)' : '1px solid rgba(80,100,150,.3)';
+      chip.style.background = cb.checked ? 'rgba(255,180,80,.1)' : 'none';
+      chip.style.color = cb.checked ? '#ffb850' : 'rgba(150,165,210,.6)';
+      _pscUpdateCount();
+      _pscScheduleDraw();
+    };
+    chip.appendChild(cb);
+    chip.appendChild(document.createTextNode(n));
+    chip.onclick = () => { cb.checked = !cb.checked; cb.onchange(); };
+    list.appendChild(chip);
+  });
+  _pscUpdateCount();
+}
+
+function _pscSelAll(on){
+  _PSC.selected = on ? new Set(Object.keys(bodies)) : new Set();
+  _pscBuildChecklist();
+  _pscScheduleDraw();
+}
+
+function _pscUpdateCount(){
+  const el = document.getElementById('psc-sel-count');
+  if(el) el.textContent = `${(_PSC.selected||new Set()).size} selected`;
 }
 
 // Close on backdrop click
@@ -3110,9 +3164,25 @@ document.addEventListener('keydown', function(e){
     <span><span style="display:block;color:var(--sky2)">IMAGE OVERLAY</span>
     <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Place reference images on the viewport</span></span>
   </button>
+  <button onclick="openHeightmapTools()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='var(--ac12)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">🗺️</span>
+    <span><span style="display:block;color:var(--sky2)">HEIGHTMAP TOOLS</span>
+    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Bump map → heightmap converter &amp; more</span></span>
+  </button>
+  <button onclick="openProceduralGen()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='var(--ac12)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem">✨</span>
+    <span><span style="display:block;color:var(--sky2)">PROCEDURAL GENERATION</span>
+    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Generate random systems with full control</span></span>
+  </button>
 </div>
-
-<!-- hidden file input for image import -->
 <input type="file" id="img-file-input" accept="image/*" multiple style="display:none">
 
 <!-- ══════════════ IMAGE OVERLAY PANEL ══════════════ -->
@@ -3120,7 +3190,6 @@ document.addEventListener('keydown', function(e){
   position:fixed;top:0;right:0;width:300px;height:100dvh;
   background:rgba(6,10,22,.97);border-left:1px solid var(--ac20);
   display:flex;flex-direction:column;z-index:9000;
-  transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
   font-family:'JetBrains Mono',monospace">
 
   <!-- Header -->
@@ -3193,12 +3262,18 @@ document.addEventListener('keydown', function(e){
     </div>
 
     <!-- Width / Height -->
-    <div style="display:flex;gap:8px;margin-bottom:10px">
+    <div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end">
       <div style="flex:1">
         <div class="img-field-label">WIDTH</div>
         <input id="img-d-width" type="number" min="1" step="1"
           class="img-field-input" oninput="imgFieldChange('width',this.value)">
       </div>
+      <button id="img-d-aspect-lock" onclick="imgToggleAspectLock()"
+        title="Lock aspect ratio"
+        style="flex-shrink:0;width:28px;height:28px;margin-bottom:1px;background:var(--dp3);
+               border:1px solid var(--ac20);border-radius:4px;cursor:pointer;
+               color:var(--ac65);font-size:.8rem;display:flex;align-items:center;
+               justify-content:center;transition:background .15s,border-color .15s">🔗</button>
       <div style="flex:1">
         <div class="img-field-label">HEIGHT</div>
         <input id="img-d-height" type="number" min="1" step="1"
@@ -3376,15 +3451,15 @@ document.addEventListener('keydown', function(e){
           PLANET TOOLS</div>
 
         <!-- Tool items — each is a large tappable row that expands a panel -->
-        <div class="calc-tool-item" id="calc-tool-circ" onclick="calcToggleTool('circ')">
-          <div class="calc-tool-header">
+        <div class="calc-tool-item" id="calc-tool-circ">
+          <div class="calc-tool-header" onclick="calcToggleTool('circ')" style="cursor:pointer">
             <div>
               <div class="calc-tool-name">Circumference</div>
               <div class="calc-tool-formula">2 π r</div>
             </div>
             <div class="calc-tool-arrow" id="calc-arrow-circ">▶</div>
           </div>
-          <div class="calc-tool-panel" id="calc-panel-circ" style="display:none">
+          <div class="calc-tool-panel" id="calc-panel-circ" style="display:none" onclick="event.stopPropagation()">
             <div class="calc-desc">Full equatorial circumference of the planet surface.</div>
             <div class="calc-result-wrap">
               <div class="calc-result-label">RESULT</div>
@@ -3393,15 +3468,15 @@ document.addEventListener('keydown', function(e){
           </div>
         </div>
 
-        <div class="calc-tool-item" id="calc-tool-cloud" onclick="calcToggleTool('cloud')">
-          <div class="calc-tool-header">
+        <div class="calc-tool-item" id="calc-tool-cloud">
+          <div class="calc-tool-header" onclick="calcToggleTool('cloud')" style="cursor:pointer">
             <div>
               <div class="calc-tool-name">Cloud Width</div>
               <div class="calc-tool-formula">2 π (r + cloudStartHeight) / N</div>
             </div>
             <div class="calc-tool-arrow" id="calc-arrow-cloud">▶</div>
           </div>
-          <div class="calc-tool-panel" id="calc-panel-cloud" style="display:none">
+          <div class="calc-tool-panel" id="calc-panel-cloud" style="display:none" onclick="event.stopPropagation()">
             <div class="calc-desc">Width of one cloud tile for N tiles covering the full cloud layer circumference.</div>
             <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
               <label style="font-size:.58rem;color:var(--sky2);opacity:.75;letter-spacing:.08em;white-space:nowrap">N (TILES)</label>
@@ -3418,15 +3493,15 @@ document.addEventListener('keydown', function(e){
           </div>
         </div>
 
-        <div class="calc-tool-item" id="calc-tool-hm" onclick="calcToggleTool('hm')">
-          <div class="calc-tool-header">
+        <div class="calc-tool-item" id="calc-tool-hm">
+          <div class="calc-tool-header" onclick="calcToggleTool('hm')" style="cursor:pointer">
             <div>
               <div class="calc-tool-name">Heightmap Width</div>
               <div class="calc-tool-formula">2 π r / N</div>
             </div>
             <div class="calc-tool-arrow" id="calc-arrow-hm">▶</div>
           </div>
-          <div class="calc-tool-panel" id="calc-panel-hm" style="display:none">
+          <div class="calc-tool-panel" id="calc-panel-hm" style="display:none" onclick="event.stopPropagation()">
             <div class="calc-desc">Width covered by one column of a heightmap PNG with N total columns.</div>
             <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
               <label style="font-size:.58rem;color:var(--sky2);opacity:.75;letter-spacing:.08em;white-space:nowrap">N (COLUMNS)</label>
@@ -3451,7 +3526,7 @@ document.addEventListener('keydown', function(e){
 /* ── Calculator tool rows ── */
 .calc-tool-item {
   border:1px solid var(--ac13);border-radius:7px;margin-bottom:7px;
-  overflow:hidden;cursor:pointer;transition:border-color .18s,background .18s;
+  overflow:hidden;cursor:default;transition:border-color .18s,background .18s;
   background:var(--ac08);
 }
 .calc-tool-item:hover { border-color:var(--ac30);background:var(--ac10); }
@@ -3460,6 +3535,7 @@ document.addEventListener('keydown', function(e){
   display:flex;align-items:center;justify-content:space-between;
   padding:13px 14px;min-height:52px;
 }
+.calc-tool-header:hover { opacity:.85; }
 .calc-tool-name {
   font-size:.72rem;color:var(--ink3);letter-spacing:.05em;margin-bottom:3px;
 }
@@ -3523,24 +3599,6 @@ document.addEventListener('keydown', function(e){
 </style>
 
 
-<!-- ── Body Context Menu (hold-click) ─────────────────────────────── -->
-<div id="body-ctx-menu" style="display:none">
-  <div class="bctx-title" id="bctx-title">PLANET</div>
-  <button class="bctx-btn bctx-cut"   id="bctx-cut"   onclick="bctxCut()">
-    <span class="bctx-icon">✂</span> Cut
-    <span class="bctx-shortcut">⌘X</span>
-  </button>
-  <button class="bctx-btn bctx-copy"  id="bctx-copy"  onclick="bctxCopy()">
-    <span class="bctx-icon">⎘</span> Copy
-    <span class="bctx-shortcut">⌘C</span>
-  </button>
-  <button class="bctx-btn bctx-paste" id="bctx-paste" onclick="bctxPaste()">
-    <span class="bctx-icon">📋</span> Paste
-    <span class="bctx-shortcut">⌘V</span>
-  </button>
-  <div class="bctx-divider"></div>
-  <button class="bctx-btn bctx-group" id="bctx-group" onclick="bctxGroupSelect()">◉ Group Select</button>
-</div>
 
 <style>
 /* ── Body context menu ── */
@@ -3621,8 +3679,9 @@ document.addEventListener('keydown', function(e){
 /* ── Group-select panel (replaces HUD) ── */
 #group-sel-panel {
   position: fixed;
-  right: 0; top: 48px; bottom: 28px;
-  width: 240px;
+  right: 0; top: 48px;
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  width: 190px;
   z-index: 91; /* above main sidebar */
   background: var(--panel);
   border-left: 1px solid rgba(255,160,50,.35);
@@ -3631,66 +3690,68 @@ document.addEventListener('keydown', function(e){
   transition: transform .3s cubic-bezier(.4,0,.2,1);
   font-family: 'Exo 2', system-ui, sans-serif;
   pointer-events: none;
+  touch-action: pan-y;
+  overflow: hidden; /* prevent children from escaping */
 }
 #group-sel-panel.open {
   transform: translateX(0);
   pointer-events: auto;
 }
 .gsp-head {
-  padding: 14px 14px 10px;
+  padding: 8px 10px 7px;
   border-bottom: 1px solid rgba(255,160,50,.2);
   flex-shrink: 0;
 }
 .gsp-title {
-  font-size: .58rem;
-  letter-spacing: .14em;
+  font-size: .52rem;
+  letter-spacing: .12em;
   color: rgba(255,160,50,.9);
   font-weight: 700;
   text-transform: uppercase;
-  margin-bottom: 4px;
-  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 2px;
+  display: flex; align-items: center; gap: 5px;
 }
 .gsp-title::before {
   content: '⬡';
-  font-size: .7rem;
+  font-size: .62rem;
 }
 #gsp-count {
-  font-size: .62rem;
+  font-size: .58rem;
   color: rgba(255,200,100,.7);
   font-weight: 600;
-  letter-spacing: .05em;
+  letter-spacing: .04em;
 }
 .gsp-hint {
-  font-size: .55rem;
-  color: rgba(255,255,255,.3);
-  letter-spacing: .05em;
-  margin-top: 3px;
+  font-size: .49rem;
+  color: rgba(255,255,255,.28);
+  letter-spacing: .03em;
+  margin-top: 2px;
 }
 .gsp-body {
   flex: 1; overflow-y: auto;
-  padding: 10px 10px;
-  display: flex; flex-direction: column; gap: 5px;
+  padding: 6px 8px;
+  display: flex; flex-direction: column; gap: 3px;
 }
 .gsp-section-label {
-  font-size: .52rem;
-  letter-spacing: .1em;
-  color: rgba(255,255,255,.25);
+  font-size: .48rem;
+  letter-spacing: .09em;
+  color: rgba(255,255,255,.22);
   text-transform: uppercase;
-  margin: 6px 0 3px 2px;
+  margin: 4px 0 2px 2px;
 }
 .gsp-btn {
   width: 100%;
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.1);
-  border-radius: 4px;
+  border-radius: 3px;
   color: rgba(220,220,230,.85);
   font-family: 'Exo 2', system-ui, sans-serif;
-  font-size: .6rem;
-  letter-spacing: .07em;
+  font-size: .55rem;
+  letter-spacing: .05em;
   text-align: left;
-  padding: 7px 10px;
+  padding: 5px 8px;
   cursor: pointer;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 6px;
   transition: background .15s, border-color .15s;
 }
 .gsp-btn:hover {
@@ -3698,8 +3759,8 @@ document.addEventListener('keydown', function(e){
   border-color: rgba(255,255,255,.22);
 }
 .gsp-btn .gsp-icon {
-  font-size: .75rem;
-  width: 16px; text-align: center; flex-shrink: 0;
+  font-size: .68rem;
+  width: 14px; text-align: center; flex-shrink: 0;
   opacity: .8;
 }
 .gsp-btn.danger {
@@ -3721,7 +3782,7 @@ document.addEventListener('keydown', function(e){
   border-color: rgba(80,180,240,.55);
 }
 .gsp-footer {
-  padding: 10px;
+  padding: 7px 8px;
   border-top: 1px solid rgba(255,160,50,.15);
   flex-shrink: 0;
 }
@@ -3729,15 +3790,16 @@ document.addEventListener('keydown', function(e){
   width: 100%;
   background: rgba(255,140,30,.08);
   border: 1px solid rgba(255,150,40,.3);
-  border-radius: 4px;
+  border-radius: 3px;
   color: rgba(255,160,50,.85);
   font-family: 'Exo 2', system-ui, sans-serif;
-  font-size: .6rem;
-  letter-spacing: .1em;
+  font-size: .55rem;
+  letter-spacing: .09em;
   text-align: center;
   padding: 7px;
   cursor: pointer;
   text-transform: uppercase;
+  min-height: 36px;
 }
 .gsp-exit-btn:hover {
   background: rgba(255,150,40,.18);
@@ -3750,12 +3812,38 @@ document.addEventListener('keydown', function(e){
   opacity: 0.3;
   filter: grayscale(.6);
 }
+
+/* ── Group-select panel: bottom sheet on mobile ── */
+@media (max-width: 640px) {
+  #group-sel-panel {
+    width: 100%;
+    top: auto;
+    left: 0; right: 0;
+    bottom: 44px;
+    height: 50vh;
+    border-left: none;
+    border-top: 1px solid rgba(255,160,50,.35);
+    border-radius: 0;
+    transform: translateY(100%);
+  }
+  #group-sel-panel.open {
+    transform: translateY(0);
+  }
+}
 </style>
 
 <!-- Group-select panel -->
 <div id="group-sel-panel">
   <div class="gsp-head">
-    <div class="gsp-title">Group Select</div>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="gsp-title">Group Select</div>
+      <button onclick="exitGroupSelect()" title="Exit Group Select"
+        style="background:none;border:none;cursor:pointer;color:rgba(255,160,50,.7);
+               font-size:.9rem;line-height:1;padding:2px 4px;border-radius:3px;
+               transition:color .15s,background .15s"
+        onmouseover="this.style.color='rgba(255,180,80,1)';this.style.background='rgba(255,140,30,.15)'"
+        onmouseout="this.style.color='rgba(255,160,50,.7)';this.style.background='none'">✕</button>
+    </div>
     <div id="gsp-count" style="font-size:.62rem;color:rgba(255,200,100,.7);font-weight:600;letter-spacing:.05em;">0 selected</div>
     <div class="gsp-hint">Tap bodies to toggle · Tap empty to exit</div>
   </div>
@@ -3792,6 +3880,418 @@ document.addEventListener('keydown', function(e){
     <button class="gsp-exit-btn" onclick="exitGroupSelect()">✕ Exit Group Select</button>
   </div>
 </div>
+
+<!-- ── Body Context Menu (hold-click) ─────────────────────────────── -->
+<div id="body-ctx-menu" style="display:none">
+  <div class="bctx-title" id="bctx-title">PLANET</div>
+  <button class="bctx-btn bctx-cut"   id="bctx-cut"   onclick="bctxCut()">
+    <span class="bctx-icon">✂</span> Cut to Clipboard
+    <span class="bctx-shortcut">⌘X</span>
+  </button>
+  <button class="bctx-btn bctx-copy"  id="bctx-copy"  onclick="bctxCopy()">
+    <span class="bctx-icon">⎘</span> Copy to Clipboard
+    <span class="bctx-shortcut">⌘C</span>
+  </button>
+  <div class="bctx-divider"></div>
+  <button class="bctx-btn bctx-group" id="bctx-group" onclick="bctxGroupSelect()">◉ Group Select</button>
+</div>
+
+<!-- ══════════════ HEIGHTMAP TOOLS MODAL ══════════════ -->
+<div id="hmt-modal" style="display:none;position:fixed;inset:0;z-index:210000;
+  background:rgba(2,5,14,.92);backdrop-filter:blur(4px);
+  flex-direction:column;align-items:center;justify-content:flex-start;
+  overflow-y:auto;padding:12px 0 24px;box-sizing:border-box">
+
+  <!-- Header -->
+  <div style="width:min(96vw,980px);display:flex;align-items:center;gap:10px;
+    padding:10px 14px;background:rgba(6,10,22,.97);
+    border:1px solid rgba(100,220,180,.2);border-bottom:none;
+    border-radius:6px 6px 0 0;flex-shrink:0;margin-top:auto">
+    <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;color:rgba(100,220,180,.9);letter-spacing:.14em;flex:1">🗺️ HEIGHTMAP TOOLS</span>
+    <button onclick="closeHeightmapTools()" style="background:none;border:1px solid rgba(255,80,80,.3);border-radius:3px;color:rgba(255,100,100,.7);font-size:.75rem;padding:3px 8px;cursor:pointer">✕</button>
+  </div>
+
+  <!-- Tool tabs -->
+  <div style="width:min(96vw,980px);background:rgba(6,10,22,.97);
+    border:1px solid rgba(100,220,180,.2);border-top:1px solid rgba(100,220,180,.1);
+    border-bottom:none;display:flex;gap:0;flex-shrink:0">
+    <button id="hmt-tab-bmp" onclick="hmtSetTab('bumpmap')"
+      style="font-family:'JetBrains Mono',monospace;font-size:.55rem;padding:8px 16px;
+      background:rgba(100,220,180,.12);color:rgba(100,220,180,.9);
+      border:none;border-right:1px solid rgba(100,220,180,.15);cursor:pointer;letter-spacing:.06em">
+      🌄 BUMP MAP → HEIGHTMAP
+    </button>
+    <!-- Future tools will be added here as more tabs -->
+  </div>
+
+  <!-- Tool content area -->
+  <div id="hmt-content" style="width:min(96vw,980px);background:rgba(4,8,20,.98);
+    border:1px solid rgba(100,220,180,.2);border-top:none;
+    border-radius:0 0 6px 6px;flex-shrink:0;overflow:hidden">
+
+    <!-- ─── BUMP MAP TOOL ─── -->
+    <div id="hmt-bumpmap" style="display:flex;flex-direction:column;gap:0">
+
+      <!-- Upload zone -->
+      <div id="hmt-dropzone" style="margin:16px;border:2px dashed rgba(100,220,180,.25);
+        border-radius:6px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s;
+        font-family:'JetBrains Mono',monospace"
+        onclick="document.getElementById('hmt-file-input').click()"
+        ondragover="event.preventDefault();this.style.borderColor='rgba(100,220,180,.7)'"
+        ondragleave="this.style.borderColor='rgba(100,220,180,.25)'"
+        ondrop="event.preventDefault();this.style.borderColor='rgba(100,220,180,.25)';hmtLoadFile(event.dataTransfer.files[0])">
+        <div style="font-size:2rem;margin-bottom:8px">🌄</div>
+        <div style="font-size:.62rem;color:rgba(100,220,180,.8);letter-spacing:.07em">DROP BUMP MAP IMAGE HERE</div>
+        <div style="font-size:.52rem;color:rgba(150,160,200,.5);margin-top:4px">PNG, JPG, WebP — greyscale equirectangular projection</div>
+        <input type="file" id="hmt-file-input" accept="image/*" style="display:none" onchange="hmtLoadFile(this.files[0])">
+      </div>
+
+      <!-- Preview + controls (hidden until image loaded) -->
+      <div id="hmt-loaded" style="display:none;flex-direction:column;gap:0">
+
+        <!-- Image preview canvas -->
+        <div style="position:relative;margin:0 16px 0;touch-action:none">
+          <canvas id="hmt-preview" style="width:100%;height:auto;display:block;border-radius:4px"></canvas>
+          <!-- Overlay canvas for the sample line + breakpoint handles -->
+          <canvas id="hmt-overlay" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:all;touch-action:none"></canvas>
+        </div>
+
+        <!-- Breakpoint toolbar -->
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 16px 4px;flex-wrap:wrap">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:.5rem;color:rgba(150,160,200,.5);letter-spacing:.06em">SAMPLE PATH</span>
+          <button onclick="hmtAddBreakpoint()" style="font-family:'JetBrains Mono',monospace;font-size:.52rem;
+            padding:5px 12px;border-radius:3px;cursor:pointer;letter-spacing:.05em;min-height:32px;
+            border:1px solid rgba(100,220,180,.4);background:rgba(100,220,180,.08);color:rgba(100,220,180,.85)">
+            + ADD BREAKPOINT
+          </button>
+          <button onclick="hmtRemoveBreakpoint()" style="font-family:'JetBrains Mono',monospace;font-size:.52rem;
+            padding:5px 12px;border-radius:3px;cursor:pointer;letter-spacing:.05em;min-height:32px;
+            border:1px solid rgba(255,120,80,.35);background:rgba(255,120,80,.07);color:rgba(255,140,100,.75)">
+            − REMOVE LAST
+          </button>
+          <button onclick="hmtResetBreakpoints()" style="font-family:'JetBrains Mono',monospace;font-size:.52rem;
+            padding:5px 12px;border-radius:3px;cursor:pointer;letter-spacing:.05em;min-height:32px;
+            border:1px solid rgba(150,160,200,.25);background:rgba(150,160,200,.05);color:rgba(150,160,200,.6)">
+            ↺ RESET
+          </button>
+          <span id="hmt-bp-hint" style="font-family:'JetBrains Mono',monospace;font-size:.48rem;color:rgba(150,160,200,.4);margin-left:4px">
+            drag handles on image to set latitude per segment
+          </span>
+        </div>
+
+        <!-- Controls -->
+        <div class="hmt-controls-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;padding:10px 16px">
+
+          <!-- Left column -->
+          <div style="display:flex;flex-direction:column;gap:10px">
+
+            <div>
+              <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:block;margin-bottom:4px">
+                LONGITUDE OFFSET <span id="hmt-lon-val" style="color:rgba(180,210,255,.8)">0°</span>
+              </label>
+              <input type="range" id="hmt-lon" min="0" max="100" value="0" step="0.1"
+                style="width:100%;accent-color:#64dcb4;min-height:20px" oninput="hmtUpdate()">
+            </div>
+
+            <div>
+              <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:block;margin-bottom:4px">
+                SPIKE SMOOTHING <span id="hmt-smooth-val" style="color:rgba(180,210,255,.8)">0</span>
+                <span style="color:rgba(150,160,200,.35);font-size:.46rem;margin-left:4px">blends breakpoint seams</span>
+              </label>
+              <input type="range" id="hmt-smooth" min="0" max="60" value="8" step="1"
+                style="width:100%;accent-color:#64dcb4;min-height:20px" oninput="hmtUpdate()">
+            </div>
+
+          </div>
+
+          <!-- Right column -->
+          <div style="display:flex;flex-direction:column;gap:10px">
+
+            <div>
+              <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:block;margin-bottom:4px">
+                HEIGHT SCALE <span id="hmt-scale-val" style="color:rgba(180,210,255,.8)">1.0×</span>
+              </label>
+              <input type="range" id="hmt-scale" min="0.1" max="3" value="1" step="0.05"
+                style="width:100%;accent-color:#64dcb4;min-height:20px" oninput="hmtUpdate()">
+            </div>
+
+            <div>
+              <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:block;margin-bottom:4px">
+                OUTPUT WIDTH (COLUMNS)
+              </label>
+              <select id="hmt-width" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:.6rem;
+                background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
+                border-radius:3px;padding:6px 8px;min-height:32px" onchange="hmtUpdate()">
+                <option value="256">256 (small)</option>
+                <option value="512">512 (standard)</option>
+                <option value="1024" selected>1024 (high detail)</option>
+                <option value="2048">2048 (ultra)</option>
+              </select>
+            </div>
+
+            <div style="display:flex;gap:12px;align-items:center">
+              <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:flex;align-items:center;gap:8px;cursor:pointer;min-height:32px">
+                <input type="checkbox" id="hmt-invert" onchange="hmtUpdate()" style="accent-color:#64dcb4;width:16px;height:16px">
+                INVERT (dark=high)
+              </label>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Height profile preview -->
+        <div style="margin:0 16px 14px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(150,160,200,.5);letter-spacing:.06em;margin-bottom:4px">HEIGHT PROFILE PREVIEW</div>
+          <canvas id="hmt-profile" style="width:100%;height:64px;display:block;
+            border:1px solid rgba(100,220,180,.15);border-radius:3px;background:rgba(4,8,20,.9)"></canvas>
+        </div>
+
+        <!-- Output -->
+        <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:8px">
+          <!-- Name row -->
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(100,220,180,.7);letter-spacing:.07em;white-space:nowrap">OUTPUT NAME</label>
+            <input id="hmt-out-name" type="text" value="bumpmap_hm"
+              style="flex:1;min-width:120px;max-width:220px;font-family:'JetBrains Mono',monospace;font-size:.62rem;
+              background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
+              border-radius:3px;padding:6px 10px;outline:none;min-height:32px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:.48rem;color:rgba(150,160,200,.4)">.png · auto-numbered if name taken</span>
+          </div>
+          <!-- Buttons row -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <button onclick="hmtSaveToAssets()" style="font-family:'JetBrains Mono',monospace;font-size:.58rem;
+              padding:10px 18px;border-radius:3px;cursor:pointer;letter-spacing:.06em;min-height:40px;
+              border:1px solid rgba(100,220,180,.45);background:rgba(100,220,180,.1);color:rgba(100,220,180,.9)">
+              ✚ SAVE TO HEIGHTMAP ASSETS
+            </button>
+            <button onclick="hmtDownloadPNG()" style="font-family:'JetBrains Mono',monospace;font-size:.58rem;
+              padding:10px 18px;border-radius:3px;cursor:pointer;letter-spacing:.06em;min-height:40px;
+              border:1px solid rgba(80,140,255,.35);background:rgba(80,140,255,.07);color:rgba(140,180,255,.8)">
+              ⬇ DOWNLOAD PNG
+            </button>
+            <div id="hmt-save-status" style="font-family:'JetBrains Mono',monospace;font-size:.5rem;
+              color:rgba(100,220,180,.7);align-self:center;line-height:1.4;display:none"></div>
+          </div>
+        </div>
+
+      </div><!-- #hmt-loaded -->
+    </div><!-- #hmt-bumpmap -->
+
+  </div><!-- #hmt-content -->
+</div><!-- #hmt-modal -->
+
+<!-- ══════════════ PROCEDURAL GENERATION MODAL ══════════════ -->
+<div id="procgen-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,.88);z-index:99999;font-family:'JetBrains Mono',monospace;
+  flex-direction:column;align-items:stretch">
+
+  <!-- ── Outer container ── -->
+  <div style="display:flex;flex-direction:column;width:100%;height:100%;max-width:1600px;
+    margin:0 auto;background:rgba(4,8,20,.98);overflow:hidden">
+
+    <!-- ── Header ── -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:12px 18px;border-bottom:1px solid rgba(100,150,255,.15);flex-shrink:0">
+      <div>
+        <div style="font-family:'Orbitron',sans-serif;font-size:.72rem;letter-spacing:.18em;
+          color:var(--sky2)">✨ PROCEDURAL GENERATION</div>
+        <div style="font-size:.5rem;color:rgba(130,150,200,.5);letter-spacing:.04em;margin-top:3px">
+          Generate full planetary systems with complete control</div>
+      </div>
+      <button onclick="closeProceduralGen()" style="background:none;border:none;cursor:pointer;
+        color:rgba(180,180,210,.4);font-size:1.3rem;padding:4px 8px;line-height:1;transition:color .15s"
+        onmouseover="this.style.color='rgba(220,80,80,.8)'"
+        onmouseout="this.style.color='rgba(180,180,210,.4)'">✕</button>
+    </div>
+
+    <!-- ── Top row: Frequencies + Misc ── -->
+    <div class="pg-top-row" style="display:flex;gap:0;border-bottom:1px solid rgba(100,150,255,.1);
+      flex-shrink:0;min-height:0">
+
+      <!-- Object Type Frequencies -->
+      <div style="flex:1;padding:12px 14px;border-right:1px solid rgba(100,150,255,.1)">
+        <div class="pg-section-title">OBJECT TYPE FREQUENCIES</div>
+        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-bottom:8px">
+          % of each body type out of selected types — e.g. 10% stars, 90% planets
+        </div>
+        <div id="pg-freq-controls" style="display:flex;flex-direction:column;gap:5px"></div>
+      </div>
+
+      <!-- Misc -->
+      <div style="flex:1;padding:12px 14px">
+        <div class="pg-section-title">MISC</div>
+        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-bottom:8px">
+          Post-generation options and behaviors
+        </div>
+        <div id="pg-misc-options" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+
+    <!-- ── Middle row: Body Select | Map View | Fine Tuning ── -->
+    <div style="flex:1;display:flex;overflow:hidden;min-height:0">
+
+      <!-- Body Select (left) -->
+      <div class="pg-side-panel" style="width:170px;min-width:140px;border-right:1px solid rgba(100,150,255,.1);
+        overflow-y:auto;flex-shrink:0">
+        <div style="padding:12px 12px 8px">
+          <div class="pg-section-title">BODY SELECT</div>
+          <div style="font-size:.47rem;color:rgba(130,150,200,.45);margin-bottom:10px;line-height:1.5">
+            Select body types to include. Can mix multiple for completely random systems.
+          </div>
+          <div id="pg-body-type-grid" style="display:flex;flex-direction:column;gap:5px"></div>
+        </div>
+        <!-- Body info panel (shows when clicking on map) -->
+        <div id="pg-body-info" style="display:none;margin:10px 12px;padding:10px;
+          background:rgba(100,220,180,.06);border:1px solid rgba(100,220,180,.2);
+          border-radius:4px;font-size:.5rem;line-height:1.7;color:rgba(180,200,255,.85)"></div>
+      </div>
+
+      <!-- Map View (center) -->
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative">
+        <div style="padding:8px 14px;border-bottom:1px solid rgba(100,150,255,.08);flex-shrink:0;
+          display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:.52rem;color:var(--sky2);letter-spacing:.1em">MAP VIEW</span>
+          <span style="font-size:.46rem;color:rgba(100,120,180,.4)">scroll/pinch to zoom · drag to pan · click body for info</span>
+        </div>
+        <div style="flex:1;position:relative;overflow:hidden">
+          <canvas id="pg-canvas" style="width:100%;height:100%;display:block;cursor:grab"></canvas>
+        </div>
+        <!-- Status bar -->
+        <div style="padding:8px 14px;border-top:1px solid rgba(100,150,255,.08);flex-shrink:0;
+          display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button onclick="pgGenerate()" class="pg-btn pg-btn--primary">🎲 GENERATE SYSTEM</button>
+          <button onclick="pgApply()"    class="pg-btn pg-btn--apply">✅ APPLY TO SYSTEM</button>
+          <button onclick="pgClear()"    class="pg-btn pg-btn--danger">🗑 CLEAR</button>
+          <div id="pg-status" style="display:none;font-size:.52rem;margin-left:auto"></div>
+        </div>
+      </div>
+
+      <!-- Fine Tuning (right) -->
+      <div class="pg-side-panel" style="width:200px;min-width:160px;border-left:1px solid rgba(100,150,255,.1);
+        overflow-y:auto;flex-shrink:0">
+        <div style="padding:12px 12px 8px">
+          <div class="pg-section-title">FINE TUNING</div>
+          <div style="font-size:.47rem;color:rgba(130,150,200,.45);margin-bottom:10px;line-height:1.5">
+            Control orbit ranges, SOI, planet radius, eccentricity, and more.
+          </div>
+          <div id="pg-fine-tuning" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Bottom row: Misc Selections | Generate | Texture Select ── -->
+    <div class="pg-bottom-row" style="display:flex;gap:0;border-top:1px solid rgba(100,150,255,.1);
+      flex-shrink:0">
+
+      <!-- Miscellaneous Selections -->
+      <div style="flex:1;padding:12px 14px;border-right:1px solid rgba(100,150,255,.1)">
+        <div class="pg-section-title">MISCELLANEOUS SELECTIONS</div>
+        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-top:3px">
+          Heightmap, watermask, front clouds — coming soon
+        </div>
+      </div>
+
+      <!-- Center generate button area -->
+      <div style="display:flex;align-items:center;justify-content:center;padding:12px 20px;
+        border-right:1px solid rgba(100,150,255,.1)">
+        <button onclick="pgGenerate()" style="font-family:'JetBrains Mono',monospace;
+          font-size:.65rem;padding:14px 28px;border-radius:4px;cursor:pointer;letter-spacing:.1em;
+          border:1px solid rgba(100,220,180,.5);background:rgba(100,220,180,.14);
+          color:rgba(100,220,180,.95);font-weight:700;white-space:nowrap;
+          box-shadow:0 0 20px rgba(100,220,180,.08);transition:all .15s"
+          onmouseover="this.style.background='rgba(100,220,180,.22)'"
+          onmouseout="this.style.background='rgba(100,220,180,.14)'">
+          🎲 GENERATE
+        </button>
+      </div>
+
+      <!-- Texture Select -->
+      <div style="flex:1;padding:12px 14px">
+        <div class="pg-section-title">TEXTURE SELECT</div>
+        <div style="font-size:.48rem;color:rgba(130,150,200,.45);margin-top:3px">
+          Planet, Atmosphere, normal cloud textures — coming soon
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Procgen CSS ── -->
+<style>
+/* Section titles */
+.pg-section-title {
+  font-size:.52rem;
+  color:rgba(100,220,180,.75);
+  letter-spacing:.1em;
+  margin-bottom:6px;
+  font-family:'Orbitron',sans-serif;
+}
+
+/* Body type buttons */
+.pg-body-btn {
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:4px;cursor:pointer;
+  border:1px solid rgba(100,150,255,.15);
+  background:rgba(10,16,40,.6);
+  transition:all .12s;user-select:none;
+  font-size:.54rem;color:rgba(160,180,220,.7);
+}
+.pg-body-btn:hover { background:rgba(100,150,255,.1); border-color:rgba(100,150,255,.3); }
+.pg-body-btn--on   { background:rgba(100,220,180,.1)!important; border-color:rgba(100,220,180,.45)!important; color:rgba(100,220,180,.95)!important; }
+.pg-body-icon { font-size:.85rem; }
+.pg-body-label{ flex:1; letter-spacing:.05em; }
+.pg-body-check{ font-size:.7rem; min-width:12px; }
+
+/* Frequency rows */
+.pg-freq-row {
+  display:flex;align-items:center;gap:7px;
+  font-size:.52rem;color:rgba(160,180,220,.8);
+}
+.pg-freq-icon  { font-size:.7rem; min-width:14px; }
+.pg-freq-name  { min-width:62px; }
+.pg-freq-slider{ flex:1;height:3px;cursor:pointer; }
+.pg-freq-pct   { min-width:32px;text-align:right;color:rgba(100,220,180,.8);font-size:.5rem; }
+
+/* Fine tuning */
+.pg-tune-row { }
+.pg-tune-label   { font-size:.5rem;color:rgba(140,160,210,.65);margin-bottom:3px;letter-spacing:.03em; }
+.pg-tune-controls{ display:flex;align-items:center;gap:7px; }
+.pg-tune-slider  { flex:1;height:3px;cursor:pointer;accent-color:#64dcb4; }
+.pg-tune-val     { min-width:30px;text-align:right;font-size:.5rem;color:rgba(100,220,180,.85); }
+
+/* Misc options */
+.pg-misc-row {
+  display:flex;align-items:center;gap:8px;cursor:pointer;
+  font-size:.52rem;color:rgba(160,180,220,.8);
+  padding:3px 0;
+}
+.pg-misc-row:hover { color:rgba(200,220,255,.95); }
+
+/* Action buttons */
+.pg-btn {
+  font-family:'JetBrains Mono',monospace;
+  font-size:.55rem;padding:8px 14px;border-radius:4px;cursor:pointer;
+  letter-spacing:.06em;border-width:1px;border-style:solid;transition:all .12s;
+}
+.pg-btn--primary { border-color:rgba(100,220,180,.45);background:rgba(100,220,180,.12);color:rgba(100,220,180,.95);font-weight:600; }
+.pg-btn--primary:hover { background:rgba(100,220,180,.2); }
+.pg-btn--apply   { border-color:rgba(80,140,255,.45);background:rgba(80,140,255,.1);color:rgba(120,180,255,.9); }
+.pg-btn--apply:hover { background:rgba(80,140,255,.2); }
+.pg-btn--danger  { border-color:rgba(255,80,80,.3);background:rgba(255,80,80,.07);color:rgba(255,130,130,.8); }
+.pg-btn--danger:hover { background:rgba(255,80,80,.15); }
+
+/* Responsive mobile layout */
+@media (max-width: 700px) {
+  .pg-top-row    { flex-direction:column; }
+  .pg-bottom-row { flex-direction:column; }
+  .pg-side-panel { width:100%!important;min-width:0!important;border-right:none!important;
+    border-left:none!important;border-bottom:1px solid rgba(100,150,255,.1); }
+  #procgen-modal > div { flex-direction:column; }
+  #procgen-modal > div > div:nth-child(3) { flex-direction:column; }
+}
+</style>
+
 </body>
 
 </html>
