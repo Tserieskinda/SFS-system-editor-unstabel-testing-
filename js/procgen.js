@@ -6,19 +6,19 @@ const AU = 1.496e11;
 
 const PG = {
   types: {
-    star:        { label:'Stars',        icon:'⭐', enabled:true,  weight:20, color:'#ffd060' },
-    planet:      { label:'Planets',      icon:'🌍', enabled:true,  weight:55, color:'#4488ff' },
-    moon:        { label:'Moons',        icon:'🌙', enabled:true,  weight:18, color:'#aaaaaa' },
-    asteroid:    { label:'Asteroids',    icon:'☄️', enabled:false, weight:5,  color:'#886644' },
-    brown_dwarf: { label:'Brown Dwarfs', icon:'🟤', enabled:false, weight:3,  color:'#cc6622' },
-    blackhole:   { label:'Black Holes',  icon:'⚫', enabled:false, weight:2,  color:'#8800ff' },
+    star:        { label:'Stars',        icon:'⭐', enabled:true,  weight:20, color:'#ffd060', eccMax:0.05 },
+    planet:      { label:'Planets',      icon:'🌍', enabled:true,  weight:55, color:'#4488ff', eccMax:0.15 },
+    moon:        { label:'Moons',        icon:'🌙', enabled:true,  weight:18, color:'#aaaaaa', eccMax:0.05 },
+    asteroid:    { label:'Asteroids',    icon:'☄️', enabled:false, weight:5,  color:'#886644', eccMax:0.55 },
+    brown_dwarf: { label:'Brown Dwarfs', icon:'🟤', enabled:false, weight:3,  color:'#cc6622', eccMax:0.10 },
+    blackhole:   { label:'Black Holes',  icon:'⚫', enabled:false, weight:2,  color:'#8800ff', eccMax:0.05 },
   },
   tune: {
-    bodyCount:    { min:2,  max:16,  val:6,    step:1,    label:'Body Count' },
-    orbitMin:     { min:0.1,max:5,   val:0.3,  step:0.1,  label:'Min Orbit (AU)' },
-    orbitMax:     { min:1,  max:60,  val:15,   step:1,    label:'Max Orbit (AU)' },
-    radiusScale:  { min:0.1,max:3,   val:1.0,  step:0.1,  label:'Radius Scale' },
-    eccentricity: { min:0,  max:0.9, val:0.15, step:0.05, label:'Max Eccentricity' },
+    bodyCount:    { min:1,    max:9999, val:6,    step:1,    label:'Body Count' },
+    orbitMin:     { min:0,    max:9999, val:0.3,  step:0.1,  label:'Min Orbit (AU)' },
+    orbitMax:     { min:0.1,  max:9999, val:15,   step:1,    label:'Max Orbit (AU)' },
+    radiusScale:  { min:0.01, max:9999, val:1.0,  step:0.1,  label:'Radius Scale' },
+    eccentricity: { min:0,    max:0.99, val:0.9,  step:0.01, label:'Ecc Ceiling (all types)' },
   },
   misc: {
     addMoons:       true,
@@ -35,9 +35,15 @@ function openProceduralGen() {
   document.getElementById('utils-dropdown').style.display = 'none';
   document.getElementById('procgen-modal').style.display = 'flex';
   pgBuildUI();
-  pgInitCanvas();
+  // rAF x2: first frame triggers layout, second reads correct clientHeight
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    pgInitCanvas();
+    pgDrawCanvas();
+  }));
 }
 function closeProceduralGen() {
+  _pgGenAbort = true;
+  _pgHideLoader();
   document.getElementById('procgen-modal').style.display = 'none';
 }
 
@@ -59,12 +65,14 @@ function pgRenderBodyTypeGrid() {
   const grid = document.getElementById('pg-body-type-grid');
   if (!grid) return;
   grid.innerHTML = Object.entries(PG.types).map(([key, t]) => `
-    <label class="pg-body-btn ${t.enabled?'pg-body-btn--on':''}" data-type="${key}"
-      onclick="pgToggleType('${key}',this)">
-      <span class="pg-body-icon">${t.icon}</span>
-      <span class="pg-body-label">${t.label}</span>
-      <span class="pg-body-check">${t.enabled?'✓':''}</span>
-    </label>`).join('');
+    <div class="pg-body-row">
+      <label class="pg-body-btn ${t.enabled?'pg-body-btn--on':''}" data-type="${key}"
+        onclick="pgToggleType('${key}',this)">
+        <span class="pg-body-icon">${t.icon}</span>
+        <span class="pg-body-label">${t.label}</span>
+        <span class="pg-body-check">${t.enabled?'✓':''}</span>
+      </label>
+    </div>`).join('');
 }
 
 function pgToggleType(key, el) {
@@ -108,22 +116,42 @@ function pgSetWeight(key, val) {
 function pgRenderFineTuning() {
   const container = document.getElementById('pg-fine-tuning');
   if (!container) return;
-  container.innerHTML = Object.entries(PG.tune).map(([key,t]) => `
+
+  const globalInputs = Object.entries(PG.tune).map(([key,t]) => `
     <div>
       <div class="pg-tune-label">${t.label}</div>
       <div class="pg-tune-controls">
-        <input type="range" class="pg-tune-slider"
-          min="${t.min}" max="${t.max}" step="${t.step}" value="${t.val}"
-          oninput="pgSetTune('${key}',this.value)">
-        <span class="pg-tune-val" id="pg-tune-val-${key}">${t.val}</span>
+        <input type="number" class="pg-tune-input"
+          step="${t.step}" value="${t.val}"
+          onchange="pgSetTune('${key}',this.value)" id="pg-tune-input-${key}">
       </div>
     </div>`).join('');
+
+  const eccInputs = Object.entries(PG.types).map(([key,t]) => `
+    <div>
+      <div class="pg-tune-label" style="display:flex;align-items:center;gap:5px">
+        <span>${t.icon}</span><span>${t.label} Ecc</span>
+      </div>
+      <div class="pg-tune-controls">
+        <input type="number" class="pg-tune-input"
+          min="0" max="0.99" step="0.01" value="${t.eccMax}"
+          onchange="pgSetTypeEcc('${key}',this.value)" id="pg-ecc-input-${key}">
+      </div>
+    </div>`).join('');
+
+  container.innerHTML = globalInputs
+    + `<div style="margin-top:4px;padding-top:8px;border-top:1px solid rgba(100,150,255,.12);">
+         <div class="pg-title" style="margin-bottom:8px">ECCENTRICITY BY TYPE</div>
+         <div style="display:flex;flex-direction:column;gap:10px">${eccInputs}</div>
+       </div>`;
+}
+
+function pgSetTypeEcc(key, val) {
+  PG.types[key].eccMax = parseFloat(val) || 0;
 }
 
 function pgSetTune(key, val) {
-  PG.tune[key].val = parseFloat(val);
-  const el = document.getElementById(`pg-tune-val-${key}`);
-  if (el) el.textContent = parseFloat(val).toFixed(val%1===0?0:2);
+  PG.tune[key].val = parseFloat(val) || 0;
 }
 
 function pgRenderMiscOptions() {
@@ -143,10 +171,55 @@ function pgRenderMiscOptions() {
 }
 
 // ── Generation ────────────────────────────────────────────────
+// ── Loading overlay ───────────────────────────────────────────
+function _pgShowLoader(msg, pct) {
+  let ov = document.getElementById('pg-loader-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'pg-loader-overlay';
+    ov.style.cssText = [
+      'position:absolute','top:0','left:0','width:100%','height:100%',
+      'background:rgba(4,8,20,.92)','z-index:9','display:flex',
+      'flex-direction:column','align-items:center','justify-content:center',
+      'gap:14px','pointer-events:all',
+    ].join(';');
+    ov.innerHTML = `
+      <div style="font-family:'Orbitron',sans-serif;font-size:.72rem;letter-spacing:.18em;color:var(--sky2)" id="pg-loader-msg">GENERATING…</div>
+      <div style="width:220px;height:4px;background:rgba(100,150,255,.15);border-radius:2px;overflow:hidden">
+        <div id="pg-loader-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#4488ff,#88ccff);border-radius:2px;transition:width .12s"></div>
+      </div>
+      <div id="pg-loader-sub" style="font-size:.55rem;color:rgba(120,150,210,.5)">0 / 0 bodies</div>`;
+    // Attach to the canvas container (position:relative parent)
+    const cv = document.getElementById('pg-canvas');
+    if (cv && cv.parentElement) {
+      cv.parentElement.style.position = 'relative';
+      cv.parentElement.appendChild(ov);
+    }
+  }
+  ov.style.display = 'flex';
+  const msgEl = document.getElementById('pg-loader-msg');
+  const barEl = document.getElementById('pg-loader-bar');
+  if (msgEl) msgEl.textContent = msg || 'GENERATING…';
+  if (barEl && pct != null) barEl.style.width = Math.min(100, pct) + '%';
+}
+function _pgHideLoader() {
+  const ov = document.getElementById('pg-loader-overlay');
+  if (ov) ov.style.display = 'none';
+}
+function _pgLoaderSub(text) {
+  const el = document.getElementById('pg-loader-sub');
+  if (el) el.textContent = text;
+}
+
+// ── Async chunked generation ──────────────────────────────────
+const _PG_CHUNK = 30;   // bodies per chunk before yielding
+let   _pgGenAbort = false;
+
 function pgGenerate() {
   const enabled = Object.entries(PG.types).filter(([,t])=>t.enabled);
   if (!enabled.length) { pgShowStatus('Enable at least one body type.','warn'); return; }
 
+  _pgGenAbort = false;
   PG.preview.bodies = [];
   PG.preview.center = null;
 
@@ -171,60 +244,172 @@ function pgGenerate() {
   PG.preview.center = center;
   PG.preview.bodies.push(center);
 
-  // Orbiting bodies
-  const count    = PG.tune.bodyCount.val - 1;
+  const count    = Math.max(0, PG.tune.bodyCount.val - 1);
   const orbitMin = PG.tune.orbitMin.val * AU;
   const orbitMax = PG.tune.orbitMax.val * AU;
   const spacing  = (orbitMax - orbitMin) / Math.max(count, 1);
+
+  const starRadius    = center.radius || 34817000;
+  const safeClearance = Math.max(orbitMin, starRadius * 8);
+
   const orbitTypes = enabled.filter(([k])=> k!=='star' || !PG.types.star.enabled);
   const pickPool   = orbitTypes.length ? orbitTypes : enabled;
 
-  for (let i = 0; i < count; i++) {
-    const type   = pgWeightedPick(pickPool.map(([k])=>[k, PG.types[k].weight]));
-    const preset = pgPickPreset(type);
-    if (!preset) continue;
-
-    const sma  = Math.min(orbitMax, orbitMin + spacing*i + spacing*(0.4*Math.random()-0.2));
-    const ecc  = Math.random() * PG.tune.eccentricity.val;
-    const name = NameGen.generate();
-    const radius = (preset.data.BASE_DATA?.radius||600000) * PG.tune.radiusScale.val;
-
-    const body = {
-      name, type, preset, isCenter:false,
-      parent:   centerName,
-      orbitSMA: sma, orbitEcc:ecc, orbitDir: Math.random()>0.1?1:-1,
-      radius, color:PG.types[type]?.color||'#aaaaaa', icon:PG.types[type]?.icon||'🌍',
-      _angle: Math.random()*Math.PI*2,
-      children: [],
-    };
-
-    // Moons
-    if (PG.misc.addMoons && (type==='planet'||type==='gasgiant') && Math.random()>0.5) {
-      const moonPreset = pgPickPreset('moon');
-      if (moonPreset) {
-        const moonCount = Math.floor(Math.random()*3)+1;
-        for (let m=0; m<moonCount; m++) {
-          body.children.push({
-            name: NameGen.generate(), type:'moon',
-            parent: name, preset: moonPreset,
-            orbitSMA: radius*(8+m*6+Math.random()*3),
-            orbitEcc: Math.random()*0.05, orbitDir:1,
-            radius: (moonPreset.data?.BASE_DATA?.radius||300000)*0.3,
-            color:'#999999', icon:'🌙', _angle:Math.random()*Math.PI*2, children:[],
-          });
-        }
-      }
-    }
-
-    PG.preview.bodies.push(body);
-    center.children.push(body);
+  if (count === 0) {
+    pgDrawCanvas();
+    pgShowStatus(`✓ ${PG.preview.bodies.length} bodies ready — click APPLY TO SYSTEM`, 'ok');
+    return;
   }
 
-  pgDrawCanvas();
-  pgShowStatus(`✓ ${PG.preview.bodies.length} bodies ready — click APPLY TO SYSTEM`, 'ok');
+  _pgShowLoader('GENERATING…', 0);
+
+  let i = 0;
+  function _chunk() {
+    if (_pgGenAbort) { _pgHideLoader(); return; }
+    const end = Math.min(i + _PG_CHUNK, count);
+    for (; i < end; i++) {
+      const type   = pgWeightedPick(pickPool.map(([k])=>[k, PG.types[k].weight]));
+      const preset = pgPickPreset(type);
+      if (!preset) continue;
+
+      const baseSma = orbitMin + spacing * i;
+      const jitter  = spacing * (0.4 * Math.random() - 0.2);
+      const sma     = Math.max(safeClearance, Math.min(orbitMax, baseSma + jitter));
+      const typeEccMax = Math.min(PG.types[type]?.eccMax ?? 0.15, PG.tune.eccentricity.val);
+      const ecc    = Math.random() * typeEccMax;
+      const name   = NameGen.generate();
+      const radius = (preset.data.BASE_DATA?.radius||600000) * PG.tune.radiusScale.val;
+
+      const bodyGrav   = preset.data.BASE_DATA?.gravity  || 9.8;
+      const centerGrav = center.preset.data.BASE_DATA?.gravity || 274;
+      const centerR    = center.radius;
+      const massRatio  = (bodyGrav * radius * radius) / (centerGrav * centerR * centerR);
+      const soiRadius  = sma * Math.pow(massRatio, 0.4);
+
+      const body = {
+        name, type, preset, isCenter:false,
+        parent:   centerName,
+        orbitSMA: sma, orbitEcc:ecc, orbitDir: Math.random()>0.1?1:-1,
+        radius, soiRadius,
+        color:PG.types[type]?.color||'#aaaaaa', icon:PG.types[type]?.icon||'🌍',
+        _angle: Math.random()*Math.PI*2,
+        children: [],
+      };
+
+      if (PG.misc.addMoons && (type==='planet'||type==='gasgiant') && Math.random()>0.5) {
+        const moonPreset = pgPickPreset('moon');
+        if (moonPreset) {
+          const moonCount  = Math.floor(Math.random()*3)+1;
+          const moonEccMax = PG.types['moon']?.eccMax ?? 0.05;
+          for (let m=0; m<moonCount; m++) {
+            body.children.push({
+              name: NameGen.generate(), type:'moon',
+              parent: name, preset: moonPreset,
+              orbitSMA: radius*(8+m*6+Math.random()*3),
+              orbitEcc: Math.random()*moonEccMax, orbitDir:1,
+              radius: (moonPreset.data?.BASE_DATA?.radius||300000)*0.3,
+              color:'#999999', icon:'🌙', _angle:Math.random()*Math.PI*2, children:[],
+            });
+          }
+        }
+      }
+
+      PG.preview.bodies.push(body);
+      center.children.push(body);
+    }
+
+    const pct = Math.round((i / count) * 100);
+    const total = PG.preview.bodies.reduce((s,b)=>s+1+b.children.length,0);
+    _pgLoaderSub(`${total} bodies — ${pct}%`);
+    if (document.getElementById('pg-loader-bar'))
+      document.getElementById('pg-loader-bar').style.width = pct + '%';
+
+    if (i < count) {
+      setTimeout(_chunk, 0);
+    } else {
+      // Compute gap-based SOI multipliers now that all bodies are placed
+      const cGrav = center.preset.data.BASE_DATA?.gravity || 274;
+      const cR    = center.radius;
+      const orbiters = PG.preview.bodies.filter(b => !b.isCenter);
+      _pgComputeSOIMultipliers(orbiters, cGrav, cR);
+      // Moons: compute within each planet's sibling set
+      for (const planet of orbiters) {
+        if (planet.children.length > 0) {
+          const pGrav = planet.preset?.data?.BASE_DATA?.gravity || 9.8;
+          _pgComputeSOIMultipliers(planet.children, pGrav, planet.radius);
+        }
+      }
+
+      _pgHideLoader();
+      pgDrawCanvas();
+      pgShowStatus(`✓ ${PG.preview.bodies.length} bodies ready — click APPLY TO SYSTEM`, 'ok');
+    }
+  }
+  setTimeout(_chunk, 0);
 }
 
-// ── Preset helpers ────────────────────────────────────────────
+// ── SOI multiplier calculation ────────────────────────────────
+// Targets SOI = min(half-gap-to-inner, half-gap-to-outer) × FILL
+// so adjacent SOIs never overlap and the sphere isn't trivially small.
+const _PG_SOI_FILL   = 0.45;   // fraction of half-gap to fill (leaves 10% clearance each side)
+const _PG_SOI_MIN_R  = 4.0;    // SOI must be at least N× body radius
+const _PG_SOI_MAX_R  = 0.45;   // SOI must be at most 45% of SMA (prevents runaway)
+const _PG_SOI_MULT_MIN = 0.05;
+const _PG_SOI_MULT_MAX = 20.0;
+
+/**
+ * Compute and store .soiMultiplier on each body in `list`.
+ * `list` is an array of bodies that share the same parent (sorted by orbitSMA).
+ * `parentGrav` and `parentR` are the parent's BASE_DATA values.
+ */
+function _pgComputeSOIMultipliers(list, parentGrav, parentR) {
+  if (!list.length) return;
+
+  // Sort by SMA ascending (in-place copy to avoid mutating the original order)
+  const sorted = list.slice().sort((a, b) => a.orbitSMA - b.orbitSMA);
+  const n = sorted.length;
+
+  for (let i = 0; i < n; i++) {
+    const body = sorted[i];
+    const sma  = body.orbitSMA;
+    if (!sma || sma <= 0) { body.soiMultiplier = 1.0; continue; }
+
+    // Half-gaps to neighbours (use periapsis/apoapsis edges for safety)
+    const innerBody = sorted[i - 1];
+    const outerBody = sorted[i + 1];
+
+    // Apoapsis of inner neighbour = sma_inner × (1 + ecc_inner)
+    const innerEdge = innerBody
+      ? innerBody.orbitSMA * (1 + (innerBody.orbitEcc || 0))
+      : 0;
+    // Periapsis of outer neighbour = sma_outer × (1 - ecc_outer)
+    const outerEdge = outerBody
+      ? outerBody.orbitSMA * (1 - (outerBody.orbitEcc || 0))
+      : sma * 2;   // no outer neighbour → generous bound
+
+    // This body's own periapsis/apoapsis
+    const periapsis = sma * (1 - (body.orbitEcc || 0));
+    const apoapsis  = sma * (1 + (body.orbitEcc || 0));
+
+    const innerGap = Math.max(0, periapsis - innerEdge);
+    const outerGap = Math.max(0, outerEdge - apoapsis);
+
+    // Target SOI in metres
+    const gapSOI = Math.min(innerGap, outerGap) * _PG_SOI_FILL;
+    // Clamp: must be >= MIN_R × bodyRadius and <= MAX_R × SMA
+    const minSOI = body.radius * _PG_SOI_MIN_R;
+    const maxSOI = sma * _PG_SOI_MAX_R;
+    const targetSOI = Math.max(minSOI, Math.min(maxSOI, gapSOI > 0 ? gapSOI : minSOI));
+
+    // Raw Hill sphere (multiplierSOI = 1 case)
+    const bodyGrav   = body.preset?.data?.BASE_DATA?.gravity || 9.8;
+    const massRatio  = (bodyGrav * body.radius * body.radius) / (parentGrav * parentR * parentR);
+    const rawHill    = sma * Math.pow(Math.max(massRatio, 1e-12), 0.4);
+
+    const mult = rawHill > 0 ? targetSOI / rawHill : 1.0;
+    body.soiMultiplier = Math.max(_PG_SOI_MULT_MIN, Math.min(_PG_SOI_MULT_MAX, mult));
+  }
+}
 function pgPickPreset(type) {
   if (typeof buildAllPresets !== 'function') return null;
   const all = buildAllPresets();
@@ -292,8 +477,7 @@ function pgImportReplace() {
   bodies[c.name] = { data:cd, preset:cm.id||'star', isCenter:true,
     color:cm.color||c.color, glow:cm.glow||c.color, icon:cm.icon||c.icon };
 
-  _pgAddOrbiters(c.name);
-  _pgFinish(c.name);
+  _pgAddOrbiters(c.name, () => _pgFinish(c.name));
 }
 
 function pgImportOrbit() {
@@ -310,13 +494,12 @@ function pgImportOrbit() {
   const cd = JSON.parse(JSON.stringify(c.preset.data));
   // Give center an orbit around chosen parent
   const parentR = bodies[parentName]?.data?.BASE_DATA?.radius || 34817000;
-  cd.ORBIT_DATA  = { parent:parentName, semiMajorAxis:parentR*80, SMA:parentR*80, E:0.05, direction:1 };
+  cd.ORBIT_DATA  = { parent:parentName, semiMajorAxis:parentR*80, eccentricity:0.05, argumentOfPeriapsis:0, direction:1 };
   const cm = typeof inferPresetMeta==='function' ? inferPresetMeta(c.name,cd) : {};
   bodies[c.name] = { data:cd, preset:cm.id||'star', isCenter:false,
     color:cm.color||c.color, glow:cm.glow||c.color, icon:cm.icon||c.icon };
 
-  _pgAddOrbiters(c.name);
-  _pgFinish(null);
+  _pgAddOrbiters(c.name, () => _pgFinish(null));
 }
 
 function pgImportMerge() {
@@ -331,18 +514,43 @@ function pgImportMerge() {
   if (!existingCenter) { pgImportReplace(); return; }
 
   // Add generated bodies orbiting the existing center
-  _pgAddOrbiters(existingCenter);
-  _pgFinish(existingCenter);
+  _pgAddOrbiters(existingCenter, () => _pgFinish(existingCenter));
 }
 
-function _pgAddOrbiters(parentName) {
-  for (const body of PG.preview.bodies) {
-    if (body.isCenter) continue;
-    _pgAddBody(body, parentName);
-    for (const moon of body.children) {
-      _pgAddBody(moon, body.name);
+function _pgAddOrbiters(parentName, onDone) {
+  const orbiters = PG.preview.bodies.filter(b => !b.isCenter);
+  if (!orbiters.length) { if (onDone) onDone(); return; }
+
+  // Flatten to a work list: [body, parentName] pairs
+  const work = [];
+  for (const body of orbiters) {
+    work.push([body, parentName]);
+    for (const moon of body.children) work.push([moon, body.name]);
+  }
+
+  _pgShowLoader('APPLYING…', 0);
+  let idx = 0;
+  const total = work.length;
+
+  function _applyChunk() {
+    const end = Math.min(idx + _PG_CHUNK, total);
+    for (; idx < end; idx++) {
+      const [body, parent] = work[idx];
+      _pgAddBody(body, parent);
+    }
+    const pct = Math.round((idx / total) * 100);
+    const bar = document.getElementById('pg-loader-bar');
+    if (bar) bar.style.width = pct + '%';
+    _pgLoaderSub(`${idx} / ${total} bodies`);
+
+    if (idx < total) {
+      setTimeout(_applyChunk, 0);
+    } else {
+      _pgHideLoader();
+      if (onDone) onDone();
     }
   }
+  setTimeout(_applyChunk, 0);
 }
 
 function _pgAddBody(body, parentName) {
@@ -351,9 +559,16 @@ function _pgAddBody(body, parentName) {
 
   const bd = JSON.parse(JSON.stringify(body.preset?.data||{}));
   if (bd.BASE_DATA) bd.BASE_DATA.radius = body.radius;
+
+  // Use gap-based SOI multiplier computed during generation.
+  // Fall back to raw Hill sphere (mult=1) if not available.
+  let multiplierSOI = body.soiMultiplier ?? 1.0;
+
   bd.ORBIT_DATA = {
-    parent: parentName, semiMajorAxis:body.orbitSMA, SMA:body.orbitSMA,
-    E:body.orbitEcc||0, direction:body.orbitDir||1,
+    parent: parentName, semiMajorAxis:body.orbitSMA,
+    eccentricity:body.orbitEcc||0, argumentOfPeriapsis:0,
+    direction:body.orbitDir||1,
+    multiplierSOI,
   };
   if (!PG.misc.addRings)       delete bd.RINGS_DATA;
   if (!PG.misc.addAtmospheres) { delete bd.ATMOSPHERE_PHYSICS_DATA; delete bd.ATMOSPHERE_VISUALS_DATA; }
@@ -374,6 +589,8 @@ function _pgFinish(selectName) {
 }
 
 function pgClear() {
+  _pgGenAbort = true;
+  _pgHideLoader();
   PG.preview.bodies=[];PG.preview.center=null;
   PG.canvas.selected=null;PG.canvas.hovered=null;
   pgDrawCanvas(); pgShowStatus('','');
@@ -416,8 +633,17 @@ function pgInitCanvas() {
     cv.addEventListener('touchmove', e => {
       e.preventDefault();
       if (e.touches.length===2&&_pinchD) {
-        const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-        s.zoom=Math.max(0.05,Math.min(8,s.zoom*(d/_pinchD))); _pinchD=d; pgDrawCanvas();
+        const t0=e.touches[0], t1=e.touches[1];
+        const d=Math.hypot(t0.clientX-t1.clientX, t0.clientY-t1.clientY);
+        const rect=cv.getBoundingClientRect();
+        // midpoint in canvas-local coords
+        const mx=((t0.clientX+t1.clientX)/2 - rect.left  - rect.width /2 - s.pan.x) / s.zoom;
+        const my=((t0.clientY+t1.clientY)/2 - rect.top   - rect.height/2 - s.pan.y) / s.zoom;
+        const nz=Math.max(0.05,Math.min(8,s.zoom*(d/_pinchD)));
+        // pan so the midpoint stays fixed on screen
+        s.pan.x -= mx*(nz-s.zoom);
+        s.pan.y -= my*(nz-s.zoom);
+        s.zoom=nz; _pinchD=d; pgDrawCanvas();
       } else if (e.touches.length===1&&s.drag) {
         s.pan.x+=e.touches[0].clientX-s.lastP.x; s.pan.y+=e.touches[0].clientY-s.lastP.y;
         s.lastP={x:e.touches[0].clientX,y:e.touches[0].clientY}; pgDrawCanvas();
@@ -470,24 +696,59 @@ function pgDrawCanvas() {
     ctx.restore(); return;
   }
 
+  // For very large systems, skip expensive per-body draws to avoid jank
+  const totalBodies = PG.preview.bodies.reduce((acc,b)=>acc+1+b.children.length,0);
+  const DRAW_LIMIT  = 300;
+
   ctx.save();
   ctx.translate(W/2+s.pan.x*dpr, H/2+s.pan.y*dpr);
   ctx.scale(s.zoom*dpr, s.zoom*dpr);
 
-  // Orbits
-  for (const b of PG.preview.bodies) {
-    if (!b.isCenter) _pgOrbit(ctx,b,null);
-    for (const m of b.children) _pgOrbit(ctx,m,b);
-  }
-  // Bodies
-  for (const b of PG.preview.bodies) {
-    _pgBody(ctx,b,null,s,dpr);
-    for (const m of b.children) _pgBody(ctx,m,b,s,dpr);
+  if (totalBodies <= DRAW_LIMIT) {
+    // Full render
+    for (const b of PG.preview.bodies) {
+      if (!b.isCenter) _pgOrbit(ctx,b,null);
+      for (const m of b.children) _pgOrbit(ctx,m,b);
+    }
+    for (const b of PG.preview.bodies) {
+      _pgBody(ctx,b,null,s,dpr);
+      for (const m of b.children) _pgBody(ctx,m,b,s,dpr);
+    }
+  } else {
+    // Simplified render: orbits only, dots for bodies
+    for (const b of PG.preview.bodies) {
+      if (!b.isCenter) _pgOrbit(ctx,b,null);
+    }
+    for (const b of PG.preview.bodies) {
+      const r = Math.max(2, Math.min(4, b.radius / 3e7));
+      ctx.beginPath();
+      ctx.arc(b._sx||0, b._sy||0, r, 0, Math.PI*2);
+      ctx.fillStyle = b.color || '#aaaaff';
+      ctx.fill();
+      // Store position for hit-testing (fast layout)
+      const ang  = b._angle || 0;
+      const a    = b.orbitSMA || 0;
+      const ecc2 = Math.min(b.orbitEcc || 0, 0.999);
+      const bAx  = a * Math.sqrt(1 - ecc2 * ecc2);
+      const c2   = a * ecc2;
+      b._sx = c2 + a * Math.cos(ang); b._sy = bAx * Math.sin(ang);
+      b._sr = r;
+    }
   }
   ctx.restore();
 
   if (s.hovered) _pgTooltip(ctx,s.hovered,W,H,dpr);
   _pgLegend(ctx,W,H,dpr);
+
+  // Show total count overlay for large systems
+  if (totalBodies > DRAW_LIMIT) {
+    ctx.save();
+    ctx.font = `${Math.round(10*dpr)}px 'JetBrains Mono',monospace`;
+    ctx.fillStyle = 'rgba(100,160,255,.5)';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText(`${totalBodies} bodies (simplified view)`, W - 8*dpr, 8*dpr);
+    ctx.restore();
+  }
 }
 
 function _pgStarfield(ctx,W,H) {
@@ -520,20 +781,41 @@ function _pgGrid(ctx,W,H,s,dpr) {
 
 function _pgBodyPos(body, parent) {
   if (body.isCenter) return {x:0,y:0};
-  const r=(body.orbitSMA/AU)*AU_PX;
-  let ox=0,oy=0;
-  if (parent&&!parent.isCenter) { ox=(parent.orbitSMA/AU)*AU_PX*Math.cos(parent._angle||0); oy=(parent.orbitSMA/AU)*AU_PX*Math.sin(parent._angle||0); }
-  return {x:ox+r*Math.cos(body._angle||0), y:oy+r*Math.sin(body._angle||0)};
+  const a   = (body.orbitSMA / AU) * AU_PX;
+  const ecc = Math.min(body.orbitEcc || 0, 0.999);
+  const b   = a * Math.sqrt(1 - ecc * ecc);
+  const c   = a * ecc;
+  const ang = body._angle || 0;
+  // Position on ellipse: x from focus = c + a*cos(θ) - c = a*cos(θ) relative to focus; using parametric form
+  let ox = 0, oy = 0;
+  if (parent && !parent.isCenter) {
+    ox = (parent.orbitSMA / AU) * AU_PX * Math.cos(parent._angle || 0);
+    oy = (parent.orbitSMA / AU) * AU_PX * Math.sin(parent._angle || 0);
+  }
+  // Parametric ellipse: centre offset by c, so x = c + a*cos, y = b*sin
+  return { x: ox + c + a * Math.cos(ang), y: oy + b * Math.sin(ang) };
 }
 
 function _pgOrbit(ctx,body,parent) {
-  const r=(body.orbitSMA/AU)*AU_PX;
-  let ox=0,oy=0;
-  if (parent&&!parent.isCenter) { ox=(parent.orbitSMA/AU)*AU_PX*Math.cos(parent._angle||0); oy=(parent.orbitSMA/AU)*AU_PX*Math.sin(parent._angle||0); }
+  const a   = (body.orbitSMA / AU) * AU_PX;
+  const ecc = Math.min(body.orbitEcc || 0, 0.999);
+  const b   = a * Math.sqrt(1 - ecc * ecc);
+  const c   = a * ecc;   // focus offset from ellipse centre
+
+  // Ellipse centre is shifted +c from the focus (star at origin)
+  let ox = c, oy = 0;
+  if (parent && !parent.isCenter) {
+    ox += (parent.orbitSMA / AU) * AU_PX * Math.cos(parent._angle || 0);
+    oy += (parent.orbitSMA / AU) * AU_PX * Math.sin(parent._angle || 0);
+  }
+
   ctx.save();
-  ctx.strokeStyle=parent?'rgba(80,120,180,.15)':'rgba(80,140,255,.22)';
-  ctx.lineWidth=parent?0.5:1; ctx.setLineDash(parent?[2,5]:[]);
-  ctx.beginPath(); ctx.arc(ox,oy,r,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle = parent ? 'rgba(80,120,180,.15)' : 'rgba(80,140,255,.22)';
+  ctx.lineWidth   = parent ? 0.5 : 1;
+  ctx.setLineDash(parent ? [2, 5] : []);
+  ctx.beginPath();
+  ctx.ellipse(ox, oy, a, b, 0, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.setLineDash([]); ctx.restore();
 }
 

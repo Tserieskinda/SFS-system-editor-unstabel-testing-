@@ -4268,6 +4268,7 @@ document.addEventListener('keydown', function(e){
   color:rgba(120,140,190,.5);
   margin-top:3px;
 }
+.pg-body-row { display:flex;flex-direction:column;gap:3px; }
 .pg-body-btn {
   display:flex;align-items:center;gap:9px;
   padding:8px 11px;border-radius:5px;cursor:pointer;
@@ -4293,8 +4294,15 @@ document.addEventListener('keydown', function(e){
 
 .pg-tune-label   { font-size:.58rem;color:rgba(140,160,210,.7);margin-bottom:4px;letter-spacing:.03em; }
 .pg-tune-controls{ display:flex;align-items:center;gap:8px; }
-.pg-tune-slider  { flex:1;height:4px;cursor:pointer;accent-color:#64dcb4; }
-.pg-tune-val     { min-width:36px;text-align:right;font-size:.6rem;color:rgba(100,220,180,.9);font-weight:700; }
+.pg-tune-input   {
+  flex:1;background:rgba(10,16,40,.8);border:1px solid rgba(100,150,255,.25);
+  border-radius:3px;color:rgba(100,220,180,.95);font-family:'JetBrains Mono',monospace;
+  font-size:.65rem;padding:5px 8px;width:100%;box-sizing:border-box;
+  -moz-appearance:textfield;
+}
+.pg-tune-input::-webkit-outer-spin-button,
+.pg-tune-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.pg-tune-input:focus { outline:none;border-color:rgba(100,220,180,.5); }
 
 .pg-misc-row {
   display:flex;align-items:center;gap:9px;cursor:pointer;
@@ -4315,11 +4323,57 @@ document.addEventListener('keydown', function(e){
 .pg-btn--danger:hover { background:rgba(255,80,80,.16); }
 
 @media (max-width:700px) {
-  #procgen-modal > div > div:nth-child(2) { flex-direction:column; }
-  #procgen-modal > div > div:nth-child(3) { flex-direction:column; }
-  #procgen-modal > div > div:nth-child(3) > div:first-child,
-  #procgen-modal > div > div:nth-child(3) > div:last-child { width:100%!important;border:none!important; }
-  #procgen-modal > div > div:nth-child(4) { flex-direction:column; }
+  /* Inner container: single scrollable column, no clipping */
+  #procgen-modal > div {
+    display: block !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    height: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Every direct child section stacks naturally — no flex tricks */
+  #procgen-modal > div > div {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* Top strip: TYPE FREQUENCIES + OPTIONS — each sub-panel full width */
+  #procgen-modal > div > div:nth-child(2) > div {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(100,150,255,.1);
+  }
+
+  /* Middle section: Body Select | Map | Fine Tuning — stack vertically */
+  #procgen-modal > div > div:nth-child(3) > div {
+    width: 100% !important;
+    border-right: none !important;
+    border-left: none !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Map column: fixed height so canvas renders */
+  #procgen-modal > div > div:nth-child(3) > div:nth-child(2) {
+    display: flex !important;
+    flex-direction: column;
+    height: 420px;
+  }
+  #procgen-modal > div > div:nth-child(3) > div:nth-child(2) > div:nth-child(2) {
+    flex: 1;
+    min-height: 0;
+  }
+  #pg-canvas { height: 100% !important; }
+
+  /* Bottom strip: stack vertically */
+  #procgen-modal > div > div:nth-child(4) > div {
+    width: 100% !important;
+    border-right: none !important;
+    text-align: center;
+  }
 }
 </style>
 
