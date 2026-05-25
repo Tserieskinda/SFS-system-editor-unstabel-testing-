@@ -64,7 +64,6 @@ function closeProceduralGen() {
   _pgGenAbort = true;
   _pgHideLoader();
   document.getElementById('procgen-modal').style.display = 'none';
-  document.getElementById('pg-panel')?.classList.remove('open');
 }
 
 // pgTogglePanel removed — panel is always visible inside the sidebar
