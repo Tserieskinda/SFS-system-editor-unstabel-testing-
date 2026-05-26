@@ -222,11 +222,35 @@ function toggleEnvDropdown(){
 function toggleFrontClouds(){ toggleEnvFlag('fclouds'); }
 function toggleSOI(){ toggleEnvFlag('soi'); }
 
-// ── SOI calculation (mirrors SFS game logic) ──
-// Formula: SOI = effectiveSMA × (mass_body / mass_parent)^0.4 × multiplierSOI
-// effectiveSMA = rawSMA × smaDifficultyScale[difficulty], default Normal=1, Hard=2, Realistic=20.
-// Files store the Normal-mode SMA; the game scales up for harder difficulties.
-// multiplierSOI is the raw value from ORBIT_DATA — no additional scaling.
+// ── SOI calculation (mirrors SFS game logic exactly) ──
+// Source: Kepler.GetSphereOfInfluence, Difficulty.ScalePlanetData, Planet.SetupInteractions
+//
+// Pipeline (all difficulty scaling happens BEFORE the formula):
+//   1. radius      *= radiusDifficultyScale[diff]  (default Normal=1, Hard=2, Realistic=20)
+//   2. gravity     *= gravityDifficultyScale[diff]  (default 1.0 — rarely overridden)
+//   3. mass         = gravity × radius²             (Kepler.GetMass)
+//   4. sma         *= smaDifficultyScale[diff]      (default Normal=1, Hard=2, Realistic=20)
+//   5. multiplierSOI *= soiDifficultyScale[diff]    (default 1.0 — rarely overridden)
+//   6. SOI          = sma × (mass_body/mass_parent)^0.4 × multiplierSOI
+//
+// Bodies with no ORBIT_DATA parent get SOI = Infinity (system center).
+// Mirrors Difficulty.GravityScale() — default is 1.0, only overridden if gravityDifficultyScale is set.
+function _getGravityDiffMult(bd){
+  const s = bd?.gravityDifficultyScale;
+  if(s && s[viewDiffKey] != null) return s[viewDiffKey];
+  return 1.0;
+}
+
+// Derives difficulty-scaled mass for a body, mirroring SFS:
+//   mass = (gravity × gravityScale) × (radius × radiusScale)²
+// Barycenters have gravity=0 — fall back to surrogate 5.0 so Hill sphere remains computable.
+function _effectiveMass(bd){
+  if(!bd) return 5;
+  const r = (bd.radius  || 0) * getRadiusDifficultyMult(bd);
+  const g = ((bd.gravity || 0) || 5) * _getGravityDiffMult(bd);
+  return g * r * r;
+}
+
 function computeSOI_m(name){
   const b = bodies[name];
   const od = b?.data?.ORBIT_DATA;
@@ -234,25 +258,26 @@ function computeSOI_m(name){
   const parent = bodies[od.parent];
   if(!parent) return null;
 
-  const bd  = b.data.BASE_DATA   || {};
+  const bd  = b.data.BASE_DATA      || {};
   const pbd = parent.data.BASE_DATA || {};
 
-  // Barycenters have gravity=0.0 in the JSON which breaks SOI math.
-  // Use a small surrogate value (5.0) so the Hill sphere is still computable.
-  const mass_b = ((bd.gravity  || 0) || 5) * Math.pow(bd.radius  || 1, 2);
-  const mass_p = ((pbd.gravity || 0) || 5) * Math.pow(pbd.radius || 1, 2);
+  // Difficulty-scaled masses (mirrors Planet.cs: mass = Kepler.GetMass(gravity, radius))
+  const mass_b = _effectiveMass(bd);
+  const mass_p = _effectiveMass(pbd);
   if(mass_b <= 0 || mass_p <= 0) return null;
 
+  // Difficulty-scaled SMA (mirrors Difficulty.SmaScale applied before SOI computation)
   const sma_eff = effectiveSMA(od);
   if(sma_eff <= 0) return null;
 
-  const soiMult = od.multiplierSOI ?? 1.0;
-  const rawSOI  = sma_eff * Math.pow(mass_b / mass_p, 0.4) * soiMult;
-
-  // Apply soiDifficultyScale (game multiplies final SOI by this per-difficulty factor)
+  // multiplierSOI is scaled by soiDifficultyScale[difficulty] then applied to the formula
+  // (mirrors Difficulty.ScalePlanetData: planet.orbit.multiplierSOI *= SoiScale(planet))
   const sds      = od.soiDifficultyScale || {};
-  const soiScale = (sds[viewDiffKey] != null) ? sds[viewDiffKey] : 1.0;
-  return rawSOI * soiScale;
+  const soiDiff  = (sds[viewDiffKey] != null) ? sds[viewDiffKey] : 1.0;
+  const soiMult  = (od.multiplierSOI ?? 1.0) * soiDiff;
+
+  // Core formula: SOI = sma × (mass_body / mass_parent)^0.4 × multiplierSOI
+  return sma_eff * Math.pow(mass_b / mass_p, 0.4) * soiMult;
 }
 
 function _fmtSOI_m(m){

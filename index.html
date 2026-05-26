@@ -4017,16 +4017,31 @@ document.addEventListener('keydown', function(e){
 
             <div>
               <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:block;margin-bottom:4px">
+                V SHIFT <span id="hmt-vshift-val" style="color:rgba(180,210,255,.8)">0</span>
+                <span style="color:rgba(150,160,200,.35);font-size:.46rem;margin-left:4px">rows from top</span>
+              </label>
+              <div style="display:flex;align-items:center;gap:6px">
+                <input type="range" id="hmt-vshift" min="-256" max="256" value="0" step="1"
+                  style="flex:1;accent-color:#64dcb4;min-height:20px" oninput="hmtUpdate()">
+                <button onclick="document.getElementById('hmt-vshift').value=0;hmtUpdate()"
+                  style="background:transparent;border:1px solid rgba(90,90,112,.3);color:rgba(150,150,180,.6);
+                  font-family:'JetBrains Mono',monospace;font-size:.48rem;padding:2px 7px;min-height:22px;cursor:pointer;border-radius:2px">↺</button>
+              </div>
+            </div>
+
+            <div>
+              <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:block;margin-bottom:4px">
                 OUTPUT WIDTH (COLUMNS)
               </label>
-              <select id="hmt-width" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:.6rem;
+              <input type="number" id="hmt-width" value="1024" min="1" step="1"
+                style="width:100%;font-family:'JetBrains Mono',monospace;font-size:.6rem;
                 background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
-                border-radius:3px;padding:6px 8px;min-height:32px" onchange="hmtUpdate()">
-                <option value="256">256 (small)</option>
-                <option value="512">512 (standard)</option>
-                <option value="1024" selected>1024 (high detail)</option>
-                <option value="2048">2048 (ultra)</option>
-              </select>
+                border-radius:3px;padding:6px 10px;outline:none;min-height:32px;box-sizing:border-box"
+                oninput="hmtOnWidthInput()">
+              <div id="hmt-width-warn" style="display:none;font-family:'JetBrains Mono',monospace;font-size:.47rem;
+                color:rgba(255,180,60,.8);margin-top:4px;line-height:1.4">
+                ⚠ &gt;4K may cause lag or browser tab crash
+              </div>
             </div>
 
             <div style="display:flex;gap:12px;align-items:center">

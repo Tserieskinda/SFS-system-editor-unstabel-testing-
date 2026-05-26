@@ -359,9 +359,11 @@ function closeHeightmapTools() {
   document.getElementById('hmt-modal').style.display = 'none';
 }
 
-// Close on backdrop click
-document.getElementById('hmt-modal').addEventListener('mousedown', function(e){
-  if(e.target === this) closeHeightmapTools();
+// Close on backdrop click — deferred so #hmt-modal exists (it's declared after this script tag)
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('hmt-modal').addEventListener('mousedown', function(e){
+    if(e.target === this) closeHeightmapTools();
+  });
 });
 
 function hmtSetTab(tab) {
@@ -520,6 +522,13 @@ function _hmtLatAtCol(i, outW) {
 }
 
 // ── Main update ───────────────────────────────────────────────
+function hmtOnWidthInput() {
+  const warn = document.getElementById('hmt-width-warn');
+  const w = parseInt(document.getElementById('hmt-width').value) || 0;
+  if(warn) warn.style.display = (w > 4096) ? 'block' : 'none';
+  hmtUpdate();
+}
+
 function hmtUpdate() {
   if(!_hmtBmpPx) return;
 
@@ -527,18 +536,24 @@ function hmtUpdate() {
   const scale     = parseFloat(document.getElementById('hmt-scale').value);
   const smooth    = parseInt(document.getElementById('hmt-smooth').value);
   const invert    = document.getElementById('hmt-invert').checked;
-  const outW      = parseInt(document.getElementById('hmt-width').value);
+  const outW      = Math.max(1, parseInt(document.getElementById('hmt-width').value) || 1024);
+  const vshift    = parseInt(document.getElementById('hmt-vshift').value) || 0;
 
   // Update labels
   document.getElementById('hmt-lon-val').textContent    = Math.round(lonOff * 360) + '°';
   document.getElementById('hmt-scale-val').textContent  = scale.toFixed(2) + '×';
   document.getElementById('hmt-smooth-val').textContent = smooth;
+  document.getElementById('hmt-vshift-val').textContent = vshift;
+  // Keep lag warning in sync when hmtUpdate is called from other paths
+  const warn = document.getElementById('hmt-width-warn');
+  if(warn) warn.style.display = (outW > 4096) ? 'block' : 'none';
 
   const raw = new Float32Array(outW);
   for(let i = 0; i < outW; i++) {
-    // Per-column latitude from breakpoint path
+    // Per-column latitude from breakpoint path, offset by V shift (clamped to image bounds)
     const latFrac = _hmtLatAtCol(i, outW);
-    const rowF  = latFrac * (_hmtBmpH - 1);
+    const rowFBase = latFrac * (_hmtBmpH - 1) + vshift;
+    const rowF  = Math.max(0, Math.min(_hmtBmpH - 1, rowFBase));
     const row0  = Math.floor(rowF);
     const row1  = Math.min(row0 + 1, _hmtBmpH - 1);
     const rowT  = rowF - row0;
@@ -704,6 +719,8 @@ function hmtDrawProfile() {
   ctx.setLineDash([]);
 }
 
+const _HMT_CHUNK = 512;    // columns per ImageData chunk — keeps memory bounded for 8K outputs
+
 // ── Build the SFS heightmap canvas ───────────────────────────
 function _hmtBuildCanvas() {
   if(!_hmtProfile) return null;
@@ -712,18 +729,24 @@ function _hmtBuildCanvas() {
   const outC = document.createElement('canvas');
   outC.width = outW; outC.height = outH;
   const ctx  = outC.getContext('2d');
-  const imgd = ctx.createImageData(outW, outH);
-  const d    = imgd.data;
-  for(let x = 0; x < outW; x++) {
-    const frac = _hmtProfile[outW - x - 1];
-    const cutY = Math.round(outH * (1 - frac));
-    for(let y = 0; y < outH; y++) {
-      const idx = (y * outW + x) * 4;
-      d[idx] = d[idx+1] = d[idx+2] = 0;
-      d[idx+3] = y >= cutY ? 255 : 0;
+
+  // Process in column chunks so 8K outputs don't exceed ImageData memory limits
+  for(let chunkStart = 0; chunkStart < outW; chunkStart += _HMT_CHUNK) {
+    const chunkW = Math.min(_HMT_CHUNK, outW - chunkStart);
+    const imgd   = ctx.createImageData(chunkW, outH);
+    const d      = imgd.data;
+    for(let ci = 0; ci < chunkW; ci++) {
+      const x    = chunkStart + ci;
+      const frac = _hmtProfile[outW - x - 1];
+      const cutY = Math.round(outH * (1 - frac));
+      for(let y = 0; y < outH; y++) {
+        const idx = (y * chunkW + ci) * 4;
+        d[idx] = d[idx+1] = d[idx+2] = 0;
+        d[idx+3] = y >= cutY ? 255 : 0;
+      }
     }
+    ctx.putImageData(imgd, chunkStart, 0);
   }
-  ctx.putImageData(imgd, 0, 0);
   return outC;
 }
 
