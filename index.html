@@ -4287,7 +4287,7 @@ document.addEventListener('keydown', function(e){
     <!-- Tab: Options -->
     <div class="pg-tab-panel" id="pg-tabp-options">
       <div class="pg-section-title">OPTIONS</div>
-      <div class="pg-hint">Moons, rings, atmospheres</div>
+      <div class="pg-hint">Moons, rings, atmospheres, textures</div>
       <div id="pg-misc-options" style="display:flex;flex-direction:column;gap:10px;margin-top:12px"></div>
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(100,150,255,.1)">
         <div class="pg-section-title" style="margin-bottom:8px">COMING SOON</div>
@@ -4421,6 +4421,9 @@ document.addEventListener('keydown', function(e){
   scrollbar-width: none;
   -ms-overflow-style: none;
   scroll-behavior: smooth;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 .pg-panel-tabs::-webkit-scrollbar { display: none; }
 .pg-tab {

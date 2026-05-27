@@ -154,7 +154,8 @@ function pgSwitchTab(name, el) {
   if (el) el.classList.add('on');
   const panel = document.getElementById('pg-tabp-' + name);
   if (panel) panel.classList.add('on');
-  if (name === 'presets' && typeof pgPresetsRender === 'function') pgPresetsRender();
+  if (name === 'presets') { if (typeof pgPresetsRender === 'function') pgPresetsRender(); }
+  if (name === 'options')  pgRenderMiscOptions();
 }
 
 document.addEventListener('DOMContentLoaded', () => {});
@@ -398,7 +399,10 @@ function pgRenderMiscOptions() {
       <input type="checkbox" ${PG.misc[o.key]?'checked':''}
         onchange="PG.misc['${o.key}']=this.checked" style="accent-color:#64dcb4;width:18px;height:18px">
       <span>${o.label}</span>
-    </label>`).join('');
+    </label>`).join('')
+    + `<div style="margin-top:6px;padding:7px 10px;border-radius:4px;background:rgba(100,220,180,.05);border:1px solid rgba(100,220,180,.12);font-family:'JetBrains Mono',monospace;font-size:.58rem;color:rgba(100,220,180,.55);letter-spacing:.04em">
+        🔒 Lock texture to surface is always enabled
+      </div>`;
 }
 
 // ── Loading overlay ───────────────────────────────────────────
