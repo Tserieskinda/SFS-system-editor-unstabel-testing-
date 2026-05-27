@@ -1716,81 +1716,19 @@ function pgPresetsAdd() {
 }
 
 // ── Open / close Add-from-System dialog ──────────────────────
+// Merged into the main preset modal (openPresetForSave) — no separate dialog needed.
 function pgShowAddFromBodyDialog() {
-  const dlg = document.getElementById('pg-add-body-dialog');
-  if (!dlg) return;
-
-  _pgAddBodySelected = null;
-  const nameEl = document.getElementById('pg-add-body-name');
-  const errEl  = document.getElementById('pg-add-body-err');
-  if (nameEl) nameEl.value = '';
-  if (errEl)  { errEl.textContent = ''; errEl.style.display = 'none'; }
-
-  const listEl = document.getElementById('pg-add-body-list');
-  if (listEl) {
-    const bKeys = (typeof bodies !== 'undefined') ? Object.keys(bodies) : [];
-    if (!bKeys.length) {
-      listEl.innerHTML = '<div class="pg-preset-empty">No bodies in current system</div>';
-    } else {
-      listEl.innerHTML = bKeys.map(k => {
-        const b    = bodies[k];
-        const meta = (typeof inferPresetMeta === 'function') ? inferPresetMeta(k, b.data || {}) : {};
-        const icon = meta.icon || b.icon || '🌑';
-        const tl   = _idToLabel(meta.id || b.preset || 'body');
-        return `<div class="pg-dialog-body-item" data-bname="${k}"
-            onclick="pgAddBodySelectItem(this,${JSON.stringify(k)})">
-          <span style="font-size:1rem">${icon}</span>
-          <span class="pg-dialog-body-name">${k}${b.isCenter ? ' ★' : ''}</span>
-          <span class="pg-dialog-body-type">${tl}</span>
-        </div>`;
-      }).join('');
-    }
+  if(typeof openPresetForSave === 'function'){
+    openPresetForSave();
+  } else {
+    console.warn('[SFS] openPresetForSave not available');
   }
-
-  dlg.classList.add('open');
 }
 
-function pgAddBodySelectItem(el, bname) {
-  document.querySelectorAll('#pg-add-body-list .pg-dialog-body-item').forEach(i => i.classList.remove('selected'));
-  el.classList.add('selected');
-  _pgAddBodySelected = bname;
-  const nameEl = document.getElementById('pg-add-body-name');
-  if (nameEl && !nameEl.value.trim()) nameEl.value = bname;
-}
-
-function pgCloseAddBodyDialog() {
-  const dlg = document.getElementById('pg-add-body-dialog');
-  if (dlg) dlg.classList.remove('open');
-  _pgAddBodySelected = null;
-}
-
-function pgPresetsAddFromBody() {
-  const nameEl = document.getElementById('pg-add-body-name');
-  const catEl  = document.getElementById('pg-add-body-cat');
-  const errEl  = document.getElementById('pg-add-body-err');
-
-  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
-  if (errEl) errEl.style.display = 'none';
-
-  if (!_pgAddBodySelected)                                          { showErr('Select a body first.'); return; }
-  if (typeof bodies === 'undefined' || !bodies[_pgAddBodySelected]) { showErr('Body not found.'); return; }
-
-  const b    = bodies[_pgAddBodySelected];
-  const name = (nameEl?.value || '').trim() || _pgAddBodySelected;
-  const cat  = catEl?.value || 'custom';
-
-  const bd = JSON.parse(JSON.stringify(b.data || {}));
-  delete bd.ORBIT_DATA;
-
-  const meta     = (typeof inferPresetMeta === 'function') ? inferPresetMeta(_pgAddBodySelected, bd) : {};
-  const typeOver = meta.id || b.preset || '';
-
-  _pgRegisterUserPreset(name, bd, cat, typeOver);
-  pgCloseAddBodyDialog();
-  pgPresetsRender();
-  try { SFX.select(); } catch(_) {}
-  pgShowStatus(`✓ "${name}" added from system to ${cat} pool`, 'ok');
-}
+// Stubs kept for backwards compatibility (old HTML buttons / external calls)
+function pgAddBodySelectItem()   {}
+function pgCloseAddBodyDialog()  {}
+function pgPresetsAddFromBody()  {}
 
 // ── Internal: register into dynamicPresets + tracking map ─────
 function _pgRegisterUserPreset(name, data, category, typeOverride) {
@@ -1818,7 +1756,6 @@ function pgPresetsRemove(name) {
 // ── Close dialogs on backdrop click ───────────────────────────
 document.addEventListener('click', e => {
   if (e.target.id === 'pg-add-json-dialog') pgCloseAddJsonDialog();
-  if (e.target.id === 'pg-add-body-dialog') pgCloseAddBodyDialog();
 });
 
 // ── Hook into pgSwitchTab to refresh when Presets tab opens ───

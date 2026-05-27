@@ -342,9 +342,29 @@
     </div>
     <!-- Grid -->
     <div class="prs-grid" id="prs-grid"></div>
+
+    <!-- Save-as-preset fields (hidden unless in preset-save mode) -->
+    <div id="prs-save-preset-fields" style="display:none;margin-top:14px;padding:12px 14px;border-radius:6px;background:rgba(100,220,180,.05);border:1px solid rgba(100,220,180,.2);display:none">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(100,220,180,.7);letter-spacing:.1em;margin-bottom:10px">SAVE AS PRESET</div>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--ink4);letter-spacing:.06em;margin-bottom:4px">Preset name</div>
+          <input id="prs-save-name" type="text" autocomplete="off" placeholder="Defaults to selected preset name"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.04);border:1px solid var(--rim2);border-radius:4px;color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:.65rem;padding:6px 8px;outline:none">
+        </div>
+        <div style="min-width:110px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--ink4);letter-spacing:.06em;margin-bottom:4px">Category</div>
+          <select id="prs-save-cat" style="width:100%;background:#0a0e1e;border:1px solid var(--rim2);border-radius:4px;color:var(--ink3);font-family:'JetBrains Mono',monospace;font-size:.62rem;padding:6px 5px;cursor:pointer;outline:none">
+            <option value="custom">Custom</option>
+            <option value="vanilla">Vanilla</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-footer" style="margin-top:14px">
       <button class="mf-btn" onclick="closePreset()">CANCEL</button>
-      <label class="mf-btn" style="cursor:pointer;border-color:rgba(48,224,144,.45);color:rgba(48,224,144,.9);background:rgba(48,224,144,.07)" title="Import a body directly from a .txt file">
+      <label class="mf-btn" id="prs-upload-btn" style="cursor:pointer;border-color:rgba(48,224,144,.45);color:rgba(48,224,144,.9);background:rgba(48,224,144,.07)" title="Import a body directly from a .txt file">
         ⬆ UPLOAD TXT
         <input type="file" accept=".txt" style="display:none" onchange="importBodyFromTxt(this)">
       </label>
@@ -4762,36 +4782,5 @@ document.addEventListener('keydown', function(e){
   </div>
 </div>
 
-<!-- ══ Add Preset from System Body dialog ══ -->
-<div id="pg-add-body-dialog" class="pg-dialog-overlay">
-  <div class="pg-dialog-box">
-    <div class="pg-dialog-title">ADD FROM SYSTEM</div>
-    <div class="pg-dialog-sub">Pick a body from your current system to add as a reusable preset</div>
-
-    <div style="margin-bottom:12px">
-      <div class="pg-dialog-label">Save as name</div>
-      <input id="pg-add-body-name" class="pg-dialog-input" placeholder="Preset name (defaults to body name)" autocomplete="off">
-    </div>
-
-    <div style="margin-bottom:12px">
-      <div class="pg-dialog-label">Category</div>
-      <select id="pg-add-body-cat" class="pg-dialog-select">
-        <option value="custom">Custom</option>
-        <option value="vanilla">Vanilla</option>
-      </select>
-    </div>
-
-    <div class="pg-dialog-label">Select body</div>
-    <div id="pg-add-body-list" class="pg-dialog-body-list">
-      <div class="pg-preset-empty">No bodies in current system</div>
-    </div>
-    <div id="pg-add-body-err" class="pg-dialog-err"></div>
-
-    <div class="pg-dialog-actions">
-      <button class="pg-dialog-btn pg-dialog-btn--cancel" onclick="pgCloseAddBodyDialog()">Cancel</button>
-      <button class="pg-dialog-btn pg-dialog-btn--ok" onclick="pgPresetsAddFromBody()">Add Preset</button>
-    </div>
-  </div>
-</div>
 
 </body>
