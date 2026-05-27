@@ -35,10 +35,11 @@ const PG = {
     eccentricity: { min:0,    max:0.99, val:0.9,  step:0.01, label:'Ecc Ceiling (all types)' },
   },
   misc: {
-    addMoons:         true,
-    addRings:         true,
-    addAtmospheres:   true,
-    randomizeTextures: false,
+    addMoons:              true,
+    addRings:              true,
+    addAtmospheres:        true,
+    randomizeTextures:     false,
+    randomizeAtmoTextures: false,
   },
   preview: { bodies:[], center:null },
   canvas:  { pan:{x:0,y:0}, zoom:1, drag:false, lastP:null, hovered:null, selected:null },
@@ -386,10 +387,11 @@ function pgRenderMiscOptions() {
   const container = document.getElementById('pg-misc-options');
   if (!container) return;
   const opts = [
-    { key:'addMoons',          label:'Allow moon generation' },
-    { key:'addRings',          label:'Allow ring systems' },
-    { key:'addAtmospheres',    label:'Allow atmospheres' },
-    { key:'randomizeTextures', label:'Randomize surface textures' },
+    { key:'addMoons',              label:'Allow moon generation' },
+    { key:'addRings',              label:'Allow ring systems' },
+    { key:'addAtmospheres',        label:'Allow atmospheres' },
+    { key:'randomizeTextures',     label:'Randomize surface textures' },
+    { key:'randomizeAtmoTextures', label:'Randomize atmosphere textures' },
   ];
   container.innerHTML = opts.map(o => `
     <label class="pg-misc-row">
@@ -1123,44 +1125,53 @@ const PG_TEX = {
 
   // ── Atmosphere gradient texture pools ────────────────────────────────────
   // Used in ATMOSPHERE_VISUALS_DATA.GRADIENT.texture
+  // Sorted by visual appearance of the gradient (tall vertical strip):
   atmo: {
 
-    // Hot luminous stars (blue-white to orange-red sequence)
-    star: [
-      'Atmo_Sun',        // yellow-white corona
-      'Atmo_A_Type',     // bright white
-      'Atmo_B_Type',     // blue-white
-      'Atmo_F_Type',     // pale yellow
-      'Atmo_G_Type',     // warm yellow (like Sun)
-      'Atmo_K_Type',     // orange
-      'Atmo_M_Type',     // deep orange-red
-      'Atmo_O_Type',     // vivid blue
-      'Atmo_Tstar',      // T-type brown dwarf orange glow
-      'Atmo_Proxima',    // red dwarf glow
-      'Atmo_Saggi',      // Sagittarius-type glow
-      'Atmo_RPBD',       // red/purple exotic
-      'Atmo_White_Dwarf',// faint white-blue glow
+    // Very thin / barely-there haze — faint edge glow only
+    thin_haze: [
+      'Atmo_Europa',     // thin icy blue fringe
+      'Atmo_Enceladus',  // thin white fringe
+      'Atmo_Pluto',      // faint blue-grey wisp
+      'Atmo_Triton',     // thin blue-grey edge
     ],
 
-    // Gas and ice giant hazes
-    gas_giant: [
-      'Atmo_Jupiter',  // orange-tan bands
-      'Atmo_Saturn',   // golden haze
-      'Atmo_Neptune',  // deep blue
-      'Atmo_Uranus',   // pale cyan
-      'Atmo_Titan',    // thick orange haze
-      'Atmo_P9',       // hypothetical Planet 9 cold haze
+    // Cool blue / cyan skies — clear terrestrial or icy worlds
+    blue_sky: [
+      'Atmo_Earth',    // vivid blue sky gradient
+      'Atmo_Neptune',  // deep blue column
+      'Atmo_Uranus',   // pale cyan column
+      'Atmo_B_Type',   // blue-white stellar glow
+      'Atmo_O_Type',   // vivid blue stellar
     ],
 
-    // Terrestrial planet atmospheres
-    terrestrial: [
-      'Atmo_Earth',      // blue sky gradient
-      'Atmo_Mars',       // reddish-tan sky
-      'Atmo_Venus',      // thick yellow haze
-      'Atmo_Europa',     // thin icy blue
-      'Atmo_Enceladus',  // thin white haze
-      'Atmo_Triton',     // thin blue-grey
-      'Atmo_Pluto',      // faint blue haze
+    // Warm orange / tan / brown hazes — dusty or hot worlds
+    warm_haze: [
+      'Atmo_Mars',     // reddish-tan sky gradient
+      'Atmo_Venus',    // thick yellow-tan haze
+      'Atmo_Titan',    // thick orange haze (dense column)
+      'Atmo_Jupiter',  // orange-tan banded
+      'Atmo_Saturn',   // golden tan column
+      'Atmo_K_Type',   // orange stellar glow
+      'Atmo_M_Type',   // deep orange-red glow
+      'Atmo_Tstar',    // T-type brown dwarf orange
+    ],
+
+    // White / neutral / pale gradients — bright stars or neutral hazes
+    pale_neutral: [
+      'Atmo_Sun',        // yellow-white solar corona
+      'Atmo_F_Type',     // pale yellow stellar
+      'Atmo_G_Type',     // warm yellow (sun-like)
+      'Atmo_A_Type',     // bright white stellar
+      'Atmo_White_Dwarf',// faint white-blue
+      'Atmo_P9',         // cold grey-white haze
+    ],
+
+    // Exotic / vivid — red, purple, unusual colours
+    exotic: [
+      'Atmo_RPBD',    // red/purple exotic gradient
+      'Atmo_Saggi',   // Sagittarius deep-field glow
+      'Atmo_Proxima', // red dwarf glow
     ],
   },
 };
@@ -1177,6 +1188,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: ['rocky', 'icy', 'dusty', 'smooth'],
     surfaceTexture_B: ['rocky', 'dusty', 'sandy', 'smooth'],
     terrainTexture_C: ['rocky', 'cratered', 'smooth'],
+    atmoTexture:      ['blue_sky', 'warm_haze', 'thin_haze'],
   },
 
   // Moons — rocky or icy, cratered
@@ -1185,6 +1197,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: ['rocky', 'dusty', 'icy', 'cratered'],
     surfaceTexture_B: ['rocky', 'dusty', 'smooth'],
     terrainTexture_C: ['rocky', 'cratered', 'smooth'],
+    atmoTexture:      ['thin_haze'],
   },
 
   // Gas giants — only swap the base sphere texture; detail tiles not applicable
@@ -1193,6 +1206,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: null,
     surfaceTexture_B: null,
     terrainTexture_C: null,
+    atmoTexture:      ['warm_haze', 'blue_sky', 'pale_neutral'],
   },
 
   // Ringed gas giants — same as gas giant
@@ -1201,6 +1215,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: null,
     surfaceTexture_B: null,
     terrainTexture_C: null,
+    atmoTexture:      ['warm_haze', 'blue_sky', 'pale_neutral'],
   },
 
   // Asteroids — dark/rocky/dusty
@@ -1209,6 +1224,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: ['rocky', 'dusty', 'dark'],
     surfaceTexture_B: ['rocky', 'dusty', 'smooth'],
     terrainTexture_C: ['rocky', 'cratered'],
+    atmoTexture:      null,   // asteroids rarely have atmosphere
   },
 
   // Mercury-like airless rocky bodies
@@ -1217,6 +1233,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: ['rocky', 'dusty', 'cratered'],
     surfaceTexture_B: ['rocky', 'dusty', 'smooth'],
     terrainTexture_C: ['rocky', 'cratered'],
+    atmoTexture:      ['thin_haze'],
   },
 
   // Mars-like — thin-atmo reddish worlds
@@ -1225,6 +1242,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: ['rocky', 'dusty', 'sandy'],
     surfaceTexture_B: ['dusty', 'sandy', 'smooth'],
     terrainTexture_C: ['rocky', 'smooth'],
+    atmoTexture:      ['warm_haze', 'thin_haze'],
   },
 
   // Dwarf planets — icy/rocky mixed
@@ -1233,6 +1251,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: ['rocky', 'icy', 'dusty'],
     surfaceTexture_B: ['rocky', 'icy', 'smooth'],
     terrainTexture_C: ['rocky', 'smooth'],
+    atmoTexture:      ['thin_haze', 'pale_neutral'],
   },
 
   // Black holes — no surface detail
@@ -1241,6 +1260,7 @@ const _PG_TEX_RULES = {
     surfaceTexture_A: null,
     surfaceTexture_B: null,
     terrainTexture_C: null,
+    atmoTexture:      ['exotic', 'pale_neutral'],
   },
 };
 
@@ -1259,29 +1279,38 @@ function _pgRandomizeTextures(bd, bodyType) {
   if (!rules) return;   // no rules for this type — leave untouched
 
   const td = bd?.TERRAIN_DATA?.TERRAIN_TEXTURE_DATA;
-  if (!td) return;
+  if (td) {
+    // planetTexture
+    const pt = _pgPickTex(PG_TEX.planet, rules.planetTexture);
+    if (pt) td.planetTexture = pt;
 
-  // planetTexture
-  const pt = _pgPickTex(PG_TEX.planet, rules.planetTexture);
-  if (pt) td.planetTexture = pt;
+    // surfaceTexture_A
+    if (rules.surfaceTexture_A !== null) {
+      const sa = _pgPickTex(PG_TEX.surface, rules.surfaceTexture_A);
+      if (sa) td.surfaceTexture_A = sa;
+    }
 
-  // surfaceTexture_A
-  if (rules.surfaceTexture_A !== null) {
-    const sa = _pgPickTex(PG_TEX.surface, rules.surfaceTexture_A);
-    if (sa) td.surfaceTexture_A = sa;
+    // surfaceTexture_B
+    if (rules.surfaceTexture_B !== null) {
+      const sb = _pgPickTex(PG_TEX.surface, rules.surfaceTexture_B);
+      if (sb) td.surfaceTexture_B = sb;
+    }
+
+    // terrainTexture_C
+    if (rules.terrainTexture_C !== null) {
+      const tc = _pgPickTex(PG_TEX.surface, rules.terrainTexture_C);
+      if (tc) td.terrainTexture_C = tc;
+    }
   }
+}
 
-  // surfaceTexture_B
-  if (rules.surfaceTexture_B !== null) {
-    const sb = _pgPickTex(PG_TEX.surface, rules.surfaceTexture_B);
-    if (sb) td.surfaceTexture_B = sb;
-  }
-
-  // terrainTexture_C
-  if (rules.terrainTexture_C !== null) {
-    const tc = _pgPickTex(PG_TEX.surface, rules.terrainTexture_C);
-    if (tc) td.terrainTexture_C = tc;
-  }
+// Randomize only the atmosphere gradient texture.
+function _pgRandomizeAtmoTexture(bd, bodyType) {
+  const rules = _PG_TEX_RULES[bodyType];
+  if (!rules || rules.atmoTexture === null) return;
+  if (!bd?.ATMOSPHERE_VISUALS_DATA?.GRADIENT) return;
+  const at = _pgPickTex(PG_TEX.atmo, rules.atmoTexture);
+  if (at) bd.ATMOSPHERE_VISUALS_DATA.GRADIENT.texture = at;
 }
 
 function _pgAddBody(body, parentName) {
@@ -1293,6 +1322,14 @@ function _pgAddBody(body, parentName) {
 
   // Randomize surface textures if the option is enabled
   if (PG.misc.randomizeTextures) _pgRandomizeTextures(bd, body.type);
+
+  // Randomize atmosphere texture separately if enabled
+  if (PG.misc.randomizeAtmoTextures) _pgRandomizeAtmoTexture(bd, body.type);
+
+  // Always lock texture to surface (planetTextureDontDistort)
+  if (bd?.TERRAIN_DATA?.TERRAIN_TEXTURE_DATA) {
+    bd.TERRAIN_DATA.TERRAIN_TEXTURE_DATA.planetTextureDontDistort = true;
+  }
 
   bd.ORBIT_DATA = {
     parent:              parentName,
