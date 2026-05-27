@@ -725,7 +725,7 @@ const _HMT_CHUNK = 512;    // columns per ImageData chunk — keeps memory bound
 function _hmtBuildCanvas() {
   if(!_hmtProfile) return null;
   const outW = _hmtProfile.length;
-  const outH = 512;
+  const outH = Math.max(1, parseInt(document.getElementById('hmt-height')?.value) || 512);
   const outC = document.createElement('canvas');
   outC.width = outW; outC.height = outH;
   const ctx  = outC.getContext('2d');
@@ -776,7 +776,7 @@ function hmtSaveToAssets() {
   const bytes   = new Uint8Array(byteStr.length);
   for(let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
 
-  const entry = { name: pngName, url: dataUrl, type: 'image/png', bytes };
+  const entry = { name: pngName, url: dataUrl, type: 'image/png', bytes, size: bytes.length };
 
   if(typeof assets !== 'undefined' && assets.heightmaps) assets.heightmaps.push(entry);
   if(typeof injectCustomHeightmap === 'function') injectCustomHeightmap(pngName);

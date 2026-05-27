@@ -7,21 +7,21 @@ const AU = 1.496e11;
 const PG = {
   types: {
     // Stars (by spectral class + special types)
-    star_O:           { label:'O-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#a0c0ff', eccMax:0.05, isStar:true, presetName:'O' },
-    star_B:           { label:'B-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#b8d0ff', eccMax:0.05, isStar:true, presetName:'B' },
-    star_A:           { label:'A-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#d8e8ff', eccMax:0.05, isStar:true, presetName:'A' },
-    star_F:           { label:'F-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#f8f8ff', eccMax:0.05, isStar:true, presetName:'F' },
-    star_G:           { label:'G-class Star (Sun)', icon:'⭐', enabled:true,  weight:20, color:'#ffd060', eccMax:0.05, isStar:true, presetName:'Sun' },
-    star_K:           { label:'K-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#ffb060', eccMax:0.05, isStar:true, presetName:'K' },
-    star_M:           { label:'M-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#ff8040', eccMax:0.05, isStar:true, presetName:'M' },
-    star_blue_giant:  { label:'Blue Giant',         icon:'💠', enabled:false, weight:0,  color:'#6090ff', eccMax:0.05, isStar:true, presetName:'Blue Giant' },
-    star_white_dwarf: { label:'White Dwarf',        icon:'⚪', enabled:false, weight:0,  color:'#e8e8ff', eccMax:0.05, isStar:true, presetName:'White Dwarf' },
+    star_O:           { label:'O-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#a0c0ff', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'O' },
+    star_B:           { label:'B-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#b8d0ff', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'B' },
+    star_A:           { label:'A-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#d8e8ff', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'A' },
+    star_F:           { label:'F-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#f8f8ff', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'F' },
+    star_G:           { label:'G-class Star (Sun)', icon:'⭐', enabled:true,  weight:20, color:'#ffd060', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'Sun' },
+    star_K:           { label:'K-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#ffb060', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'K' },
+    star_M:           { label:'M-class Star',       icon:'⭐', enabled:false, weight:0,  color:'#ff8040', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'M' },
+    star_blue_giant:  { label:'Blue Giant',         icon:'💠', enabled:false, weight:0,  color:'#6090ff', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'Blue Giant' },
+    star_white_dwarf: { label:'White Dwarf',        icon:'⚪', enabled:false, weight:0,  color:'#e8e8ff', eccMax:0.05, soiScale:1.0, isStar:true, presetName:'White Dwarf' },
     // Regular bodies
-    planet:      { label:'Planets',      icon:'🌍', enabled:true,  weight:55, color:'#4488ff', eccMax:0.15 },
-    moon:        { label:'Moons',        icon:'🌙', enabled:true,  weight:18, color:'#aaaaaa', eccMax:0.05 },
-    asteroid:    { label:'Asteroids',    icon:'☄️', enabled:false, weight:0,  color:'#886644', eccMax:0.55 },
-    brown_dwarf: { label:'Brown Dwarfs', icon:'🟤', enabled:false, weight:0,  color:'#cc6622', eccMax:0.10 },
-    blackhole:   { label:'Black Holes',  icon:'⚫', enabled:false, weight:0,  color:'#8800ff', eccMax:0.05 },
+    planet:      { label:'Planets',      icon:'🌍', enabled:true,  weight:55, color:'#4488ff', eccMax:0.15, soiScale:1.0 },
+    moon:        { label:'Moons',        icon:'🌙', enabled:true,  weight:18, color:'#aaaaaa', eccMax:0.05, soiScale:1.0 },
+    asteroid:    { label:'Asteroids',    icon:'☄️', enabled:false, weight:0,  color:'#886644', eccMax:0.55, soiScale:0.3 },
+    brown_dwarf: { label:'Brown Dwarfs', icon:'🟤', enabled:false, weight:0,  color:'#cc6622', eccMax:0.10, soiScale:1.0 },
+    blackhole:   { label:'Black Holes',  icon:'⚫', enabled:false, weight:0,  color:'#8800ff', eccMax:0.05, soiScale:2.0 },
   },
   modes: {
     asteroid_cluster: { label:'Asteroid Cluster', enabled:false, weight:0 },
@@ -35,15 +35,91 @@ const PG = {
     eccentricity: { min:0,    max:0.99, val:0.9,  step:0.01, label:'Ecc Ceiling (all types)' },
   },
   misc: {
-    addMoons:       true,
-    addRings:       true,
-    addAtmospheres: true,
+    addMoons:         true,
+    addRings:         true,
+    addAtmospheres:   true,
+    randomizeTextures: false,
   },
   preview: { bodies:[], center:null },
   canvas:  { pan:{x:0,y:0}, zoom:1, drag:false, lastP:null, hovered:null, selected:null },
 };
 
-// ── Open / Close ──────────────────────────────────────────────
+// ── Seed lock ─────────────────────────────────────────────────
+// When locked, pgGenerate() replays the same seeded sequence so
+// the body layout is identical — only the post-generation settings
+// (SOI multipliers, radius scale, etc.) are recalculated fresh.
+let _pgSeedLocked = false;
+let _pgSavedSeed  = null;   // array of random values consumed during last gen
+
+function pgToggleSeedLock() {
+  _pgSeedLocked = !_pgSeedLocked;
+  const btn = document.getElementById('pg-seed-lock-btn');
+  if (btn) {
+    btn.textContent = _pgSeedLocked ? '🔒 SEED' : '🔓 SEED';
+    btn.classList.toggle('seed-locked', _pgSeedLocked);
+    btn.title = _pgSeedLocked
+      ? 'Seed locked — GEN will reuse the same layout. Click to unlock.'
+      : 'Lock seed — regenerate with same body layout but updated settings';
+  }
+  if (_pgSeedLocked && !_pgSavedSeed) {
+    pgShowStatus('⚠ Generate first to capture a seed.', 'warn');
+    _pgSeedLocked = false;
+    if (btn) { btn.textContent = '🔓 SEED'; btn.classList.remove('seed-locked'); }
+  } else {
+    pgShowStatus(_pgSeedLocked ? '🔒 Seed locked — layout will be preserved on next GEN' : '🔓 Seed unlocked', _pgSeedLocked ? 'ok' : 'info');
+  }
+  try { SFX.select(); } catch(_) {}
+}
+
+// Seeded RNG — replaces Math.random() during generation so we can replay
+let _pgRngPool = null;
+let _pgRngIdx  = 0;
+let _pgRngRecord = null;   // records values when not locked
+
+function _pgRand() {
+  if (_pgRngPool) {
+    // Replay from saved seed
+    const v = _pgRngPool[_pgRngIdx % _pgRngPool.length];
+    _pgRngIdx++;
+    return v;
+  }
+  // Fresh random — record for potential future lock
+  const v = Math.random();
+  if (_pgRngRecord) _pgRngRecord.push(v);
+  return v;
+}
+
+// ── SOI controls ─────────────────────────────────────────────
+// These mirror the constants in _pgComputeSOIMultipliers but are
+// user-adjustable. On each GEN they are read from the sliders.
+let _pgSOIGlobal = 1.0;
+
+function pgSetSOIGlobal(v) {
+  _pgSOIGlobal = parseFloat(v) || 1.0;
+  const lbl = document.getElementById('pg-soi-global-val');
+  if (lbl) lbl.textContent = _pgSOIGlobal.toFixed(2) + '×';
+}
+function pgSetSOIFill(v) {
+  _PG_SOI_FILL_DYN = parseFloat(v) || 0.45;
+  const lbl = document.getElementById('pg-soi-fill-val');
+  if (lbl) lbl.textContent = _PG_SOI_FILL_DYN.toFixed(2);
+}
+function pgSetSOIMinR(v) {
+  _PG_SOI_MIN_R_DYN = parseFloat(v) || 4.0;
+  const lbl = document.getElementById('pg-soi-minr-val');
+  if (lbl) lbl.textContent = _PG_SOI_MIN_R_DYN.toFixed(1) + '×';
+}
+function pgSetSOIMaxR(v) {
+  _PG_SOI_MAX_R_DYN = parseFloat(v) || 0.45;
+  const lbl = document.getElementById('pg-soi-maxr-val');
+  if (lbl) lbl.textContent = _PG_SOI_MAX_R_DYN.toFixed(2);
+}
+
+let _PG_SOI_FILL_DYN  = 0.45;
+let _PG_SOI_MIN_R_DYN = 4.0;
+let _PG_SOI_MAX_R_DYN = 0.45;
+
+
 function openProceduralGen() {
   _utilsDropOpen = false;
   document.getElementById('utils-dropdown').style.display = 'none';
@@ -56,9 +132,12 @@ function openProceduralGen() {
 function pgRefreshCenterSel() {
   const sel = document.getElementById('pg-center-sel');
   if (!sel) return;
+  const prev = sel.value;   // preserve current selection before rebuilding
   const currentBodies = typeof bodies !== 'undefined' ? Object.keys(bodies) : [];
   sel.innerHTML = '<option value="">— new system —</option>'
     + currentBodies.map(n => `<option value="${n}">${n}${bodies[n]?.isCenter ? ' ★' : ''}</option>`).join('');
+  // Restore selection if the body still exists
+  if (prev && currentBodies.includes(prev)) sel.value = prev;
 }
 function closeProceduralGen() {
   _pgGenAbort = true;
@@ -74,6 +153,7 @@ function pgSwitchTab(name, el) {
   if (el) el.classList.add('on');
   const panel = document.getElementById('pg-tabp-' + name);
   if (panel) panel.classList.add('on');
+  if (name === 'presets' && typeof pgPresetsRender === 'function') pgPresetsRender();
 }
 
 document.addEventListener('DOMContentLoaded', () => {});
@@ -84,6 +164,7 @@ function pgBuildUI() {
   pgRenderFrequencyControls();
   pgRenderFineTuning();
   pgRenderMiscOptions();
+  pgRenderSOIByType();
 }
 
 function pgRenderBodyTypeGrid() {
@@ -275,6 +356,28 @@ function pgSetTypeEcc(key, val) {
   PG.types[key].eccMax = parseFloat(val) || 0;
 }
 
+function pgSetTypeSOI(key, val) {
+  PG.types[key].soiScale = Math.max(0.01, parseFloat(val) || 1.0);
+}
+
+function pgRenderSOIByType() {
+  const container = document.getElementById('pg-soi-by-type');
+  if (!container) return;
+  container.innerHTML = Object.entries(PG.types).map(([key, t]) => `
+    <div>
+      <div class="pg-tune-label" style="display:flex;align-items:center;gap:5px">
+        <span>${t.icon}</span><span>${t.label} SOI Scale</span>
+      </div>
+      <div class="pg-tune-controls">
+        <input type="range" class="pg-freq-slider" min="0.01" max="4" step="0.01"
+          value="${t.soiScale ?? 1.0}"
+          oninput="pgSetTypeSOI('${key}',this.value);document.getElementById('pg-soi-type-val-${key}').textContent=parseFloat(this.value).toFixed(2)+'×'"
+          style="accent-color:${t.color}">
+        <span id="pg-soi-type-val-${key}" style="min-width:40px;text-align:right;color:rgba(100,220,180,.88);font-size:.75rem">${(t.soiScale ?? 1.0).toFixed(2)}×</span>
+      </div>
+    </div>`).join('');
+}
+
 function pgSetTune(key, val) {
   PG.tune[key].val = parseFloat(val) || 0;
 }
@@ -283,9 +386,10 @@ function pgRenderMiscOptions() {
   const container = document.getElementById('pg-misc-options');
   if (!container) return;
   const opts = [
-    { key:'addMoons',       label:'Allow moon generation' },
-    { key:'addRings',       label:'Allow ring systems' },
-    { key:'addAtmospheres', label:'Allow atmospheres' },
+    { key:'addMoons',          label:'Allow moon generation' },
+    { key:'addRings',          label:'Allow ring systems' },
+    { key:'addAtmospheres',    label:'Allow atmospheres' },
+    { key:'randomizeTextures', label:'Randomize surface textures' },
   ];
   container.innerHTML = opts.map(o => `
     <label class="pg-misc-row">
@@ -365,6 +469,18 @@ async function pgGenerate() {
       pgShowStatus('No presets loaded — drop your preset zip onto the editor first.', 'warn');
       return;
     }
+  }
+
+  // ── Seed setup ────────────────────────────────────────────────
+  if (_pgSeedLocked && _pgSavedSeed) {
+    // Replay the saved seed
+    _pgRngPool = _pgSavedSeed;
+    _pgRngIdx  = 0;
+    _pgRngRecord = null;
+  } else {
+    // Fresh run — record values for future lock
+    _pgRngPool   = null;
+    _pgRngRecord = [];
   }
 
   _pgGenAbort = false;
@@ -452,23 +568,23 @@ async function pgGenerate() {
       
       if (chosenKind === 'mode' && chosen === 'asteroid_cluster') {
         // Generate asteroid cluster: 5-15 asteroids in a tight band
-        const clusterCount = 5 + Math.floor(Math.random() * 11);
+        const clusterCount = 5 + Math.floor(_pgRand() * 11);
         const clusterOrbit = orbitMin + spacing * i;
         const clusterWidth = spacing * 0.3;
         for (let c = 0; c < clusterCount; c++) {
           const preset = pgPickPreset('asteroid');
           if (!preset) continue;
-          const sma    = clusterOrbit + (Math.random() - 0.5) * clusterWidth;
-          const ecc    = Math.random() * 0.3;
+          const sma    = clusterOrbit + (_pgRand() - 0.5) * clusterWidth;
+          const ecc    = _pgRand() * 0.3;
           const name   = NameGen.generate();
-          const radius = (preset.data.BASE_DATA?.radius || 50000) * (0.2 + Math.random() * 0.6);
+          const radius = (preset.data.BASE_DATA?.radius || 50000) * (0.2 + _pgRand() * 0.6);
           const body = {
             name, type: 'asteroid', preset, isCenter: false,
             parent: centerName, orbitSMA: sma, orbitEcc: ecc,
-            orbitDir: Math.random() > 0.1 ? 1 : -1,
-            orbitAoP: Math.random() * 360,
+            orbitDir: _pgRand() > 0.1 ? 1 : -1,
+            orbitAoP: _pgRand() * 360,
             radius, color: '#886644', icon: '☄️',
-            _angle: Math.random() * Math.PI * 2, children: [],
+            _angle: _pgRand() * Math.PI * 2, children: [],
           };
           center.children.push(body);
         }
@@ -479,20 +595,20 @@ async function pgGenerate() {
         // Star cluster: pick a random enabled star type
         const starChoices = pickPool.filter(([,t]) => t.isStar);
         if (!starChoices.length) continue;
-        const starType = starChoices[Math.floor(Math.random() * starChoices.length)][0];
+        const starType = starChoices[Math.floor(_pgRand() * starChoices.length)][0];
         const preset = pgPickPreset(starType);
         if (!preset) continue;
         const sma  = orbitMin + spacing * i;
-        const ecc  = Math.random() * 0.05;
+        const ecc  = _pgRand() * 0.05;
         const name = NameGen.generate();
         const radius = (preset.data.BASE_DATA?.radius || 34817000) * PG.tune.radiusScale.val;
         const body = {
           name, type: starType, preset, isCenter: false,
           parent: centerName, orbitSMA: sma, orbitEcc: ecc,
-          orbitDir: 1, orbitAoP: Math.random() * 360,
+          orbitDir: 1, orbitAoP: _pgRand() * 360,
           radius, color: PG.types[starType]?.color || '#ffd060',
           icon: PG.types[starType]?.icon || '⭐',
-          _angle: Math.random() * Math.PI * 2, children: [],
+          _angle: _pgRand() * Math.PI * 2, children: [],
         };
         center.children.push(body);
         continue;
@@ -504,10 +620,10 @@ async function pgGenerate() {
       if (!preset) continue;
 
       const baseSma    = orbitMin + spacing * i;
-      const jitter     = spacing * (0.4 * Math.random() - 0.2);
+      const jitter     = spacing * (0.4 * _pgRand() - 0.2);
       const sma        = Math.max(safeClearance, Math.min(orbitMax, baseSma + jitter));
       const typeEccMax = Math.min(PG.types[type]?.eccMax ?? 0.15, PG.tune.eccentricity.val);
-      const ecc        = Math.random() * typeEccMax;
+      const ecc        = _pgRand() * typeEccMax;
       const name       = NameGen.generate();
       const radius     = (preset.data.BASE_DATA?.radius || 600000) * PG.tune.radiusScale.val;
 
@@ -521,38 +637,37 @@ async function pgGenerate() {
         parent:   centerName,
         orbitSMA: sma,
         orbitEcc: ecc,
-        orbitDir: Math.random() > 0.1 ? 1 : -1,
-        orbitAoP: Math.random() * 360,
+        orbitDir: _pgRand() > 0.1 ? 1 : -1,
+        orbitAoP: _pgRand() * 360,
         radius,
         color: PG.types[type]?.color || '#aaaaaa',
         icon:  PG.types[type]?.icon  || '🌍',
-        _angle: Math.random() * Math.PI * 2,
+        _angle: _pgRand() * Math.PI * 2,
         children: [],
       };
 
-      if (PG.misc.addMoons && (type === 'planet' || type === 'gasgiant') && Math.random() > 0.5) {
-        const moonPreset = pgPickPreset('moon');
-        if (moonPreset) {
-          const moonCount  = Math.floor(Math.random() * 3) + 1;
-          const moonEccMax = PG.types['moon']?.eccMax ?? 0.05;
-          for (let m = 0; m < moonCount; m++) {
-            const moon = {
-              name:     NameGen.generate(),
-              type:     'moon',
-              parent:   name,
-              preset:   moonPreset,
-              orbitSMA: radius * (8 + m * 6 + Math.random() * 3),
-              orbitEcc: Math.random() * moonEccMax,
-              orbitAoP: Math.random() * 360,
-              orbitDir: 1,
-              radius:   (moonPreset.data?.BASE_DATA?.radius || 300000) * 0.3,
-              color:    '#999999',
-              icon:     '🌙',
-              _angle:   Math.random() * Math.PI * 2,
-              children: [],
-            };
-            body.children.push(moon);
-          }
+      if (PG.misc.addMoons && (type === 'planet' || type === 'gasgiant') && _pgRand() > 0.5) {
+        const moonCount  = Math.floor(_pgRand() * 3) + 1;
+        const moonEccMax = PG.types['moon']?.eccMax ?? 0.05;
+        for (let m = 0; m < moonCount; m++) {
+          const moonPreset = pgPickPreset('moon');   // fresh pick per moon
+          if (!moonPreset) continue;
+          const moon = {
+            name:     NameGen.generate(),
+            type:     'moon',
+            parent:   name,
+            preset:   moonPreset,
+            orbitSMA: radius * (8 + m * 6 + _pgRand() * 3),
+            orbitEcc: _pgRand() * moonEccMax,
+            orbitAoP: _pgRand() * 360,
+            orbitDir: 1,
+            radius:   (moonPreset.data?.BASE_DATA?.radius || 300000) * 0.3,
+            color:    '#999999',
+            icon:     '🌙',
+            _angle:   _pgRand() * Math.PI * 2,
+            children: [],
+          };
+          body.children.push(moon);
         }
       }
 
@@ -569,6 +684,12 @@ async function pgGenerate() {
     if (i < count) {
       setTimeout(_chunk, 0);
     } else {
+      // Save the recorded random sequence for future seed-lock replays
+      if (_pgRngRecord) {
+        _pgSavedSeed = _pgRngRecord.slice();
+        _pgRngRecord = null;
+      }
+
       // Compute gap-based SOI multipliers
       const cGrav    = center.preset.data.BASE_DATA?.gravity || 274;
       const cR       = center.radius;
@@ -590,7 +711,7 @@ async function pgGenerate() {
 }
 
 // ── SOI multiplier calculation ────────────────────────────────
-const _PG_SOI_FILL    = 0.45;
+const _PG_SOI_FILL    = 0.45;  // fallback defaults (not used when dynamic vars are set)
 const _PG_SOI_MIN_R   = 4.0;
 const _PG_SOI_MAX_R   = 0.45;
 const _PG_SOI_MULT_MIN = 0.05;
@@ -598,13 +719,20 @@ const _PG_SOI_MULT_MAX = 20.0;
 
 function _pgComputeSOIMultipliers(list, parentGrav, parentR) {
   if (!list.length) return;
+
+  // Read dynamic SOI settings (set by sliders) or fall back to defaults
+  const soiFill  = (typeof _PG_SOI_FILL_DYN  !== 'undefined') ? _PG_SOI_FILL_DYN  : _PG_SOI_FILL;
+  const soiMinR  = (typeof _PG_SOI_MIN_R_DYN  !== 'undefined') ? _PG_SOI_MIN_R_DYN  : _PG_SOI_MIN_R;
+  const soiMaxR  = (typeof _PG_SOI_MAX_R_DYN  !== 'undefined') ? _PG_SOI_MAX_R_DYN  : _PG_SOI_MAX_R;
+  const globalMult = (typeof _pgSOIGlobal !== 'undefined') ? _pgSOIGlobal : 1.0;
+
   const sorted = list.slice().sort((a, b) => a.orbitSMA - b.orbitSMA);
   const n = sorted.length;
 
   for (let i = 0; i < n; i++) {
     const body = sorted[i];
     const sma  = body.orbitSMA;
-    if (!sma || sma <= 0) { body.soiMultiplier = 1.0; continue; }
+    if (!sma || sma <= 0) { body.soiMultiplier = 1.0 * globalMult; continue; }
 
     const innerBody = sorted[i - 1];
     const outerBody = sorted[i + 1];
@@ -615,16 +743,17 @@ function _pgComputeSOIMultipliers(list, parentGrav, parentR) {
     const innerGap  = Math.max(0, periapsis - innerEdge);
     const outerGap  = Math.max(0, outerEdge - apoapsis);
 
-    const gapSOI    = Math.min(innerGap, outerGap) * _PG_SOI_FILL;
-    const minSOI    = body.radius * _PG_SOI_MIN_R;
-    const maxSOI    = sma * _PG_SOI_MAX_R;
+    const gapSOI    = Math.min(innerGap, outerGap) * soiFill;
+    const minSOI    = body.radius * soiMinR;
+    const maxSOI    = sma * soiMaxR;
     const targetSOI = Math.max(minSOI, Math.min(maxSOI, gapSOI > 0 ? gapSOI : minSOI));
 
     const bodyGrav  = body.preset?.data?.BASE_DATA?.gravity || 9.8;
     const massRatio = (bodyGrav * body.radius * body.radius) / (parentGrav * parentR * parentR);
     const rawHill   = sma * Math.pow(Math.max(massRatio, 1e-12), 0.4);
     const mult      = rawHill > 0 ? targetSOI / rawHill : 1.0;
-    body.soiMultiplier = Math.max(_PG_SOI_MULT_MIN, Math.min(_PG_SOI_MULT_MAX, mult));
+    const typeSoiScale = PG.types[body.type]?.soiScale ?? 1.0;
+    body.soiMultiplier = Math.max(_PG_SOI_MULT_MIN, Math.min(_PG_SOI_MULT_MAX, mult * globalMult * typeSoiScale));
   }
 }
 
@@ -656,12 +785,12 @@ function pgPickPreset(type) {
   const matches = all.filter(p => ids.includes(p.id));
   // Always return something — fall back to full pool if no type match
   const pool    = matches.length ? matches : all;
-  return pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(_pgRand() * pool.length)];
 }
 
 function pgWeightedPick(pairs) {
   const total = pairs.reduce((s, [,w]) => s + w, 0);
-  let r = Math.random() * total;
+  let r = _pgRand() * total;
   for (const [k, w] of pairs) { r -= w; if (r <= 0) return k; }
   return pairs[pairs.length - 1][0];
 }
@@ -673,7 +802,7 @@ function pgWeightedPickWithKind(triples) {
     const last = triples[triples.length - 1];
     return [last[0], last[1], last[2]];
   }
-  let r = Math.random() * total;
+  let r = _pgRand() * total;
   for (const [k, w, kind] of triples) {
     r -= (w || 0);
     if (r <= 0) return [k, w, kind];
@@ -820,12 +949,350 @@ function _pgAddOrbiters(parentName, onDone) {
   setTimeout(_applyChunk, 0);
 }
 
+// ════════════════════════════════════════════════════════════
+//  SURFACE TEXTURE CATEGORIES
+//
+//  Categorized by visual appearance, confirmed against actual
+//  texture images and planet file usage.
+//
+//  Three kinds of slot:
+//    planetTexture   — full-sphere base texture (equirectangular)
+//    surfaceTexture_A/B — tiling close-up detail layer
+//    terrainTexture_C   — tiling mid-distance blend layer
+//
+//  Each named pool is an array the randomizer draws from.
+// ════════════════════════════════════════════════════════════
+const PG_TEX = {
+
+  // ── surfaceTexture_A / B / terrainTexture_C detail tile pools ─────────────
+  // Confirmed from Terrain/ folder PNGs and actual planet file usage.
+  surface: {
+
+    // Rough bare rock — used on Mars, Mercury, moons, asteroids
+    rocky: [
+      'Hard_Rocks', 'HardRocks02', 'Soft_Rocks', 'DryGround', 'Limestone',
+    ],
+
+    // Ice crystal / snow surface — used on Europa, Enceladus, icy moons
+    icy: [
+      'Ice', 'Ice02', 'Snow',
+    ],
+
+    // Fine dark dust particles — used on Io, asteroid presets, small moons
+    dusty: [
+      'Dark_Dust', 'DarkDust02',
+    ],
+
+    // Sandy / granular loose surface — used on Deimos, desert worlds
+    sandy: [
+      'Sand',
+    ],
+
+    // Craters / pockmarks pattern — used on Phobos, Ganymede, Callisto, Miranda
+    cratered: [
+      'Dots02', 'Circles', 'Circles02',
+    ],
+
+    // Smooth / blurred — used on water worlds, gas-covered surfaces
+    smooth: [
+      'Neutral', 'Blured02',
+    ],
+
+    // Black / void fill — used on asteroid presets as secondary
+    dark: [
+      'Black_Dust',
+    ],
+  },
+
+  // ── planetTexture full-sphere base texture pools ──────────────────────────
+  // Grouped by visual biome / body class, derived from screenshots + usage map.
+  planet: {
+
+    // Blue-green Earth-type worlds with continents and oceans
+    earthlike: [
+      'Earth_WithOceans',   // vanilla Earth with ocean mask
+      'SuperEarth',         // larger version, green continents
+      'RPBD_c',             // red/purple banded — exotic earthlike
+    ],
+
+    // Arid, rocky, heavily cratered terrestrial worlds (Venus/Mars-like)
+    rocky_terrestrial: [
+      'Mars',           // red-orange barren
+      'Mercury',        // grey heavily-cratered
+      'Venus',          // pale yellow/tan cloud bands
+      'DesertWorld',    // tan/ochre desert surface
+      'Caryhuang',      // orange rocky textured (custom)
+    ],
+
+    // Icy / frost-covered worlds — bright whites and pale blues
+    icy_world: [
+      'Europa',     // white cracked ice
+      'Enceladus',  // bright white smooth ice
+      'Frozen',     // custom — stark black/white ice fractures
+      'Charon',     // grey-white cracked ice
+      'Triton',     // pale grey-blue icy
+      'Pluto',      // tan-grey icy dwarf
+    ],
+
+    // Dwarf planets and large trans-Neptunian objects
+    dwarf_planet: [
+      'Makemake',   // reddish-tan dwarf planet
+      'Gonggong',   // red-tinted dwarf (custom — used as Small Moon planetTex)
+      'Sedna',      // deep red-pink (custom)
+      'Orcus',      // grey icy dwarf
+      'Salacia',    // grey-white icy dwarf (custom)
+      'Ceres',      // grey cratered dwarf
+    ],
+
+    // Rocky cratered moons — grey/brown tones
+    moon_rocky: [
+      'Moon',       // grey cratered
+      'Callisto',   // dark cratered
+      'Ganymede',   // grey-brown grooved
+      'Iapetus',    // two-tone dark/light
+      'Mimas',      // grey cratered (Death Star)
+      'Miranda',    // heavily fractured grey
+      'Oberon',     // dark grey cratered
+      'Rhea',       // light grey cratered
+      'Tethys',     // pale grey smooth+cratered
+      'Titania',    // mid-grey cratered
+      'Umbriel',    // dark grey cratered
+      'Ariel',      // grey with bright streaks
+      'Dione',      // pale grey wispy streaks
+      'Phobos',     // dark brown grooved
+      'Deimos',     // dark grey dusty
+      'Hydra',      // grey irregular
+      'Nix',        // pale grey
+      'Pan',        // grey smooth disc-shape
+      'Naiad',      // dark grey irregular
+      'Puck',       // dark grey spherical
+      'Proteus',    // dark grey cratered
+      'Thebe',      // dark irregular (vanilla + custom versions)
+      'Amalthea',   // dark reddish irregular (custom)
+      'Apougu',     // dark brown rugged (custom)
+    ],
+
+    // Icy moons with distinct bright-ice appearance
+    moon_icy: [
+      'Europa',     // white cracked ice
+      'Enceladus',  // bright white
+      'Charon',     // grey-white
+      'Triton',     // pale icy
+    ],
+
+    // Volcanic / lava surface worlds
+    volcanic: [
+      'Io',   // yellow-orange volcanic patches
+    ],
+
+    // Gas and ice giants — banded swirling atmospheres
+    gas_giant: [
+      'Jupiter',         // orange-tan cloud bands
+      'Saturn',          // golden tan banded
+      'Neptune',         // deep blue banded
+      'Uranus',          // pale cyan smooth
+      'Titan',           // orange haze
+      'Blue_Gas_Giant',  // vivid blue swirling (custom)
+      'Ringed_Giant',    // pale yellow-green banded (custom)
+    ],
+
+    // Comets and asteroids — dark, irregular, rocky
+    asteroid: [
+      'Asteroid',    // vanilla grey cratered
+      'Basteroid',   // dark grey-brown
+      'Casteroid',   // brown cratered
+      'Dasteroid',   // dark grey-brown
+      'Easteroid',   // grey cratered
+      'Fasteroid',   // orange-brown comet
+      'Gasteroid',   // dark grey irregular
+      'Kasteroid',   // dark brown
+      'Lasteroid',   // dark grey
+      'Masteroid',   // medium grey
+      'Rasteroid',   // reddish-brown
+      'Sasteroid',   // grey-brown (used for Long/Round asteroid presets)
+      'Tasteroid',   // tan-brown
+      'Vasteroid',   // grey cratered
+      '95P',         // comet 95P — elongated dark (custom)
+    ],
+
+    // Black holes — photon ring / accretion disc
+    exotic: [
+      'PhotonSphere',  // black + bright photon ring (used for all BH presets)
+    ],
+  },
+
+  // ── Atmosphere gradient texture pools ────────────────────────────────────
+  // Used in ATMOSPHERE_VISUALS_DATA.GRADIENT.texture
+  atmo: {
+
+    // Hot luminous stars (blue-white to orange-red sequence)
+    star: [
+      'Atmo_Sun',        // yellow-white corona
+      'Atmo_A_Type',     // bright white
+      'Atmo_B_Type',     // blue-white
+      'Atmo_F_Type',     // pale yellow
+      'Atmo_G_Type',     // warm yellow (like Sun)
+      'Atmo_K_Type',     // orange
+      'Atmo_M_Type',     // deep orange-red
+      'Atmo_O_Type',     // vivid blue
+      'Atmo_Tstar',      // T-type brown dwarf orange glow
+      'Atmo_Proxima',    // red dwarf glow
+      'Atmo_Saggi',      // Sagittarius-type glow
+      'Atmo_RPBD',       // red/purple exotic
+      'Atmo_White_Dwarf',// faint white-blue glow
+    ],
+
+    // Gas and ice giant hazes
+    gas_giant: [
+      'Atmo_Jupiter',  // orange-tan bands
+      'Atmo_Saturn',   // golden haze
+      'Atmo_Neptune',  // deep blue
+      'Atmo_Uranus',   // pale cyan
+      'Atmo_Titan',    // thick orange haze
+      'Atmo_P9',       // hypothetical Planet 9 cold haze
+    ],
+
+    // Terrestrial planet atmospheres
+    terrestrial: [
+      'Atmo_Earth',      // blue sky gradient
+      'Atmo_Mars',       // reddish-tan sky
+      'Atmo_Venus',      // thick yellow haze
+      'Atmo_Europa',     // thin icy blue
+      'Atmo_Enceladus',  // thin white haze
+      'Atmo_Triton',     // thin blue-grey
+      'Atmo_Pluto',      // faint blue haze
+    ],
+  },
+};
+
+// ── Per-body-type texture randomization rules ─────────────────────────────────
+// Maps procgen body type → which PG_TEX pools to sample per slot.
+// null = leave the preset's existing texture value unchanged for that slot.
+// Arrays of pool names are flattened and picked from uniformly.
+const _PG_TEX_RULES = {
+
+  // Temperate/terrestrial planets — broad variety
+  planet: {
+    planetTexture:    ['earthlike', 'rocky_terrestrial', 'icy_world', 'volcanic'],
+    surfaceTexture_A: ['rocky', 'icy', 'dusty', 'smooth'],
+    surfaceTexture_B: ['rocky', 'dusty', 'sandy', 'smooth'],
+    terrainTexture_C: ['rocky', 'cratered', 'smooth'],
+  },
+
+  // Moons — rocky or icy, cratered
+  moon: {
+    planetTexture:    ['moon_rocky', 'moon_icy'],
+    surfaceTexture_A: ['rocky', 'dusty', 'icy', 'cratered'],
+    surfaceTexture_B: ['rocky', 'dusty', 'smooth'],
+    terrainTexture_C: ['rocky', 'cratered', 'smooth'],
+  },
+
+  // Gas giants — only swap the base sphere texture; detail tiles not applicable
+  gasgiant: {
+    planetTexture:    ['gas_giant'],
+    surfaceTexture_A: null,
+    surfaceTexture_B: null,
+    terrainTexture_C: null,
+  },
+
+  // Ringed gas giants — same as gas giant
+  ringedgiant: {
+    planetTexture:    ['gas_giant'],
+    surfaceTexture_A: null,
+    surfaceTexture_B: null,
+    terrainTexture_C: null,
+  },
+
+  // Asteroids — dark/rocky/dusty
+  asteroid: {
+    planetTexture:    ['asteroid'],
+    surfaceTexture_A: ['rocky', 'dusty', 'dark'],
+    surfaceTexture_B: ['rocky', 'dusty', 'smooth'],
+    terrainTexture_C: ['rocky', 'cratered'],
+  },
+
+  // Mercury-like airless rocky bodies
+  mercurylike: {
+    planetTexture:    ['moon_rocky', 'rocky_terrestrial'],
+    surfaceTexture_A: ['rocky', 'dusty', 'cratered'],
+    surfaceTexture_B: ['rocky', 'dusty', 'smooth'],
+    terrainTexture_C: ['rocky', 'cratered'],
+  },
+
+  // Mars-like — thin-atmo reddish worlds
+  marslike: {
+    planetTexture:    ['rocky_terrestrial'],
+    surfaceTexture_A: ['rocky', 'dusty', 'sandy'],
+    surfaceTexture_B: ['dusty', 'sandy', 'smooth'],
+    terrainTexture_C: ['rocky', 'smooth'],
+  },
+
+  // Dwarf planets — icy/rocky mixed
+  dwarf_planet: {
+    planetTexture:    ['dwarf_planet', 'moon_rocky', 'icy_world'],
+    surfaceTexture_A: ['rocky', 'icy', 'dusty'],
+    surfaceTexture_B: ['rocky', 'icy', 'smooth'],
+    terrainTexture_C: ['rocky', 'smooth'],
+  },
+
+  // Black holes — no surface detail
+  blackhole: {
+    planetTexture:    ['exotic'],
+    surfaceTexture_A: null,
+    surfaceTexture_B: null,
+    terrainTexture_C: null,
+  },
+};
+
+// Pick a random texture from the given category array using the seeded RNG.
+function _pgPickTex(pools, poolNames) {
+  if (!poolNames) return null;
+  // Flatten all nominated pools into one list
+  const merged = poolNames.flatMap(pn => pools[pn] || []);
+  if (!merged.length) return null;
+  return merged[Math.floor(_pgRand() * merged.length)];
+}
+
+// Apply randomized textures to a body data object in-place.
+function _pgRandomizeTextures(bd, bodyType) {
+  const rules = _PG_TEX_RULES[bodyType];
+  if (!rules) return;   // no rules for this type — leave untouched
+
+  const td = bd?.TERRAIN_DATA?.TERRAIN_TEXTURE_DATA;
+  if (!td) return;
+
+  // planetTexture
+  const pt = _pgPickTex(PG_TEX.planet, rules.planetTexture);
+  if (pt) td.planetTexture = pt;
+
+  // surfaceTexture_A
+  if (rules.surfaceTexture_A !== null) {
+    const sa = _pgPickTex(PG_TEX.surface, rules.surfaceTexture_A);
+    if (sa) td.surfaceTexture_A = sa;
+  }
+
+  // surfaceTexture_B
+  if (rules.surfaceTexture_B !== null) {
+    const sb = _pgPickTex(PG_TEX.surface, rules.surfaceTexture_B);
+    if (sb) td.surfaceTexture_B = sb;
+  }
+
+  // terrainTexture_C
+  if (rules.terrainTexture_C !== null) {
+    const tc = _pgPickTex(PG_TEX.surface, rules.terrainTexture_C);
+    if (tc) td.terrainTexture_C = tc;
+  }
+}
+
 function _pgAddBody(body, parentName) {
   let name = body.name, suffix = 2;
   while (bodies[name]) name = body.name + '_' + (suffix++);
 
   const bd = JSON.parse(JSON.stringify(body.preset?.data || {}));
   if (bd.BASE_DATA) bd.BASE_DATA.radius = body.radius;
+
+  // Randomize surface textures if the option is enabled
+  if (PG.misc.randomizeTextures) _pgRandomizeTextures(bd, body.type);
 
   bd.ORBIT_DATA = {
     parent:              parentName,
@@ -860,6 +1327,13 @@ function pgClear() {
   PG.preview.center  = null;
   PG.canvas.selected = null;
   PG.canvas.hovered  = null;
+  // Unlock seed and clear saved seed so next GEN starts fresh
+  _pgSeedLocked = false;
+  _pgSavedSeed  = null;
+  _pgRngPool    = null;
+  _pgRngRecord  = null;
+  const btn = document.getElementById('pg-seed-lock-btn');
+  if (btn) { btn.textContent = '🔓 SEED'; btn.classList.remove('seed-locked'); }
   pgShowStatus('', '');
 }
 
@@ -1099,4 +1573,259 @@ function _pgFmt(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
   return Math.round(n) + '';
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  MANAGE PRESETS TAB  (pg-tabp-presets)
+// ════════════════════════════════════════════════════════════
+
+// User-added presets — keyed by name, value = {data, category, typeOverride}
+const _pgUserPresets = {};
+let _pgPresetsFilter = 'all';
+let _pgAddBodySelected = null;   // selected body name in "Add from System" dialog
+
+// ── Category filter ───────────────────────────────────────────
+function pgPresetsFilter(filter, btn) {
+  _pgPresetsFilter = filter;
+  document.querySelectorAll('.pg-preset-filter-btn').forEach(b => b.classList.remove('pg-preset-filter-btn--on'));
+  if (btn) btn.classList.add('pg-preset-filter-btn--on');
+  pgPresetsRender();
+}
+
+// ── Render preset list ────────────────────────────────────────
+function pgPresetsRender() {
+  const list = document.getElementById('pg-presets-list');
+  if (!list) return;
+
+  const search    = (document.getElementById('pg-presets-search')?.value || '').toLowerCase().trim();
+  const all       = typeof buildAllPresets === 'function' ? buildAllPresets() : [];
+  const userNames = new Set(Object.keys(_pgUserPresets));
+
+  // Expanded filter buckets: asteroid filter also matches rocky sub-types
+  const filterMap = {
+    asteroid: ['asteroid', 'mercurylike', 'marslike'],
+    planet:   ['planet'],
+    moon:     ['moon'],
+    gasgiant: ['gasgiant', 'ringedgiant'],
+    star:     ['star'],
+  };
+
+  let items = all.filter(p => {
+    if (_pgPresetsFilter === '_user') return userNames.has(p.name);
+    if (_pgPresetsFilter !== 'all') {
+      const ids = filterMap[_pgPresetsFilter] || [_pgPresetsFilter];
+      if (!ids.includes(p.id)) return false;
+    }
+    if (search && !p.name.toLowerCase().includes(search) && !(p.id || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  if (!items.length) {
+    list.innerHTML = '<div class="pg-preset-empty">No presets match</div>';
+    return;
+  }
+
+  items = items.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+  list.innerHTML = items.map(p => {
+    const isUser   = userNames.has(p.name);
+    const tagLabel = _idToLabel(p.id);
+    const delBtn   = isUser
+      ? `<button class="pg-preset-del-btn" onclick="pgPresetsRemove(${JSON.stringify(p.name)})" title="Remove preset">✕</button>`
+      : '';
+    return `<div class="pg-preset-row${isUser ? ' pg-preset-row--user' : ''}">
+      <span class="pg-preset-row-icon">${p.icon || '🌑'}</span>
+      <span class="pg-preset-row-name" title="${p.name}">${p.name}</span>
+      <span class="pg-preset-row-tag${isUser ? ' pg-preset-row-tag--user' : ''}">${tagLabel}</span>
+      ${delBtn}
+    </div>`;
+  }).join('');
+}
+
+function _idToLabel(id) {
+  const map = {
+    star:'STAR', planet:'PLANET', moon:'MOON', gasgiant:'GAS GIANT',
+    ringedgiant:'RINGED', blackhole:'BLACK HOLE', asteroid:'ASTEROID',
+    mercurylike:'ROCKY', marslike:'MARS-LIKE', barycentre:'BARYCENTRE',
+  };
+  return map[id] || (id || 'BODY').toUpperCase();
+}
+
+// ── Open / close Add-from-JSON dialog ────────────────────────
+function pgShowAddPresetDialog() {
+  const dlg = document.getElementById('pg-add-json-dialog');
+  if (!dlg) return;
+  const nameEl = document.getElementById('pg-add-json-name');
+  const dataEl = document.getElementById('pg-add-json-data');
+  const errEl  = document.getElementById('pg-add-json-err');
+  if (nameEl) nameEl.value = '';
+  if (dataEl) dataEl.value = '';
+  if (errEl)  { errEl.textContent = ''; errEl.style.display = 'none'; }
+  dlg.classList.add('open');
+  if (nameEl) nameEl.focus();
+}
+function pgCloseAddJsonDialog() {
+  const dlg = document.getElementById('pg-add-json-dialog');
+  if (dlg) dlg.classList.remove('open');
+}
+
+// ── Add a user preset from JSON ───────────────────────────────
+function pgPresetsAdd() {
+  const nameEl   = document.getElementById('pg-add-json-name');
+  const catEl    = document.getElementById('pg-add-json-cat');
+  const typeEl   = document.getElementById('pg-add-json-type');
+  const jsonEl   = document.getElementById('pg-add-json-data');
+  const errEl    = document.getElementById('pg-add-json-err');
+
+  const name     = (nameEl?.value || '').trim();
+  const cat      = catEl?.value  || 'custom';
+  const typeOver = typeEl?.value || '';
+  const jsonTxt  = (jsonEl?.value || '').trim();
+
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+  if (errEl) errEl.style.display = 'none';
+
+  if (!name)    { showErr('Please enter a preset name.'); return; }
+  if (!jsonTxt) { showErr('Please paste the preset JSON.'); return; }
+
+  let parsed = null;
+  try {
+    let fixed = jsonTxt
+      .replace(/,(\s*[}\]])/g, '$1')
+      .replace(/(\d)\.(?=[,\s}\]])/g, '$10')
+      .replace(/:\s*Infinity\b/g,  ': 1e38')
+      .replace(/:\s*-Infinity\b/g, ': -1e38')
+      .replace(/:\s*NaN\b/g,       ': 0');
+    parsed = JSON.parse(fixed);
+  } catch(e) {
+    showErr('Invalid JSON: ' + e.message);
+    return;
+  }
+
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+    showErr('JSON must be an object with SFS body data.');
+    return;
+  }
+
+  _pgRegisterUserPreset(name, parsed, cat, typeOver);
+  pgCloseAddJsonDialog();
+  pgPresetsRender();
+  try { SFX.select(); } catch(_) {}
+  pgShowStatus(`✓ Preset "${name}" added to ${cat} pool`, 'ok');
+}
+
+// ── Open / close Add-from-System dialog ──────────────────────
+function pgShowAddFromBodyDialog() {
+  const dlg = document.getElementById('pg-add-body-dialog');
+  if (!dlg) return;
+
+  _pgAddBodySelected = null;
+  const nameEl = document.getElementById('pg-add-body-name');
+  const errEl  = document.getElementById('pg-add-body-err');
+  if (nameEl) nameEl.value = '';
+  if (errEl)  { errEl.textContent = ''; errEl.style.display = 'none'; }
+
+  const listEl = document.getElementById('pg-add-body-list');
+  if (listEl) {
+    const bKeys = (typeof bodies !== 'undefined') ? Object.keys(bodies) : [];
+    if (!bKeys.length) {
+      listEl.innerHTML = '<div class="pg-preset-empty">No bodies in current system</div>';
+    } else {
+      listEl.innerHTML = bKeys.map(k => {
+        const b    = bodies[k];
+        const meta = (typeof inferPresetMeta === 'function') ? inferPresetMeta(k, b.data || {}) : {};
+        const icon = meta.icon || b.icon || '🌑';
+        const tl   = _idToLabel(meta.id || b.preset || 'body');
+        return `<div class="pg-dialog-body-item" data-bname="${k}"
+            onclick="pgAddBodySelectItem(this,${JSON.stringify(k)})">
+          <span style="font-size:1rem">${icon}</span>
+          <span class="pg-dialog-body-name">${k}${b.isCenter ? ' ★' : ''}</span>
+          <span class="pg-dialog-body-type">${tl}</span>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  dlg.classList.add('open');
+}
+
+function pgAddBodySelectItem(el, bname) {
+  document.querySelectorAll('#pg-add-body-list .pg-dialog-body-item').forEach(i => i.classList.remove('selected'));
+  el.classList.add('selected');
+  _pgAddBodySelected = bname;
+  const nameEl = document.getElementById('pg-add-body-name');
+  if (nameEl && !nameEl.value.trim()) nameEl.value = bname;
+}
+
+function pgCloseAddBodyDialog() {
+  const dlg = document.getElementById('pg-add-body-dialog');
+  if (dlg) dlg.classList.remove('open');
+  _pgAddBodySelected = null;
+}
+
+function pgPresetsAddFromBody() {
+  const nameEl = document.getElementById('pg-add-body-name');
+  const catEl  = document.getElementById('pg-add-body-cat');
+  const errEl  = document.getElementById('pg-add-body-err');
+
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+  if (errEl) errEl.style.display = 'none';
+
+  if (!_pgAddBodySelected)                                          { showErr('Select a body first.'); return; }
+  if (typeof bodies === 'undefined' || !bodies[_pgAddBodySelected]) { showErr('Body not found.'); return; }
+
+  const b    = bodies[_pgAddBodySelected];
+  const name = (nameEl?.value || '').trim() || _pgAddBodySelected;
+  const cat  = catEl?.value || 'custom';
+
+  const bd = JSON.parse(JSON.stringify(b.data || {}));
+  delete bd.ORBIT_DATA;
+
+  const meta     = (typeof inferPresetMeta === 'function') ? inferPresetMeta(_pgAddBodySelected, bd) : {};
+  const typeOver = meta.id || b.preset || '';
+
+  _pgRegisterUserPreset(name, bd, cat, typeOver);
+  pgCloseAddBodyDialog();
+  pgPresetsRender();
+  try { SFX.select(); } catch(_) {}
+  pgShowStatus(`✓ "${name}" added from system to ${cat} pool`, 'ok');
+}
+
+// ── Internal: register into dynamicPresets + tracking map ─────
+function _pgRegisterUserPreset(name, data, category, typeOverride) {
+  if (typeof dynamicPresets === 'undefined') return;
+  if (typeOverride && data) data._pgTypeHint = typeOverride;
+  if (category === 'vanilla') dynamicPresets.vanilla[name] = data;
+  else                        dynamicPresets.custom[name]  = data;
+  _pgUserPresets[name] = { data, category, typeOverride };
+}
+
+// ── Remove a user preset ──────────────────────────────────────
+function pgPresetsRemove(name) {
+  if (!_pgUserPresets[name]) return;
+  const { category } = _pgUserPresets[name];
+  if (typeof dynamicPresets !== 'undefined') {
+    if (category === 'vanilla') delete dynamicPresets.vanilla[name];
+    else                        delete dynamicPresets.custom[name];
+  }
+  delete _pgUserPresets[name];
+  pgPresetsRender();
+  try { SFX.click(); } catch(_) {}
+  pgShowStatus(`Preset "${name}" removed`, 'info');
+}
+
+// ── Close dialogs on backdrop click ───────────────────────────
+document.addEventListener('click', e => {
+  if (e.target.id === 'pg-add-json-dialog') pgCloseAddJsonDialog();
+  if (e.target.id === 'pg-add-body-dialog') pgCloseAddBodyDialog();
+});
+
+// ── Hook into pgSwitchTab to refresh when Presets tab opens ───
+const _pgSwitchTabOrig = pgSwitchTab;
+if (typeof pgSwitchTab === 'function') {
+  window.pgSwitchTab = function(name, btn) {
+    _pgSwitchTabOrig(name, btn);
+    if (name === 'presets') pgPresetsRender();
+  };
 }

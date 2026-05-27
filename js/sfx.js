@@ -216,6 +216,20 @@ const SFX = (() => {
     patch('imgDuplicateSelected', positive);
     patch('imgTriggerFileInput',  select);
 
+    // ── PROCGEN ───────────────────────────────────────────────────
+    patch('pgGenerate',         positive);
+    patch('pgClear',            warning);
+    patch('pgApply',            positive);
+    patch('pgSwitchTab',        select);
+    patch('pgToggleSeedLock',   select);
+    patch('openProceduralGen',  select);
+    patch('closeProceduralGen', click);
+    patch('pgToggleType',       select);
+    patch('pgToggleMode',       select);
+    patch('pgImportReplace',    positive);
+    patch('pgImportOrbit',      positive);
+    patch('pgImportMerge',      positive);
+
     // ── WARNING ───────────────────────────────────────────────────
     patch('confirmClearAll',   warning);
     patch('clearAll',          warning);

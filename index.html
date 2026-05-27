@@ -4044,6 +4044,17 @@ document.addEventListener('keydown', function(e){
               </div>
             </div>
 
+            <div>
+              <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:block;margin-bottom:4px">
+                OUTPUT HEIGHT (ROWS)
+              </label>
+              <input type="number" id="hmt-height" value="512" min="1" step="1"
+                style="width:100%;font-family:'JetBrains Mono',monospace;font-size:.6rem;
+                background:rgba(10,18,38,.95);color:rgba(180,210,255,.9);border:1px solid rgba(80,140,255,.3);
+                border-radius:3px;padding:6px 10px;outline:none;min-height:32px;box-sizing:border-box"
+                oninput="hmtUpdate()">
+            </div>
+
             <div style="display:flex;gap:12px;align-items:center">
               <label style="font-family:'JetBrains Mono',monospace;font-size:.55rem;color:rgba(100,220,180,.7);letter-spacing:.07em;display:flex;align-items:center;gap:8px;cursor:pointer;min-height:32px">
                 <input type="checkbox" id="hmt-invert" onchange="hmtUpdate()" style="accent-color:#64dcb4;width:16px;height:16px">
@@ -4114,6 +4125,7 @@ document.addEventListener('keydown', function(e){
       <div style="display:flex;flex-direction:column;gap:2px">
         <label style="font-size:.55rem;color:rgba(120,150,210,.6);letter-spacing:.06em">ORBIT AROUND</label>
         <select id="pg-center-sel"
+          onchange="pgGenerate()"
           style="background:rgba(8,14,36,.95);border:1px solid rgba(100,150,255,.3);border-radius:5px;
             color:rgba(180,200,255,.9);font-family:'JetBrains Mono',monospace;font-size:.68rem;
             padding:5px 8px;cursor:pointer;min-width:120px">
@@ -4121,6 +4133,7 @@ document.addEventListener('keydown', function(e){
         </select>
       </div>
       <button onclick="pgGenerate()" class="pg-btn pg-btn--primary">🎲 GEN</button>
+      <button id="pg-seed-lock-btn" class="pg-btn pg-btn--seed" onclick="pgToggleSeedLock()" title="Lock seed — regenerate with same body layout but updated settings">🔓 SEED</button>
       <button onclick="pgClear()"    class="pg-btn pg-btn--danger">🗑</button>
       <button onclick="closeProceduralGen()"
         style="background:none;border:none;cursor:pointer;color:rgba(180,180,210,.4);
@@ -4142,7 +4155,9 @@ document.addEventListener('keydown', function(e){
       <button class="pg-tab on" onclick="pgSwitchTab('types',this)">TYPES</button>
       <button class="pg-tab"    onclick="pgSwitchTab('freq',this)">FREQ</button>
       <button class="pg-tab"    onclick="pgSwitchTab('tune',this)">TUNE</button>
+      <button class="pg-tab"    onclick="pgSwitchTab('soi',this)">SOI</button>
       <button class="pg-tab"    onclick="pgSwitchTab('options',this)">OPTIONS</button>
+      <button class="pg-tab"    onclick="pgSwitchTab('presets',this)">PRESETS</button>
     </div>
 
     <!-- Tab: Body Types -->
@@ -4173,6 +4188,82 @@ document.addEventListener('keydown', function(e){
       </div>
     </div>
 
+    <!-- Tab: SOI -->
+    <div class="pg-tab-panel" id="pg-tabp-soi">
+      <div class="pg-section-title">SPHERE OF INFLUENCE</div>
+      <div class="pg-hint">Scale how large each body's gravity well is</div>
+      <div style="display:flex;flex-direction:column;gap:18px;margin-top:16px">
+
+        <div>
+          <div class="pg-tune-label" style="display:flex;justify-content:space-between">
+            <span>Global SOI Multiplier</span>
+            <span id="pg-soi-global-val" style="color:rgba(100,220,180,.9)">1.00×</span>
+          </div>
+          <input type="range" id="pg-soi-global" min="0.05" max="3" step="0.05" value="1"
+            style="width:100%;accent-color:#64dcb4;margin-top:6px"
+            oninput="pgSetSOIGlobal(this.value)">
+          <div style="font-size:.6rem;color:rgba(120,140,190,.45);margin-top:5px;line-height:1.5">
+            Scales the computed <code style="color:rgba(100,220,180,.6)">multiplierSOI</code> of every body. Values below 1 shrink SOIs — useful when planets are tightly packed.
+          </div>
+        </div>
+
+        <div style="border-top:1px solid rgba(100,150,255,.1);padding-top:16px">
+          <div class="pg-tune-label" style="display:flex;justify-content:space-between">
+            <span>Gap Fill Factor</span>
+            <span id="pg-soi-fill-val" style="color:rgba(100,220,180,.9)">0.45</span>
+          </div>
+          <input type="range" id="pg-soi-fill" min="0.05" max="0.9" step="0.05" value="0.45"
+            style="width:100%;accent-color:#64dcb4;margin-top:6px"
+            oninput="pgSetSOIFill(this.value)">
+          <div style="font-size:.6rem;color:rgba(120,140,190,.45);margin-top:5px;line-height:1.5">
+            Fraction of the orbital gap that the SOI may occupy. Lower = smaller SOIs relative to spacing.
+          </div>
+        </div>
+
+        <div style="border-top:1px solid rgba(100,150,255,.1);padding-top:16px">
+          <div class="pg-tune-label" style="display:flex;justify-content:space-between">
+            <span>Min SOI Radius (× body radius)</span>
+            <span id="pg-soi-minr-val" style="color:rgba(100,220,180,.9)">4.0×</span>
+          </div>
+          <input type="range" id="pg-soi-minr" min="1" max="20" step="0.5" value="4"
+            style="width:100%;accent-color:#64dcb4;margin-top:6px"
+            oninput="pgSetSOIMinR(this.value)">
+          <div style="font-size:.6rem;color:rgba(120,140,190,.45);margin-top:5px;line-height:1.5">
+            SOI is always at least this many body-radii wide. Prevents tiny, unenterable SOIs.
+          </div>
+        </div>
+
+        <div style="border-top:1px solid rgba(100,150,255,.1);padding-top:16px">
+          <div class="pg-tune-label" style="display:flex;justify-content:space-between">
+            <span>Max SOI (fraction of SMA)</span>
+            <span id="pg-soi-maxr-val" style="color:rgba(100,220,180,.9)">0.45</span>
+          </div>
+          <input type="range" id="pg-soi-maxr" min="0.05" max="0.9" step="0.05" value="0.45"
+            style="width:100%;accent-color:#64dcb4;margin-top:6px"
+            oninput="pgSetSOIMaxR(this.value)">
+          <div style="font-size:.6rem;color:rgba(120,140,190,.45);margin-top:5px;line-height:1.5">
+            SOI is capped at this fraction of the body's semi-major axis. Prevents overlapping SOIs.
+          </div>
+        </div>
+
+        <div style="border-top:1px solid rgba(100,220,180,.12);padding-top:16px;margin-top:4px">
+          <div class="pg-section-title" style="margin-bottom:4px">SOI SCALE BY TYPE</div>
+          <div class="pg-hint" style="margin-bottom:14px">Per-type multiplier applied on top of the global scale</div>
+          <div id="pg-soi-by-type" style="display:flex;flex-direction:column;gap:12px"></div>
+        </div>
+
+        <div style="border-top:1px solid rgba(100,150,255,.1);padding-top:14px;
+          background:rgba(100,220,180,.04);border-radius:5px;padding:12px 14px;
+          border:1px solid rgba(100,220,180,.12)">
+          <div style="font-size:.65rem;color:rgba(100,220,180,.7);letter-spacing:.06em;margin-bottom:6px">💡 TIP</div>
+          <div style="font-size:.62rem;color:rgba(140,160,210,.65);line-height:1.6">
+            Enable <strong style="color:rgba(210,160,255,.8)">🔓 SEED LOCK</strong> in the header, then adjust these sliders and hit <strong style="color:rgba(100,220,180,.8)">🎲 GEN</strong> — the same orbital layout is regenerated with new SOI values applied.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <!-- Tab: Options -->
     <div class="pg-tab-panel" id="pg-tabp-options">
       <div class="pg-section-title">OPTIONS</div>
@@ -4182,6 +4273,40 @@ document.addEventListener('keydown', function(e){
         <div class="pg-section-title" style="margin-bottom:8px">COMING SOON</div>
         <div class="pg-hint">Heightmap · Watermask · Cloud textures · Texture select</div>
       </div>
+    </div>
+
+    <!-- Tab: Presets -->
+    <div class="pg-tab-panel" id="pg-tabp-presets">
+      <div class="pg-section-title">MANAGE PRESETS</div>
+      <div class="pg-hint">Add planets from your system or paste JSON to create presets the generator can use</div>
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <button class="pg-preset-add-btn" onclick="pgShowAddPresetDialog()" title="Paste JSON to add a custom preset">
+          <span>＋</span> Add from JSON
+        </button>
+        <button class="pg-preset-add-btn pg-preset-add-btn--from-body" onclick="pgShowAddFromBodyDialog()" title="Promote a body from your current system into the preset pool">
+          <span>🌍</span> Add from System
+        </button>
+      </div>
+
+      <!-- Search + category filters -->
+      <div style="margin-top:16px">
+        <input id="pg-presets-search" class="pg-presets-search" placeholder="🔍  Search presets…"
+          oninput="pgPresetsRender()" autocomplete="off">
+      </div>
+      <div class="pg-preset-filters" style="margin-top:8px">
+        <button class="pg-preset-filter-btn pg-preset-filter-btn--on" onclick="pgPresetsFilter('all',this)">ALL</button>
+        <button class="pg-preset-filter-btn" onclick="pgPresetsFilter('star',this)">STARS</button>
+        <button class="pg-preset-filter-btn" onclick="pgPresetsFilter('planet',this)">PLANETS</button>
+        <button class="pg-preset-filter-btn" onclick="pgPresetsFilter('moon',this)">MOONS</button>
+        <button class="pg-preset-filter-btn" onclick="pgPresetsFilter('gasgiant',this)">GAS</button>
+        <button class="pg-preset-filter-btn" onclick="pgPresetsFilter('asteroid',this)">ROCK</button>
+        <button class="pg-preset-filter-btn pg-preset-filter-btn--user" onclick="pgPresetsFilter('_user',this)">MY PRESETS</button>
+      </div>
+
+      <!-- Preset list -->
+      <div id="pg-presets-list" style="margin-top:12px;display:flex;flex-direction:column;gap:5px"></div>
     </div>
 
   </div><!-- /pg-panel -->
@@ -4271,20 +4396,30 @@ document.addEventListener('keydown', function(e){
   display: flex;
   border-bottom: 1px solid rgba(100,150,255,.15);
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
 }
+.pg-panel-tabs::-webkit-scrollbar { display: none; }
 .pg-tab {
-  flex: 1; padding: 11px 6px;
+  flex: 0 0 auto; padding: 11px 14px;
   font-family: 'JetBrains Mono', monospace;
   font-size: .7rem; letter-spacing: .06em;
   background: none; border: none; cursor: pointer;
   color: rgba(120,140,200,.6);
   border-bottom: 2px solid transparent;
-  transition: all .14s;
+  transition: all .14s; white-space: nowrap;
 }
-.pg-tab:hover { color: rgba(160,185,255,.9); }
+.pg-tab:hover {
+  color: rgba(160,185,255,.9);
+  background: rgba(100,150,255,.06);
+}
 .pg-tab.on {
   color: rgba(100,220,180,.98);
   border-bottom-color: rgba(100,220,180,.65);
+  background: rgba(100,220,180,.05);
 }
 
 /* ── Tab panels ── */
@@ -4375,14 +4510,70 @@ document.addEventListener('keydown', function(e){
   font-family: 'JetBrains Mono', monospace;
   font-size: .78rem; padding: 10px 16px; border-radius: 5px; cursor: pointer;
   letter-spacing: .06em; border-width: 1px; border-style: solid;
-  transition: all .12s; font-weight: 600;
+  transition: all .15s; font-weight: 600;
+  position: relative; overflow: hidden;
 }
-.pg-btn--primary { border-color: rgba(100,220,180,.55); background: rgba(100,220,180,.14); color: rgba(100,220,180,.98); }
-.pg-btn--primary:hover { background: rgba(100,220,180,.24); }
-.pg-btn--apply   { border-color: rgba(80,140,255,.55); background: rgba(80,140,255,.12); color: rgba(130,185,255,.95); }
-.pg-btn--apply:hover { background: rgba(80,140,255,.24); }
-.pg-btn--danger  { border-color: rgba(255,80,80,.35); background: rgba(255,80,80,.08); color: rgba(255,130,130,.88); }
-.pg-btn--danger:hover { background: rgba(255,80,80,.18); }
+.pg-btn::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.07) 0%, transparent 60%);
+  pointer-events: none;
+}
+.pg-btn--primary {
+  border-color: rgba(100,220,180,.55);
+  background: linear-gradient(135deg, rgba(100,220,180,.22) 0%, rgba(60,180,140,.1) 100%);
+  color: rgba(100,220,180,.98);
+  box-shadow: 0 0 8px rgba(100,220,180,.12), inset 0 1px 0 rgba(100,220,180,.15);
+}
+.pg-btn--primary:hover {
+  background: linear-gradient(135deg, rgba(100,220,180,.34) 0%, rgba(60,180,140,.18) 100%);
+  box-shadow: 0 0 14px rgba(100,220,180,.25), inset 0 1px 0 rgba(100,220,180,.2);
+  border-color: rgba(100,220,180,.8);
+}
+.pg-btn--apply {
+  border-color: rgba(80,140,255,.55);
+  background: linear-gradient(135deg, rgba(80,140,255,.18) 0%, rgba(50,100,220,.08) 100%);
+  color: rgba(130,185,255,.95);
+  box-shadow: 0 0 8px rgba(80,140,255,.1), inset 0 1px 0 rgba(80,140,255,.12);
+}
+.pg-btn--apply:hover {
+  background: linear-gradient(135deg, rgba(80,140,255,.3) 0%, rgba(50,100,220,.15) 100%);
+  box-shadow: 0 0 14px rgba(80,140,255,.22), inset 0 1px 0 rgba(80,140,255,.18);
+  border-color: rgba(80,140,255,.8);
+}
+.pg-btn--danger {
+  border-color: rgba(255,80,80,.35);
+  background: linear-gradient(135deg, rgba(255,80,80,.12) 0%, rgba(200,40,40,.05) 100%);
+  color: rgba(255,130,130,.88);
+  box-shadow: 0 0 6px rgba(255,80,80,.08);
+}
+.pg-btn--danger:hover {
+  background: linear-gradient(135deg, rgba(255,80,80,.24) 0%, rgba(200,40,40,.12) 100%);
+  box-shadow: 0 0 12px rgba(255,80,80,.2);
+  border-color: rgba(255,80,80,.65);
+}
+.pg-btn--seed {
+  border-color: rgba(200,140,255,.45);
+  background: linear-gradient(135deg, rgba(180,100,255,.15) 0%, rgba(140,60,220,.07) 100%);
+  color: rgba(210,160,255,.9);
+  box-shadow: 0 0 6px rgba(180,100,255,.08);
+  font-size: .72rem; padding: 8px 12px;
+}
+.pg-btn--seed:hover {
+  background: linear-gradient(135deg, rgba(180,100,255,.26) 0%, rgba(140,60,220,.14) 100%);
+  border-color: rgba(200,140,255,.75);
+  box-shadow: 0 0 12px rgba(180,100,255,.2);
+}
+.pg-btn--seed.seed-locked {
+  border-color: rgba(255,200,80,.55);
+  background: linear-gradient(135deg, rgba(255,180,40,.18) 0%, rgba(200,130,20,.08) 100%);
+  color: rgba(255,210,100,.95);
+  box-shadow: 0 0 8px rgba(255,180,40,.18);
+}
+.pg-btn--seed.seed-locked:hover {
+  background: linear-gradient(135deg, rgba(255,180,40,.28) 0%, rgba(200,130,20,.14) 100%);
+  border-color: rgba(255,200,80,.8);
+  box-shadow: 0 0 14px rgba(255,180,40,.28);
+}
 
 /* ── Mobile: right-side drawer, full height, narrower ── */
 @media (max-width: 700px) {
@@ -4397,7 +4588,210 @@ document.addEventListener('keydown', function(e){
   #pg-header { padding: 8px 10px; }
   .pg-btn { padding: 8px 10px; font-size: .68rem; }
 }
+
+/* ── Presets tab ── */
+.pg-presets-search {
+  width: 100%; box-sizing: border-box;
+  padding: 8px 12px; border-radius: 5px;
+  border: 1px solid rgba(100,150,255,.25);
+  background: rgba(4,8,22,.8); color: rgba(190,210,255,.9);
+  font-family: 'JetBrains Mono', monospace; font-size: .7rem;
+  outline: none; transition: border-color .15s;
+}
+.pg-presets-search:focus { border-color: rgba(100,220,180,.5); }
+.pg-presets-search::placeholder { color: rgba(100,130,190,.45); }
+.pg-preset-filters {
+  display: flex; flex-wrap: wrap; gap: 5px;
+}
+.pg-preset-filter-btn {
+  padding: 4px 9px; border-radius: 3px; cursor: pointer;
+  border: 1px solid rgba(100,150,255,.28);
+  background: rgba(30,40,80,.5);
+  color: rgba(140,165,220,.7);
+  font-family: 'JetBrains Mono', monospace; font-size: .58rem;
+  letter-spacing: .06em; transition: all .12s;
+}
+.pg-preset-filter-btn:hover { border-color: rgba(100,150,255,.55); color: rgba(180,200,255,.9); }
+.pg-preset-filter-btn--on  { background: rgba(100,150,255,.18)!important; border-color: rgba(100,150,255,.6)!important; color: rgba(180,205,255,.98)!important; }
+.pg-preset-filter-btn--user { border-color: rgba(100,220,180,.28); color: rgba(100,220,180,.7); }
+.pg-preset-filter-btn--user.pg-preset-filter-btn--on { background: rgba(100,220,180,.15)!important; border-color: rgba(100,220,180,.65)!important; color: rgba(100,220,180,.98)!important; }
+
+.pg-preset-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 5px;
+  border: 1px solid rgba(60,80,140,.3);
+  background: rgba(8,14,36,.5);
+  transition: all .12s; cursor: default;
+}
+.pg-preset-row:hover { border-color: rgba(100,150,255,.4); background: rgba(20,30,70,.6); }
+.pg-preset-row--user { border-color: rgba(100,220,180,.28); background: rgba(100,220,180,.05); }
+.pg-preset-row--user:hover { border-color: rgba(100,220,180,.5); background: rgba(100,220,180,.1); }
+.pg-preset-row-icon { font-size: 1rem; min-width: 20px; }
+.pg-preset-row-name { flex: 1; font-size: .7rem; color: rgba(185,205,255,.88); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-preset-row-tag {
+  font-size: .55rem; padding: 2px 6px; border-radius: 2px;
+  background: rgba(60,80,160,.3); border: 1px solid rgba(80,110,200,.3);
+  color: rgba(120,155,230,.75); letter-spacing: .05em; white-space: nowrap;
+}
+.pg-preset-row-tag--user { background: rgba(100,220,180,.12); border-color: rgba(100,220,180,.3); color: rgba(100,220,180,.85); }
+.pg-preset-del-btn {
+  background: none; border: none; cursor: pointer;
+  color: rgba(255,100,100,.45); font-size: .8rem; padding: 2px 5px;
+  border-radius: 3px; transition: all .12s; line-height: 1;
+}
+.pg-preset-del-btn:hover { color: rgba(255,120,120,.9); background: rgba(255,80,80,.12); }
+.pg-preset-empty {
+  font-size: .68rem; color: rgba(100,130,190,.45);
+  text-align: center; padding: 24px 0; letter-spacing: .06em;
+}
+.pg-preset-add-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 14px; border-radius: 5px; cursor: pointer;
+  border: 1px solid rgba(100,150,255,.4);
+  background: rgba(80,120,255,.1);
+  color: rgba(150,185,255,.9);
+  font-family: 'JetBrains Mono', monospace; font-size: .68rem;
+  letter-spacing: .05em; transition: all .14s;
+}
+.pg-preset-add-btn:hover { background: rgba(80,120,255,.2); border-color: rgba(100,150,255,.7); color: rgba(180,210,255,.98); }
+.pg-preset-add-btn--from-body { border-color: rgba(100,220,180,.35); background: rgba(100,220,180,.08); color: rgba(100,220,180,.85); }
+.pg-preset-add-btn--from-body:hover { background: rgba(100,220,180,.18); border-color: rgba(100,220,180,.65); }
+
+/* ── Preset dialog overlay ── */
+.pg-dialog-overlay {
+  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,.75); z-index: 299999;
+  align-items: center; justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+}
+.pg-dialog-overlay.open { display: flex; }
+.pg-dialog-box {
+  background: rgba(5,9,24,.98); border: 1px solid rgba(100,150,255,.35);
+  border-radius: 8px; padding: 24px 26px; width: 90%; max-width: 440px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.85); max-height: 90vh; overflow-y: auto;
+}
+.pg-dialog-title {
+  font-family: 'Orbitron', sans-serif; font-size: .8rem;
+  letter-spacing: .15em; color: rgba(100,220,180,.9); margin-bottom: 4px;
+}
+.pg-dialog-sub { font-size: .62rem; color: rgba(120,150,200,.55); margin-bottom: 18px; }
+.pg-dialog-label { font-size: .68rem; color: rgba(140,165,215,.75); margin-bottom: 6px; letter-spacing: .03em; }
+.pg-dialog-input, .pg-dialog-select, .pg-dialog-textarea {
+  width: 100%; box-sizing: border-box;
+  padding: 8px 11px; border-radius: 5px;
+  border: 1px solid rgba(100,150,255,.28);
+  background: rgba(4,8,22,.9); color: rgba(190,210,255,.9);
+  font-family: 'JetBrains Mono', monospace; font-size: .7rem;
+  outline: none; transition: border-color .15s;
+}
+.pg-dialog-input:focus, .pg-dialog-select:focus, .pg-dialog-textarea:focus { border-color: rgba(100,220,180,.5); }
+.pg-dialog-textarea { resize: vertical; min-height: 110px; max-height: 260px; }
+.pg-dialog-err { font-size: .63rem; color: rgba(255,140,100,.85); margin-top: 6px; display: none; }
+.pg-dialog-body-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; margin-top: 10px; }
+.pg-dialog-body-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 5px; cursor: pointer;
+  border: 1px solid rgba(60,80,140,.35); background: rgba(8,14,36,.5);
+  transition: all .12s;
+}
+.pg-dialog-body-item:hover { border-color: rgba(100,220,180,.45); background: rgba(100,220,180,.07); }
+.pg-dialog-body-item.selected { border-color: rgba(100,220,180,.7); background: rgba(100,220,180,.14); }
+.pg-dialog-body-name { flex: 1; font-size: .7rem; color: rgba(185,205,255,.88); }
+.pg-dialog-body-type { font-size: .58rem; color: rgba(100,220,180,.65); }
+.pg-dialog-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; }
+.pg-dialog-btn {
+  padding: 8px 18px; border-radius: 5px; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: .68rem;
+  letter-spacing: .05em; border: 1px solid; transition: all .14s;
+}
+.pg-dialog-btn--cancel { border-color: rgba(100,130,200,.3); background: none; color: rgba(140,165,220,.65); }
+.pg-dialog-btn--cancel:hover { border-color: rgba(100,130,200,.55); color: rgba(175,200,255,.9); }
+.pg-dialog-btn--ok { border-color: rgba(100,220,180,.5); background: rgba(100,220,180,.12); color: rgba(100,220,180,.95); }
+.pg-dialog-btn--ok:hover { background: rgba(100,220,180,.22); border-color: rgba(100,220,180,.8); }
 </style>
 </style>
+
+<!-- ══ Add Preset from JSON dialog ══ -->
+<div id="pg-add-json-dialog" class="pg-dialog-overlay">
+  <div class="pg-dialog-box">
+    <div class="pg-dialog-title">ADD PRESET FROM JSON</div>
+    <div class="pg-dialog-sub">Paste the body's JSON data from an SFS preset file</div>
+
+    <div style="margin-bottom:12px">
+      <div class="pg-dialog-label">Preset Name</div>
+      <input id="pg-add-json-name" class="pg-dialog-input" placeholder="e.g. Lava World" autocomplete="off">
+    </div>
+
+    <div style="margin-bottom:12px">
+      <div class="pg-dialog-label">Category</div>
+      <select id="pg-add-json-cat" class="pg-dialog-select">
+        <option value="custom">Custom</option>
+        <option value="vanilla">Vanilla</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:4px">
+      <div class="pg-dialog-label">Override type mapping</div>
+      <select id="pg-add-json-type" class="pg-dialog-select">
+        <option value="">Auto-detect</option>
+        <option value="star">Star</option>
+        <option value="planet">Planet</option>
+        <option value="moon">Moon</option>
+        <option value="gasgiant">Gas Giant</option>
+        <option value="ringedgiant">Ringed Giant</option>
+        <option value="asteroid">Asteroid</option>
+        <option value="blackhole">Black Hole</option>
+        <option value="mercurylike">Rocky / Mercury-like</option>
+        <option value="marslike">Mars-like</option>
+      </select>
+    </div>
+    <div style="font-size:.6rem;color:rgba(100,130,190,.45);margin-bottom:14px;line-height:1.5">
+      Auto-detect uses <code style="color:rgba(100,220,180,.6)">inferPresetMeta()</code> to guess the type from body data.
+    </div>
+
+    <div>
+      <div class="pg-dialog-label">Body JSON</div>
+      <textarea id="pg-add-json-data" class="pg-dialog-textarea" placeholder='{ "BASE_DATA": { ... }, "ATMOSPHERE_VISUALS_DATA": { ... } }'></textarea>
+      <div id="pg-add-json-err" class="pg-dialog-err"></div>
+    </div>
+
+    <div class="pg-dialog-actions">
+      <button class="pg-dialog-btn pg-dialog-btn--cancel" onclick="pgCloseAddJsonDialog()">Cancel</button>
+      <button class="pg-dialog-btn pg-dialog-btn--ok" onclick="pgPresetsAdd()">Add Preset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Add Preset from System Body dialog ══ -->
+<div id="pg-add-body-dialog" class="pg-dialog-overlay">
+  <div class="pg-dialog-box">
+    <div class="pg-dialog-title">ADD FROM SYSTEM</div>
+    <div class="pg-dialog-sub">Pick a body from your current system to add as a reusable preset</div>
+
+    <div style="margin-bottom:12px">
+      <div class="pg-dialog-label">Save as name</div>
+      <input id="pg-add-body-name" class="pg-dialog-input" placeholder="Preset name (defaults to body name)" autocomplete="off">
+    </div>
+
+    <div style="margin-bottom:12px">
+      <div class="pg-dialog-label">Category</div>
+      <select id="pg-add-body-cat" class="pg-dialog-select">
+        <option value="custom">Custom</option>
+        <option value="vanilla">Vanilla</option>
+      </select>
+    </div>
+
+    <div class="pg-dialog-label">Select body</div>
+    <div id="pg-add-body-list" class="pg-dialog-body-list">
+      <div class="pg-preset-empty">No bodies in current system</div>
+    </div>
+    <div id="pg-add-body-err" class="pg-dialog-err"></div>
+
+    <div class="pg-dialog-actions">
+      <button class="pg-dialog-btn pg-dialog-btn--cancel" onclick="pgCloseAddBodyDialog()">Cancel</button>
+      <button class="pg-dialog-btn pg-dialog-btn--ok" onclick="pgPresetsAddFromBody()">Add Preset</button>
+    </div>
+  </div>
+</div>
 
 </body>
