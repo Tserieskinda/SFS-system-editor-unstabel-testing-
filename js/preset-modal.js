@@ -572,6 +572,7 @@ function openPreset(forCenter){
 // ── Open modal in "save as procgen preset" mode ────────────────────────────────
 function openPresetForSave(){
   _prsMode = 'save-preset';
+  isForCenter = false;   // must be false so prsRebuild doesn't restrict to stars/BHs
   selectedPresetKey = 'Earth';
   _prsTab = 'all';
   _prsSearch = '';
