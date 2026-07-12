@@ -113,6 +113,111 @@ function cycleDifficulty(){
   drawViewport();
 }
 
+function toggleDistRings(){
+  const on = localStorage.getItem('sfs_dist_rings') !== '0';
+  localStorage.setItem('sfs_dist_rings', on ? '0' : '1');
+  _syncDistRingsBtn();
+  drawViewport();
+}
+
+function _syncDistRingsBtn(){
+  const btn = document.getElementById('btn-dist-rings');
+  if(!btn) return;
+  const on = localStorage.getItem('sfs_dist_rings') !== '0';
+  btn.style.opacity    = on ? '1' : '0.4';
+  btn.style.background = on ? 'rgba(120,200,255,.1)' : '';
+}
+
+// ── Distance ring scale presets ────────────────────────────────────────────────
+// Each preset defines a named scale and its ring values in AU.
+// LY values are stored as AU (1 LY = 63241 AU) so the renderer is unchanged.
+const _LY = 63241; // AU per light-year
+const _DIST_RING_PRESETS = [
+  { id: 'inner',   label: 'Inner system', sub: '0.1 – 2 AU',            rings: [0.1, 0.25, 0.5, 1, 2] },
+  { id: 'solar',   label: 'Solar system', sub: '1 – 50 AU',             rings: [1, 5, 10, 20, 30, 50] },
+  { id: '100au',   label: '100 AU scale', sub: '10 – 100 AU',           rings: [10, 25, 50, 75, 100] },
+  { id: '1kau',    label: '1 000 AU',     sub: '100 – 1 000 AU',        rings: [100, 250, 500, 1000] },
+  { id: '0.1ly',   label: '0.1 LY',       sub: '0.01 – 0.1 LY',        rings: [0.01*_LY, 0.025*_LY, 0.05*_LY, 0.1*_LY] },
+  { id: '1ly',     label: '1 LY',         sub: '0.1 – 1 LY',           rings: [0.1*_LY, 0.25*_LY, 0.5*_LY, _LY] },
+  { id: '10ly',    label: '10 LY',        sub: '1 – 10 LY',            rings: [_LY, 2*_LY, 5*_LY, 10*_LY] },
+  { id: '100ly',   label: '100 LY',       sub: '10 – 100 LY',          rings: [10*_LY, 25*_LY, 50*_LY, 100*_LY] },
+];
+
+// Returns the ring AU array for the active preset.
+function _getDistRingsCfg(){
+  const id = localStorage.getItem('sfs_dist_rings_preset') || 'solar';
+  const p  = _DIST_RING_PRESETS.find(p => p.id === id) || _DIST_RING_PRESETS[1];
+  return p.rings.slice();
+}
+
+// Build a nice label for a ring value — auto-selects AU vs LY.
+function _ringLabel(au){
+  if(au >= _LY * 0.09){
+    const ly = au / _LY;
+    const s  = ly >= 10 ? Math.round(ly) : (ly >= 1 ? +ly.toFixed(1) : +ly.toFixed(2));
+    return s + ' LY';
+  }
+  const s = au >= 10 ? Math.round(au) : (au >= 1 ? +au.toFixed(1) : +au.toFixed(2));
+  return s + ' AU';
+}
+
+function openDistRingsMenu(){
+  const modal = document.getElementById('dist-rings-modal');
+  if(!modal) return;
+  _distRingsRenderPresets();
+  modal.style.display = 'flex';
+}
+
+function closeDistRingsMenu(){
+  const modal = document.getElementById('dist-rings-modal');
+  if(modal) modal.style.display = 'none';
+}
+
+function _distRingsRenderPresets(){
+  const list = document.getElementById('dist-rings-list');
+  if(!list) return;
+  const active = localStorage.getItem('sfs_dist_rings_preset') || 'solar';
+  list.innerHTML = _DIST_RING_PRESETS.map(p => {
+    const on = p.id === active;
+    const ringStr = p.rings.map(_ringLabel).join(', ');
+    return `<div onclick="_distRingsSelectPreset('${p.id}')" style="
+        display:flex;align-items:center;gap:10px;padding:7px 10px;margin-bottom:5px;
+        border-radius:7px;cursor:pointer;border:1px solid ${on ? 'rgba(120,200,255,.45)' : 'rgba(120,200,255,.1)'};
+        background:${on ? 'rgba(120,200,255,.1)' : 'rgba(120,200,255,.03)'};
+        transition:background .12s,border-color .12s;">
+      <div style="width:14px;height:14px;border-radius:50%;flex-shrink:0;
+        border:2px solid ${on ? 'rgba(120,200,255,.9)' : 'rgba(120,200,255,.3)'};
+        background:${on ? 'rgba(120,200,255,.7)' : 'transparent'};
+        box-shadow:${on ? '0 0 6px rgba(120,200,255,.5)' : 'none'};"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:.72rem;color:${on ? 'rgba(180,220,255,.95)' : 'rgba(150,185,230,.7)'};
+          letter-spacing:.04em;">${p.label}</div>
+        <div style="font-size:.58rem;color:rgba(110,150,200,.5);margin-top:1px;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ringStr}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function _distRingsSelectPreset(id){
+  localStorage.setItem('sfs_dist_rings_preset', id);
+  _distRingsRenderPresets();
+  drawViewport();
+}
+
+function _distRingsReset(){
+  localStorage.removeItem('sfs_dist_rings_preset');
+  _distRingsRenderPresets();
+  drawViewport();
+}
+
+// Sync dist-rings button state on load
+(function _initDistRingsBtn(){
+  const _go = () => _syncDistRingsBtn();
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _go);
+  else _go();
+})();
+
 // Keplerian: given SMA(px), ecc, argPeriapsis, return {cx,cy,rx,ry,angle, bodyX, bodyY}
 // In SFS, argument of periapsis rotates the ellipse. Body is placed at periapsis (true anomaly=0).
 function orbitGeometry(smaPx, ecc, aopDeg, parentCX, parentCY){
@@ -164,6 +269,21 @@ let bodyTerrainPeakPx = {};
 let showFrontClouds = true; // legacy alias — kept for draw code gate
 let dbgFogOpacity = 1.0;   // kept for any legacy references (unused by new system)
 
+// ── Front-cloud edge debug ──
+// Toggle from the console with toggleFcDebug(). When on, each front-cloud
+// layer logs its geometry (once per unique parameter set) and draws overlay
+// rings on top of the planet showing: the intended outer disc edge (fcR_px),
+// where the fade math reaches full erase, and where the fade starts — plus
+// small unscaled thumbnails of the raw scratch-canvas mask (pre-blit-scaling)
+// stacked in the top-left corner, one per visible front-cloud layer.
+let FC_DEBUG = false;
+function toggleFcDebug(){
+  FC_DEBUG = !FC_DEBUG;
+  console.log('[FC_DEBUG]', FC_DEBUG ? 'ON' : 'OFF');
+  if(typeof drawViewport === 'function') drawViewport();
+}
+if(typeof window !== 'undefined') window.toggleFcDebug = toggleFcDebug;
+
 // ── Environment render flags ──
 const envFlags = {
   soi:       true,
@@ -209,13 +329,12 @@ function toggleEnvDropdown(){
   _envDropOpen = !_envDropOpen;
   const dd = document.getElementById('env-dropdown');
   if(_envDropOpen){
+    dd.style.display = 'block';
     const btn = document.getElementById('btn-env');
-    const r = btn.getBoundingClientRect();
-    dd.style.top  = (r.bottom + 6) + 'px';
-    dd.style.right = (window.innerWidth - r.right) + 'px';
-    dd.style.left  = 'auto';
+    positionToolbarDropdown(dd, btn);
+  } else {
+    dd.style.display = 'none';
   }
-  dd.style.display = _envDropOpen ? 'block' : 'none';
 }
 
 // Legacy stubs — referenced by any surviving onclick attrs
@@ -426,7 +545,28 @@ function _drawViewportNow(){
   // Always clear the PP CSS filter at frame start — it is re-applied below only if active.
   // This prevents stale filters persisting across frames when PP is toggled or no body found.
   vp.style.filter = '';
+  const _prevSMAScale = _cachedSMAScale;
   _cachedSMAScale = null; // invalidate per-frame cache
+  const _newSMAScale = getSMAScale();
+  // When getSMAScale changes (body added/removed changing maxSMA), all bodyWorldPos values
+  // rescale proportionally. Compensate vpOffX/Y and unlocked overlay worldX/Y by the same
+  // ratio so nothing visually jumps.
+  if (_prevSMAScale !== null && _prevSMAScale !== _newSMAScale && _newSMAScale > 0) {
+    const ratio = _newSMAScale / _prevSMAScale;
+    vpOffX *= ratio;
+    vpOffY *= ratio;
+    if (typeof _imgOverlays !== 'undefined') {
+      _imgOverlays.forEach(ov => {
+        if (!ov.lockToBody || ov.lockToBody === 'None') {
+          ov.worldX *= ratio;
+          ov.worldY *= ratio;
+        }
+        // worldW/H drive screen size (worldW * vpZ) — rescale for all overlays
+        ov.worldW *= ratio;
+        ov.worldH *= ratio;
+      });
+    }
+  }
   ctx2.clearRect(0, 0, vp.width, vp.height);
 
   const names = Object.keys(bodies);
@@ -496,6 +636,25 @@ function _drawViewportNow(){
     bodyVisible[name]  = f > 0;
     bodyFadeVal[name]  = f;
     labelFadeVal[name] = lf;
+
+    // Front-cloud decorator exemption: bodies whose only job is to paint a
+    // FRONT_CLOUDS_DATA disc over their parent (day/night terminators, city
+    // lights, bioluminescence) are deliberately placed at a very small or
+    // near-zero SMA — that's the whole trick, not an accident. The own-SMA
+    // fade above exists to hide clutter from real, distant satellites; it
+    // has no business culling a body with no independent presence of its
+    // own. Without this, any decorator body orbiting inside BODY_FADE_MIN
+    // (~20px on screen) is thrown out before it ever reaches the draw loop,
+    // silently deleting the whole effect (e.g. Earth's city lights, or a
+    // close-orbit shadow disc) instead of just fading its OWN disc/label,
+    // which is all the original fade was ever meant to do.
+    const fcd = b.data.FRONT_CLOUDS_DATA;
+    if(fcd && fcd.cloudsTexture && fcd.cloudsTexture !== 'None'){
+      bodyVisible[name] = true;
+      bodyFadeVal[name] = 1;
+      // Label fade stays as computed — we still don't want a label floating
+      // over the parent for a body that's invisible by design.
+    }
 
     // Selected body always fully shown
     if(selectedBody === name){ bodyVisible[name]=true; bodyFadeVal[name]=1; labelFadeVal[name]=1; }
@@ -603,13 +762,143 @@ function _drawViewportNow(){
 
   ctx2.restore(); // end lighter composite
 
+  // ── Distance rings ────────────────────────────────────────────────────────
+  // Concentric circles around the SELECTED body (or centre if nothing selected).
+  // Only drawn when the setting is enabled (localStorage sfs_dist_rings).
+  if(localStorage.getItem('sfs_dist_rings') !== '0'){
+    // Determine ring centre: prefer selected body, fall back to system centre
+    const _ringBodyName = (typeof selectedBody !== 'undefined' && selectedBody && bodies[selectedBody])
+      ? selectedBody
+      : names.find(n => bodies[n].isCenter);
+    if(_ringBodyName){
+      const _rWP = bodyWorldPos[_ringBodyName] || {x:0, y:0};
+      const _cSP = worldToScreen(_rWP.x, _rWP.y);
+      const _AU      = 1.496e11;
+      const _smaScl  = getSMAScale();
+
+      // Use configurable ring list
+      const _ringAUs  = typeof _getDistRingsCfg === 'function' ? _getDistRingsCfg() : [0.1,0.25,0.5,1,2,5,10,20,50,100,500,1000];
+      const _RINGS = _ringAUs.map(au => ({
+        m: _AU * au,
+        label: typeof _ringLabel === 'function' ? _ringLabel(au) : au + ' AU',
+      }));
+
+      const _diagPx2 = Math.hypot(vp.width, vp.height);
+
+      ctx2.save();
+      ctx2.setLineDash([4, 6]);
+      ctx2.lineWidth = 0.7;
+
+      for(const {m, label} of _RINGS){
+        const _rpx = m * _smaScl * vpZ;
+        if(_rpx < 20 || _rpx > _diagPx2 * 4) continue;
+
+        const _fadeIn    = Math.min(1, (_rpx - 20) / 20);
+        const _coverage  = Math.min(1, _diagPx2 / _rpx);
+        const _alpha     = _fadeIn * Math.min(1, _coverage * 3) * 0.35;
+        if(_alpha < 0.01) continue;
+
+        ctx2.strokeStyle = `rgba(120,200,255,${_alpha})`;
+        ctx2.beginPath();
+        ctx2.arc(_cSP.x, _cSP.y, _rpx, 0, Math.PI * 2);
+        ctx2.stroke();
+
+        if(_rpx < _diagPx2 * 1.5 && _alpha > 0.05){
+          const _lx = _cSP.x;
+          const _ly = _cSP.y - _rpx;
+          if(_lx >= 0 && _lx <= vp.width && _ly >= -10 && _ly <= vp.height){
+            ctx2.globalAlpha = _alpha * 2.2;
+            ctx2.fillStyle = 'rgba(120,200,255,1)';
+            ctx2.font = '10px monospace';
+            ctx2.textAlign = 'center';
+            ctx2.textBaseline = 'bottom';
+            ctx2.fillText(label, _lx, _ly - 2);
+            ctx2.globalAlpha = 1;
+          }
+        }
+      }
+
+      ctx2.restore();
+    }
+  }
+  // ── End distance rings ────────────────────────────────────────────────────
+
 
   const centerName2 = names.find(n => bodies[n].isCenter);
   const centerR_m = centerName2 ? ((bodies[centerName2].data.BASE_DATA||{}).radius || 1) : 1;
   const CENTER_PX = BODY_PX['star'];
 
+  // ── Draw order: parents before children, then positionZ among siblings ──
+  // Object.keys(bodies) has no meaningful order — it just reflects import/creation
+  // order — so with no sort at all, a moon that happens to come before its planet
+  // in the zip gets drawn (and thus visually painted over) first, hiding its own
+  // effects behind the planet. This matters most for the "invisible moon with
+  // front clouds" day/night trick: the moon's front-cloud disc must paint AFTER
+  // the body it's decorating, which only happens reliably if we draw the orbit
+  // hierarchy root-to-leaf.
+  //
+  // Hierarchy depth alone isn't the whole story, though. The actual game
+  // (FrontClouds.cs) gives every front-cloud layer the exact same sortingOrder
+  // (200) on every body — the ONLY thing that ever differentiates draw order
+  // between them is each layer's own world Z, i.e. planet.data.frontClouds.
+  // positionZ (Vector3.forward * positionZ, so more-negative Z sits closer to
+  // camera and draws on top). Advanced setups stack multiple invisible moons
+  // on the SAME parent to fake e.g. clouds (positionZ +5000, further back) +
+  // a day/night terminator (positionZ ~0, middle) + city lights (positionZ
+  // -5000, frontmost) — three siblings all at the same hierarchy depth, whose
+  // correct relative order depends entirely on positionZ, not on which was
+  // imported first. So: depth is still the primary (coarse) key, but among
+  // bodies at the same depth we now break ties by positionZ — more positive
+  // sorts earlier (drawn first/behind), more negative sorts later (drawn
+  // last/in front) — matching the game exactly. Bodies without front-cloud
+  // data are treated as positionZ=0 (neutral middle), same as the engine's
+  // own convention of clouds/atmosphere/rings being local Z offsets from an
+  // implicit zero at the body's own root. Both maps are memoized fresh each
+  // frame since bodies/orbits can be edited live; Array.sort is stable, so
+  // any remaining ties keep their original relative order.
+  const _bodyDepth = {};
+  function _depthOf(n, guard){
+    if(_bodyDepth[n] !== undefined) return _bodyDepth[n];
+    guard = guard || 0;
+    const b = bodies[n];
+    const par = b?.data?.ORBIT_DATA?.parent;
+    if(!b || b.isCenter || !par || !bodies[par] || guard > 24) return (_bodyDepth[n] = 0);
+    return (_bodyDepth[n] = _depthOf(par, guard + 1) + 1);
+  }
+  names.forEach(n => _depthOf(n));
+  const _bodyFcZ = {};
+  names.forEach(n => {
+    const fcd = bodies[n]?.data?.FRONT_CLOUDS_DATA;
+    _bodyFcZ[n] = (fcd && typeof fcd.positionZ === 'number') ? fcd.positionZ : 0;
+  });
+  const drawOrder = names.slice().sort((a, b) =>
+    (_bodyDepth[a] - _bodyDepth[b]) || (_bodyFcZ[b] - _bodyFcZ[a])
+  );
+
   bodyScreenPos = {};
-  names.forEach(name => {
+  // Front-cloud composites are collected here instead of drawn immediately.
+  // Reason: each body's surface/terrain/atmosphere is painted in this same
+  // per-body pass, in drawOrder (hierarchy-depth-primary, positionZ only
+  // breaking ties among siblings at the same depth). That's correct for
+  // ordering separate decorator bodies against EACH OTHER, but it means a
+  // body whose own FRONT_CLOUDS_DATA.positionZ happens to be very negative
+  // (e.g. bioluminescence/city-lights painted directly on the planet itself,
+  // not via a separate invisible moon) gets its ENTIRE draw pass — surface
+  // included — sorted ahead of a sibling shadow body's pass, since the sort
+  // key can't tell "this body's own decorative layer" apart from "this body's
+  // solid surface". The shadow body then paints first and gets immediately
+  // painted over by the planet's own surface, so the darkening never shows.
+  // Fix: draw every body's surface/terrain/atmosphere fully in this loop as
+  // before (unchanged), but defer the front-cloud disc itself into a second,
+  // separate pass at the very end, sorted purely by positionZ across ALL
+  // bodies regardless of hierarchy depth or which body they visually sit on.
+  // That lets a shadow disc darken any surface it geometrically overlaps,
+  // while still letting a more-negative-Z layer (front clouds, city lights)
+  // paint back on top of that shadow afterward — matching the game, where
+  // FrontClouds.cs gives every layer the same sortingOrder and only
+  // positionZ (a flat, global Z) ever decides relative order.
+  const _fcDeferred = [];
+  drawOrder.forEach(name => {
     try {
     const b = bodies[name];
     const wp = bodyWorldPos[name] || {x:0, y:0};
@@ -939,7 +1228,17 @@ function _drawViewportNow(){
           // Always use physR_px (true physical pixel radius) for atmosphere sizing,
           // NOT the display-clamped r — the atmosphere must stay at its real physical
           // size regardless of the icon floor or zoom level.
-          const outer_r_px = physR_px * (bodyRadius_m + gradH_m) / bodyRadius_m;
+          // Denominator MUST be the radiusMult-scaled body radius (R_eff_px), not raw
+          // bodyRadius_m: physR_px already has radiusMult baked in (physR_px =
+          // bodyRadius_m*radiusMult*scale*vpZ), so dividing by unscaled bodyRadius_m
+          // lets radiusMult leak into the atmosphere-height term too. In-game, radius
+          // and atmosphere height are scaled by two INDEPENDENT difficulty multipliers
+          // (RadiusScale vs AtmosphereScale/atmoMult) — gradH_m below is already
+          // atmoMult-scaled, so the ratio must only re-apply radiusMult to the radius
+          // part. On Normal (radiusMult=1) this was invisible; on Hard/Realistic it
+          // made the halo balloon outward past its correct outer edge.
+          const R_eff_px_atmo = bodyRadius_m * radiusMult;
+          const outer_r_px = physR_px * (R_eff_px_atmo + gradH_m) / R_eff_px_atmo;
           if(outer_r_px > 0.5){
             const hasTerrain = !!b.data.TERRAIN_DATA;
             // When the atmosphere outer edge exceeds the viewport diagonal, the planet
@@ -1784,14 +2083,33 @@ function _drawViewportNow(){
                       if(ang < 0) ang += 1;
                       const u = (ang * numTiles) % 1;
                       const sx = Math.min(tw - 1, Math.floor(u * tw));
-                      // Unity V=0 is texture bottom; Canvas2D y=0 is top — flip
-                      const sy = Math.min(th - 1, Math.floor(v_frac * th));
-                      const si = (sy * tw + sx) * 4;
+                      // Row mapping, matching the atmosphere polar-warp convention exactly.
+                      // There, t=0 at surface / t=1 at outer edge, and texRowF=(1-t)*(SH-1)
+                      // — i.e. surface samples the image's BOTTOM row (Unity V=0), outer
+                      // edge samples the TOP row (Unity V=1). Here v_disc is defined the
+                      // OPPOSITE way round (1 at surface, 0 at outer edge), so v_frac is
+                      // already the "(1-t)" quantity — no extra flip needed. The previous
+                      // attempt applied (1 - v_frac) on top of that, double-flipping and
+                      // rendering every cloud texture upside-down. v_frac directly gives
+                      // the bottom-row-at-surface mapping the game's V convention wants.
+                      const texRowF = v_frac * (th - 1);
+                      // Bilinear interpolation along Y — same fix the atmosphere polar
+                      // warp already applies (see _atmoPolarCache build above) and for
+                      // the same reason: nearest-neighbor row sampling stairsteps hard
+                      // when a texture's rows are meaningful radial/ring geometry rather
+                      // than generic tileable cloud noise, which is exactly the case the
+                      // "3D ring via clouds" trick relies on.
+                      const sy0 = Math.min(th - 1, Math.max(0, Math.floor(texRowF)));
+                      const sy1 = Math.min(th - 1, sy0 + 1);
+                      const fy  = texRowF - sy0;
+                      const si0 = (sy0 * tw + sx) * 4;
+                      const si1 = (sy1 * tw + sx) * 4;
                       const oi = (py * SZ + px2) * 4;
-                      out[oi]     = sd[si];
-                      out[oi + 1] = sd[si + 1];
-                      out[oi + 2] = sd[si + 2];
-                      out[oi + 3] = Math.round(sd[si + 3] * edgeA);
+                      out[oi]     = sd[si0]     + (sd[si1]     - sd[si0])     * fy + 0.5 | 0;
+                      out[oi + 1] = sd[si0 + 1] + (sd[si1 + 1] - sd[si0 + 1]) * fy + 0.5 | 0;
+                      out[oi + 2] = sd[si0 + 2] + (sd[si1 + 2] - sd[si0 + 2]) * fy + 0.5 | 0;
+                      const a0 = sd[si0 + 3], a1 = sd[si1 + 3];
+                      out[oi + 3] = Math.round((a0 + (a1 - a0) * fy) * edgeA);
                     }
                   }
                   wctx.putImageData(od, 0, 0);
@@ -1801,6 +2119,17 @@ function _drawViewportNow(){
                 ctx2.globalAlpha *= baseAlpha;
                 ctx2.imageSmoothingEnabled = true;
                 ctx2.imageSmoothingQuality = 'high';
+                // SFS convention: cloud/ring textures are unlit source art with NO
+                // alpha channel (most are opaque JPGs) — black pixels mean "nothing
+                // here" and blend additively/emissively in-game, same convention
+                // already used for GRADIENT above (see the 'lighter' composite
+                // branch around line 1355). Left at the default 'source-over',
+                // every near-black texel (the vast majority of a ring texture like
+                // Ring_Somber, which is mostly empty space around a thin ring band)
+                // gets painted as an OPAQUE dark-grey disc instead of staying
+                // invisible, producing the muddy, mismatched smear seen over the
+                // planet instead of a clean ring silhouette.
+                ctx2.globalCompositeOperation = 'lighter';
                 ctx2.drawImage(wc, sp.x - outer_px, sp.y - outer_px, outer_px * 2, outer_px * 2);
                 ctx2.restore();
               }
@@ -1904,9 +2233,19 @@ function _drawViewportNow(){
         const fcCutClamped = Math.max(0, Math.min(1, fcCutout));
         const fcAlpha = fcCutClamped * atmoFade;
         if(fcAlpha > 0.01){
-          const fcHeight_m  = FCD.height || 0;
-          const fcFadeZone_m = FCD.fadeZoneHeight || 0;
-          const fcR_px      = physR_px * (bodyRadius_m + fcHeight_m) / bodyRadius_m;
+          // Difficulty.ScalePlanetData: frontClouds.height *= atmoMult;
+          // frontClouds.fadeZoneHeight *= atmoMult; — both were being read raw here,
+          // so front-cloud discs (shadow terminators, city lights, etc.) sat at the
+          // wrong altitude on anything but Normal difficulty. Apply atmoMult, and
+          // — same fix as the atmosphere halo above — use the radiusMult-scaled
+          // body radius (R_eff_px) as the ratio denominator, not raw bodyRadius_m,
+          // since physR_px already has radiusMult baked in and the two multipliers
+          // (radiusMult, atmoMult) are independent in-game.
+          const fcAtmoMult  = getAtmoDifficultyMult(b.data);
+          const fcHeight_m  = (FCD.height || 0) * fcAtmoMult;
+          const fcFadeZone_m = (FCD.fadeZoneHeight || 0) * fcAtmoMult;
+          const R_eff_px_fc = bodyRadius_m * radiusMult;
+          const fcR_px      = physR_px * (R_eff_px_fc + fcHeight_m) / R_eff_px_fc;
 
           // fadeZoneHeight is world-space — convert to a fraction of the cloud radius
           // so it's zoom-independent (used in cache key and for rendering).
@@ -1914,47 +2253,173 @@ function _drawViewportNow(){
             ? Math.min(1, fcFadeZone_m / (bodyRadius_m + fcHeight_m))
             : 0.08; // fallback: 8% of cloud radius if not specified
 
-          // ── Build or retrieve front-cloud offscreen canvas ──
-          // Cache key is entirely world-space: texture + cutout + fadeZone fraction.
-          // The canvas is fixed 512x512 and scaled by drawImage — zoom is NOT part of
-          // the key. Previously a new screen-sized canvas was created every frame
-          // (fcDiam = fcR_px*2 pixels, growing to thousands at high zoom), which caused
-          // massive per-frame allocations and browser crashes when zooming in.
-          const fcCacheKey = 'fc:' + fcTex + '|' + fcCutClamped.toFixed(3) + '|' + fadeZoneFrac.toFixed(4) + '|' + _surfaceSZ();
-          if(!drawViewport._fcCache) drawViewport._fcCache = {};
-          let fcOff = drawViewport._fcCache[fcCacheKey];
-          if(!fcOff){
-            const SZ = _surfaceSZ();
-            fcOff = document.createElement('canvas');
-            fcOff.width = fcOff.height = SZ;
-            const fcCtx = fcOff.getContext('2d');
+          // ── Front-cloud texture cache (image content only — no clip, no fade) ──
+          // The disc's circular clip AND its radial edge-fade are pure vector
+          // geometry, drawn natively on the main canvas below, so they're always
+          // crisp regardless of zoom. The texture itself is a different story:
+          // many front-cloud textures (e.g. a day/night terminator shading used
+          // for the "invisible moon" trick) bake a soft gradient INTO the image
+          // content, not just at the outer rim — and that gradient is genuine
+          // raster content, so caching it at a small fixed size (512/1024) and
+          // stretching it to a large on-screen disc (big radius, or zoomed in)
+          // pixelates that internal gradient even though the outer edge stays
+          // sharp. So: bucket the texture-cache resolution up to the nearest
+          // power of two that covers the actual on-screen diameter, same
+          // approach as the geometry fix, capped to avoid runaway memory use.
+          const _fcTexNeeded = fcR_px * 2;
+          let fcTexSZ = _surfaceSZ();
+          while (fcTexSZ < _fcTexNeeded && fcTexSZ < 2048) fcTexSZ *= 2;
+          const fcTexCacheKey = 'fctex:' + fcTex + '|' + fcCutClamped.toFixed(3) + '|' + fcTexSZ;
+          if(!drawViewport._fcTexCache) drawViewport._fcTexCache = {};
+          let fcTexCanvas = drawViewport._fcTexCache[fcTexCacheKey];
+          if(!fcTexCanvas){
+            const SZ = fcTexSZ;
+            fcTexCanvas = document.createElement('canvas');
+            fcTexCanvas.width = fcTexCanvas.height = SZ;
+            const tCtx = fcTexCanvas.getContext('2d');
             const cx = SZ / 2, cy = SZ / 2;
-            const fcR_sz = SZ / 2; // disc radius in canvas coords
-
-            // 1. Draw the cloud image clipped to the cloud disc radius.
-            fcCtx.save();
-            fcCtx.beginPath(); fcCtx.arc(cx, cy, fcR_sz, 0, Math.PI*2); fcCtx.clip();
-            const dh = fcCutClamped > 0 ? fcR_sz / fcCutClamped : fcR_sz;
-            fcCtx.drawImage(fcImg, cx - dh, cy - dh, dh*2, dh*2);
-            fcCtx.restore();
-
-            // 2. Apply a destination-out radial fade at the disc edge.
-            const fadeZone_sz = fcR_sz * fadeZoneFrac;
-            fcCtx.globalCompositeOperation = 'destination-out';
-            const fadeGrad = fcCtx.createRadialGradient(cx, cy, Math.max(0, fcR_sz - fadeZone_sz), cx, cy, fcR_sz);
-            fadeGrad.addColorStop(0, 'rgba(0,0,0,0)');
-            fadeGrad.addColorStop(1, 'rgba(0,0,0,1)');
-            fcCtx.fillStyle = fadeGrad;
-            fcCtx.fillRect(0, 0, SZ, SZ);
-
-            drawViewport._fcCache[fcCacheKey] = fcOff;
+            const dh = fcCutClamped > 0 ? cx / fcCutClamped : cx;
+            tCtx.drawImage(fcImg, cx - dh, cy - dh, dh*2, dh*2);
+            drawViewport._fcTexCache[fcTexCacheKey] = fcTexCanvas;
           }
 
-          // 3. Composite the cached canvas onto the main canvas scaled to screen size.
-          ctx2.save();
-          ctx2.globalAlpha = fcAlpha;
-          ctx2.drawImage(fcOff, sp.x - fcR_px, sp.y - fcR_px, fcR_px * 2, fcR_px * 2);
-          ctx2.restore();
+          // ── Composite: build in an isolated scratch canvas, then one normal draw ──
+          // The disc clip + edge fade must NOT be applied directly on ctx2: by the
+          // time we get here, the planet's own surface/terrain for this body has
+          // already been painted onto ctx2 earlier in this same per-body pass, and
+          // destination-out erases whatever pixels are already there — not just the
+          // cloud layer we just drew. Since the cloud disc radius (fcR_px, which
+          // includes cloud height) is larger than the planet's own visible radius,
+          // whenever the fade zone's inner edge dips inside the planet's actual
+          // surface it visibly eats a ring out of the surface itself. Building the
+          // texture + clip + fade in an isolated scratch canvas first (containing
+          // ONLY the cloud content, nothing else) and compositing that with a
+          // single normal source-over draw guarantees the fade can only ever
+          // affect the cloud layer. The scratch canvas is reused across frames and
+          // sized to the same bucketed resolution as the texture cache, so it only
+          // reallocates when crossing a bucket threshold, not every frame.
+          // Each deferred entry needs its OWN canvas that survives until the
+          // later global pass — a single shared scratch canvas would be
+          // overwritten by the next body in this same loop before the
+          // deferred draw for this body ever ran. Pool by index instead: the
+          // number of front-cloud layers per frame is small and stable, so
+          // this still reuses canvases across frames, just one per
+          // concurrent layer instead of one shared total.
+          if(!drawViewport._fcScratchPool) drawViewport._fcScratchPool = [];
+          const _fcPoolIdx = _fcDeferred.length;
+          let fcScratch = drawViewport._fcScratchPool[_fcPoolIdx];
+          if(!fcScratch){
+            fcScratch = document.createElement('canvas');
+            drawViewport._fcScratchPool[_fcPoolIdx] = fcScratch;
+          }
+          if(fcScratch.width !== fcTexSZ){ fcScratch.width = fcTexSZ; fcScratch.height = fcTexSZ; }
+          const sCtx = fcScratch.getContext('2d');
+          sCtx.clearRect(0, 0, fcTexSZ, fcTexSZ);
+          const scx = fcTexSZ / 2, scy = fcTexSZ / 2, scr = fcTexSZ / 2;
+          // The circular clip is scoped ONLY to the image draw, then ended (restore())
+          // before the erase pass below. Previously the clip stayed active through the
+          // destination-out erase too — at partially-covered clip-AA pixels (coverage
+          // c, 0<c<1) that made the erase itself only c-strong (1*c instead of 1), so
+          // result = (image_alpha*c) * (1-c), which is NON-ZERO for any c strictly
+          // between 0 and 1 (peaks at c=0.5: a full quarter of the original alpha
+          // survives). That's a faint ring baked in at exactly the clip radius,
+          // wobbling in/out of the intended edge with sub-pixel rounding — visible
+          // even in the raw (pre-blit-scale) mask. Ending the clip first means the
+          // erase gradient's alpha=1 zone (r >= fadeOuterR) applies at FULL strength,
+          // uniformly, with no coverage multiplication of its own — cleanly zeroing
+          // any residual from the draw's clip AA regardless of where exactly it sits.
+          sCtx.save();
+          sCtx.beginPath(); sCtx.arc(scx, scy, scr, 0, Math.PI*2); sCtx.clip();
+          sCtx.drawImage(fcTexCanvas, 0, 0, fcTexSZ, fcTexSZ);
+          sCtx.restore();
+          // fadeZoneFrac is a FRACTION of body radius, set as an absolute km value
+          // in FRONT_CLOUDS_DATA (fadeZoneHeight). For very large bodies that
+          // fraction can be tiny (e.g. an 88km fade zone on a 76,000km-radius
+          // planet is ~0.1% of the radius) — at any normal on-screen size that
+          // converts to well under one screen pixel, and a gradient can't
+          // visually transition across less than a pixel: the rasterizer just
+          // snaps it to a hard, jagged-antialiased edge no matter how high-res
+          // the texture cache is. Convert the on-screen minimum (in real pixels)
+          // into scratch-space units via the scratch→screen stretch factor, and
+          // never let the fade go thinner than that — this is a small, deliberate
+          // deviation from literal physical accuracy, justified because a
+          // sub-pixel-wide "gradient" isn't perceivable as a gradient anyway, it
+          // just reads as noise; enforcing a visible minimum better honors the
+          // actual intent (a smooth edge) than exact-but-invisible precision.
+          const MIN_FADE_SCREEN_PX = 2.5;
+          const minFadeZone_sc = fcR_px > 0 ? MIN_FADE_SCREEN_PX * (scr / fcR_px) : 0;
+          let fadeZone_sc = Math.max(scr * fadeZoneFrac, minFadeZone_sc);
+          fadeZone_sc = Math.min(fadeZone_sc, scr);
+          // AA_MARGIN declared here (rather than only inside the if-block below) so it's
+          // always available for the debug snapshot even when fadeZone_sc rounds to ~0.
+          const AA_MARGIN = 1;
+          const fadeOuterR = Math.max(0, scr - AA_MARGIN);
+          if(fadeZone_sc > 0.01){
+            sCtx.save();
+            sCtx.globalCompositeOperation = 'destination-out';
+            // Full-erase (alpha=1) must land strictly INSIDE the clip circle's edge,
+            // not exactly on it. sCtx.clip() anti-aliases the disc boundary over
+            // ~1px, giving that rim partial image coverage even with no fade at
+            // all. If the gradient's alpha=1 stop sits at the same radius as the
+            // clip (scr), that AA rim gets multiplied by an erase alpha that
+            // hasn't actually reached 1 yet at those sub-pixel positions — so a
+            // thin ring of leftover opacity survives right at the edge on every
+            // disc. Pulling the outer stop in by 1 scratch-px guarantees erasure
+            // is already complete by the time rendering reaches the AA rim.
+            // NOTE: this fillRect is intentionally UNCLIPPED (no arc/clip() active
+            // here — that clip already ended above) so the erase applies at full,
+            // uniform strength past fadeOuterR with no coverage-fraction multiplying
+            // against the image draw's own clip AA. See comment above the drawImage.
+            const fadeGrad = sCtx.createRadialGradient(scx, scy, Math.max(0, fadeOuterR - fadeZone_sc), scx, scy, fadeOuterR);
+            fadeGrad.addColorStop(0, 'rgba(0,0,0,0)');
+            fadeGrad.addColorStop(1, 'rgba(0,0,0,1)');
+            sCtx.fillStyle = fadeGrad;
+            sCtx.fillRect(0, 0, fcTexSZ, fcTexSZ);
+            sCtx.restore();
+          }
+
+          // ── Debug: log geometry once per unique parameter combo, per body ──
+          if(FC_DEBUG){
+            if(!drawViewport._fcDbgLogged) drawViewport._fcDbgLogged = {};
+            const _dbgKey = name + '|' + fcTexCacheKey + '|' + fadeZone_sc.toFixed(3) + '|' + fcR_px.toFixed(2);
+            if(drawViewport._fcDbgLogged[_dbgKey] !== true){
+              drawViewport._fcDbgLogged[_dbgKey] = true;
+              const scaleFactor = scr > 0 ? (fcR_px / scr) : 0;
+              console.log(
+                `[FC_DEBUG] ${name}\n` +
+                `  fcR_px (on-screen cloud radius)       = ${fcR_px.toFixed(2)}\n` +
+                `  fcTexSZ (scratch canvas resolution)   = ${fcTexSZ}\n` +
+                `  scr (scratch clip radius)             = ${scr.toFixed(2)}\n` +
+                `  scale factor (screen px / scratch px) = ${scaleFactor.toFixed(4)}\n` +
+                `  AA_MARGIN (scratch px)                = ${AA_MARGIN}  →  ${(AA_MARGIN*scaleFactor).toFixed(3)} screen px\n` +
+                `  fadeOuterR (scratch px, full-erase pt) = ${fadeOuterR.toFixed(2)}  →  screen radius ${(fadeOuterR*scaleFactor).toFixed(2)}\n` +
+                `  fadeZone_sc (scratch px, fade width)   = ${fadeZone_sc.toFixed(2)}  →  ${(fadeZone_sc*scaleFactor).toFixed(2)} screen px\n` +
+                `  fadeZoneFrac (config)                  = ${fadeZoneFrac.toFixed(4)}\n` +
+                `  fade start screen radius               = ${((fadeOuterR-fadeZone_sc)*scaleFactor).toFixed(2)}\n` +
+                `  entry blit size (screen px)            = ${(fcR_px*2).toFixed(2)}  (source ${fcTexSZ}px → ${fcTexSZ===Math.round(fcR_px*2)?'1:1':'SCALED'})`
+              );
+            }
+          }
+
+          // Defer the actual paint — see _fcDeferred comment above the loop start.
+          // Everything up to this point (texture cache, scratch composite, fade)
+          // is unchanged; only the final blit onto ctx2 moves to a later, globally
+          // Z-sorted pass so this layer can correctly darken/light ANY body's
+          // surface, not just bodies drawn later than it in hierarchy order.
+          _fcDeferred.push({
+            z: (typeof FCD.positionZ === 'number') ? FCD.positionZ : 0,
+            scratch: fcScratch,
+            x: sp.x - fcR_px,
+            y: sp.y - fcR_px,
+            size: fcR_px * 2,
+            alpha: fcAlpha,
+            // debug-only fields, cheap to always attach
+            _dbgName: name,
+            _dbgSpX: sp.x, _dbgSpY: sp.y,
+            _dbgFcR_px: fcR_px, _dbgScr: scr,
+            _dbgFadeOuterR: fadeOuterR, _dbgFadeZoneSc: fadeZone_sc,
+            _dbgAaMargin: AA_MARGIN, _dbgFcTexSZ: fcTexSZ
+          });
         }
       }
     }
@@ -2201,6 +2666,102 @@ function _drawViewportNow(){
     } catch(e) { console.error('[SFS|DRAW] Error drawing body "'+name+'": '+e.message, e); }
   });
 
+  // ── Deferred front-cloud pass — globally Z-sorted across ALL bodies ──
+  // Every body's surface/terrain/atmosphere is now fully painted (loop above).
+  // Draw the front-cloud composites collected during that loop here, sorted
+  // purely by positionZ (more-positive first/behind, more-negative last/in
+  // front) with no regard for hierarchy depth or draw order above. This is
+  // what lets a shadow body (near-zero Z) darken a planet's surface even
+  // when that planet's OWN front-cloud layer (e.g. city lights, very
+  // negative Z) was painted in the same per-body pass as its surface — the
+  // shadow now always gets a chance to composite onto that surface here,
+  // and anything with more-negative Z than the shadow still correctly
+  // layers back on top of it afterward, matching FrontClouds.cs where every
+  // layer shares one sortingOrder and only this flat Z ever decides order.
+  _fcDeferred
+    .sort((a, b) => b.z - a.z)
+    .forEach(entry => {
+      try {
+        ctx2.save();
+        ctx2.globalAlpha = entry.alpha;
+        ctx2.drawImage(entry.scratch, entry.x, entry.y, entry.size, entry.size);
+        ctx2.restore();
+      } catch(e) { console.error('[SFS|DRAW] Error compositing deferred front-clouds: '+e.message, e); }
+    });
+
+  // ── Front-cloud debug overlay ──
+  // Draws three rings per layer directly on the main canvas, in SCREEN space,
+  // using the exact same scratch→screen scale factor the real blit uses:
+  //   RED    = fcR_px, the intended outer disc edge (== scratch clip radius scr)
+  //   ORANGE = fadeOuterR mapped to screen — where the erase gradient reaches
+  //            alpha=1 (full erase). If the visible artifact ring sits at/near
+  //            this exact radius, the erase math isn't fully zeroing the AA rim.
+  //   CYAN   = fade-start radius mapped to screen — where the fade begins.
+  // If the artifact sits OUTSIDE the red ring, it isn't coming from this scratch
+  // canvas at all (rules out this whole code path). If it sits exactly ON the
+  // red/orange ring, it's the clip/erase boundary leaking through the final
+  // scaled drawImage. Also draws an unscaled 1:1 thumbnail of each scratch
+  // canvas (the raw mask BEFORE the scaled blit) in the top-left corner —
+  // if the ring is visible in the thumbnail, it's baked into the mask itself;
+  // if the thumbnail edge looks clean but the on-screen disc still shows a
+  // ring, the artifact is introduced by drawImage's scaling/resampling.
+  if(FC_DEBUG && _fcDeferred.length){
+    ctx2.save();
+    _fcDeferred.forEach(entry => {
+      if(entry._dbgFcR_px == null) return;
+      const scaleFactor = entry._dbgScr > 0 ? (entry._dbgFcR_px / entry._dbgScr) : 0;
+      const rOuter = entry._dbgFcR_px;                                   // red
+      const rFadeOuter = entry._dbgFadeOuterR * scaleFactor;             // orange
+      const rFadeStart = (entry._dbgFadeOuterR - entry._dbgFadeZoneSc) * scaleFactor; // cyan
+
+      const ring = (radius, color) => {
+        ctx2.beginPath();
+        ctx2.arc(entry._dbgSpX, entry._dbgSpY, Math.max(0, radius), 0, Math.PI*2);
+        ctx2.strokeStyle = color;
+        ctx2.lineWidth = 1;
+        ctx2.setLineDash([3,3]);
+        ctx2.stroke();
+      };
+      ring(rOuter, 'rgba(255,0,0,0.9)');
+      ring(rFadeOuter, 'rgba(255,150,0,0.9)');
+      ring(rFadeStart, 'rgba(0,220,255,0.9)');
+      ctx2.setLineDash([]);
+
+      ctx2.font = '10px monospace';
+      ctx2.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx2.fillText(
+        `${entry._dbgName} fcR=${rOuter.toFixed(1)} tex=${entry._dbgFcTexSZ} scale=${scaleFactor.toFixed(2)}`,
+        entry._dbgSpX + rOuter + 4, entry._dbgSpY
+      );
+    });
+
+    // Unscaled raw-mask thumbnails, stacked top-left, capped at 160px so large
+    // scratch canvases (up to 2048) don't blow past the visible area — this
+    // thumbnail blit is itself a SEPARATE scale step from the real one, so
+    // don't read the on-screen thumbnail edge as identical to the real edge;
+    // it only tells you whether the ring exists in the mask's raw pixels at all.
+    const THUMB = 160;
+    let ty = 8;
+    const seenScratch = new Set();
+    _fcDeferred.forEach(entry => {
+      if(!entry.scratch || seenScratch.has(entry.scratch)) return;
+      seenScratch.add(entry.scratch);
+      ctx2.save();
+      ctx2.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx2.fillRect(8, ty, THUMB, THUMB + 14);
+      ctx2.drawImage(entry.scratch, 8, ty, THUMB, THUMB);
+      ctx2.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx2.lineWidth = 1;
+      ctx2.strokeRect(8, ty, THUMB, THUMB);
+      ctx2.font = '10px monospace';
+      ctx2.fillStyle = '#fff';
+      ctx2.fillText(`${entry._dbgName} mask (${entry._dbgFcTexSZ}px raw)`, 10, ty + THUMB + 11);
+      ctx2.restore();
+      ty += THUMB + 20;
+    });
+    ctx2.restore();
+  }
+
   bodyScreenPos = {};
   names.forEach(name => {
     const wp = bodyWorldPos[name] || {x:0, y:0};
@@ -2208,21 +2769,32 @@ function _drawViewportNow(){
     bodyScreenPos[name] = sp; // always store for hit-test
   });
 
-  // ── Post-processing overlay — applied after world render, before editor overlays ──
-  // (SOI circles, physAtmo disk, labels are editor-only and must not be colour-graded)
+  // ── Post-processing: find the relevant body's PP key once ──
+  // Prefer system center PP keys; fall back to any body that has keys.
+  let _ppBody = null;
+  const _cname = Object.keys(bodies).find(n => bodies[n].isCenter);
+  if(_cname && bodies[_cname].data?.POST_PROCESSING?.keys?.length) _ppBody = bodies[_cname];
+  if(!_ppBody){
+    const _fallback = Object.keys(bodies).find(n => bodies[n].data?.POST_PROCESSING?.keys?.length);
+    if(_fallback) _ppBody = bodies[_fallback];
+  }
+  const _ppKey = _ppBody ? getPostProcessKey(_ppBody.data, 0) : null;
+
+  // Star intensity feeds the 'gamelike' background (js/background.js) so its
+  // starfield dims/brightens the same way the game's own background stars do
+  // (SFS fades stars out based on a body's authored PostProcessing curve —
+  // see PostProcessingModule.Key.starIntensity / WorldView.UpdatePostProcessing
+  // in the decompiled source). This is intentionally independent of the
+  // envFlags.postProc toggle below (that toggle is just the colour-grading
+  // overlay) — star visibility is its own concern and should track the real
+  // per-body curve regardless of whether colour tinting is enabled. Defaults
+  // to 1 (fully visible) when there's no relevant body/curve data.
+  window._sfsBgStarIntensity = (_ppKey && typeof _ppKey.starIntensity === 'number') ? _ppKey.starIntensity : 1;
+
+  // ── Post-processing colour-tint overlay — applied after world render, before
+  //    editor overlays (SOI circles, physAtmo disk, labels must not be graded) ──
   if(envFlags.postProc){
-    // Prefer system center PP keys; fall back to any body that has keys.
-    let _ppBody = null;
-    const _cname = Object.keys(bodies).find(n => bodies[n].isCenter);
-    if(_cname && bodies[_cname].data?.POST_PROCESSING?.keys?.length) _ppBody = bodies[_cname];
-    if(!_ppBody){
-      const _fallback = Object.keys(bodies).find(n => bodies[n].data?.POST_PROCESSING?.keys?.length);
-      if(_fallback) _ppBody = bodies[_fallback];
-    }
-    if(_ppBody){
-      const _ppKey = getPostProcessKey(_ppBody.data, 0);
-      if(_ppKey) _applyPostProcessingOverlay(ctx2, vp.width, vp.height, _ppKey);
-    }
+    if(_ppKey) _applyPostProcessingOverlay(ctx2, vp.width, vp.height, _ppKey);
   }
 
   // ── SOI pass — drawn on top of everything else ──
@@ -2319,6 +2891,11 @@ function _drawViewportNow(){
       }
     });
     ctx2.restore();
+  }
+
+  // ── Distance indicators overlay ──
+  if(typeof _drawDistanceIndicators === 'function'){
+    _drawDistanceIndicators(ctx2, vpZ, vpOffX, vpOffY, vp.width, vp.height);
   }
 
   // ── Image overlays — drawn on top of everything ──
