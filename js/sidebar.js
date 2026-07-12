@@ -1,5 +1,352 @@
 // ════════════════════════════════ SIDEBAR ════════════════════════════════
 
+// ── Tag system ────────────────────────────────────────────────────────────
+// Tags are stored as body.data.editor = "tag1, tag2, tag3" (plain string).
+// The game ignores unknown top-level keys so this is safe to leave in exports.
+
+const SB_TAG_PRESETS = [
+  // Stars
+  { label:'Star',        group:'star',   color:'#ffd060' },
+  { label:'O-type',      group:'star',   color:'#b0c8ff' },
+  { label:'B-type',      group:'star',   color:'#c8d8ff' },
+  { label:'A-type',      group:'star',   color:'#e8eeff' },
+  { label:'F-type',      group:'star',   color:'#ffffcc' },
+  { label:'G-type',      group:'star',   color:'#ffee88' },
+  { label:'K-type',      group:'star',   color:'#ffb840' },
+  { label:'M-type',      group:'star',   color:'#ff7040' },
+  { label:'Red Giant',   group:'star',   color:'#ff5020' },
+  { label:'White Dwarf', group:'star',   color:'#d0e8ff' },
+  { label:'Neutron Star',group:'star',   color:'#a0e0ff' },
+  { label:'Brown Dwarf', group:'star',   color:'#8b4010' },
+  // Black holes
+  { label:'Black Hole',      group:'bh', color:'#9060ff' },
+  { label:'Primordial BH',   group:'bh', color:'#7040e0' },
+  { label:'Stellar BH',      group:'bh', color:'#8050f0' },
+  { label:'Supermassive BH', group:'bh', color:'#b080ff' },
+  // Planets — general
+  { label:'Planet',      group:'planet', color:'#60c8ff' },
+  { label:'Earth-like',  group:'planet', color:'#40d090' },
+  { label:'Desert',      group:'planet', color:'#e0a050' },
+  { label:'Ocean',       group:'planet', color:'#2080ff' },
+  { label:'Icy',         group:'planet', color:'#a0d8f0' },
+  { label:'Lava',        group:'planet', color:'#ff4020' },
+  { label:'Hot',         group:'planet', color:'#ff8030' },
+  { label:'Cold',        group:'planet', color:'#80c0e8' },
+  { label:'Gas Giant',   group:'planet', color:'#c0a060' },
+  { label:'Ice Giant',   group:'planet', color:'#60a0e0' },
+  { label:'Super-Earth', group:'planet', color:'#50d080' },
+  { label:'Mini-Neptune',group:'planet', color:'#6080c0' },
+  { label:'Ringed',      group:'planet', color:'#d0b070' },
+  // Moons & small bodies
+  { label:'Moon',        group:'small',  color:'#a0a8b8' },
+  { label:'Asteroid',    group:'small',  color:'#907060' },
+  { label:'Comet',       group:'small',  color:'#80c8d8' },
+  { label:'Dwarf Planet',group:'small',  color:'#b0a090' },
+  // Meta
+  { label:'Real',        group:'meta',   color:'#60e0a0' },
+  { label:'Fictional',   group:'meta',   color:'#e060a0' },
+  { label:'Habitable',   group:'meta',   color:'#40e060' },
+  { label:'Tidally Locked', group:'meta',color:'#c0a0ff' },
+  { label:'Barycentre',  group:'meta',   color:'#80c8ff' },
+];
+
+const SB_TAG_GROUP_COLORS = {
+  star:   '#ffd060',
+  bh:     '#9060ff',
+  planet: '#60c8ff',
+  small:  '#a0a8b8',
+  meta:   '#60e0a0',
+};
+
+function _sbGetTags(name) {
+  const raw = bodies[name]?.data?.editor || '';
+  return raw ? raw.split(',').map(t => t.trim()).filter(Boolean) : [];
+}
+
+function _sbSetTags(name, tags) {
+  if(!bodies[name]) return;
+  const unique = [...new Set(tags.map(t => t.trim()).filter(Boolean))];
+  if(unique.length === 0) {
+    delete bodies[name].data.editor;
+  } else {
+    bodies[name].data.editor = unique.join(', ');
+  }
+}
+
+// Render chips in the tag row above the action buttons
+function fillTagRow(name) {
+  const row = document.getElementById('sbb-tag-row');
+  const addBtn = document.getElementById('sbb-tag-add-btn');
+  if(!row) return;
+
+  // Close picker whenever the active body changes — prevents stale chip state
+  sbTagClosePicker();
+
+  // Remove existing chips (keep the + TAG button)
+  Array.from(row.querySelectorAll('.sb-tag-chip')).forEach(c => c.remove());
+
+  const tags = _sbGetTags(name);
+  tags.forEach(tag => {
+    const preset = SB_TAG_PRESETS.find(p => p.label.toLowerCase() === tag.toLowerCase());
+    const col = preset ? preset.color : 'rgba(160,180,220,.8)';
+    const chip = document.createElement('span');
+    chip.className = 'sb-tag-chip';
+    chip.style.cssText = [
+      'display:inline-flex','align-items:center','gap:3px',
+      `background:${col}18`,
+      `border:1px solid ${col}55`,
+      `color:${col}`,
+      'border-radius:10px','padding:2px 8px 2px 7px',
+      'font-family:"JetBrains Mono",monospace','font-size:.62rem',
+      'letter-spacing:.06em','white-space:nowrap','cursor:default',
+    ].join(';');
+    // Use selectedBody at click-time rather than capturing name at render-time
+    const safeTag = tag.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    chip.innerHTML = `<span>${tag}</span><button onclick="sbTagRemove(selectedBody,'${safeTag}')"
+      style="background:none;border:none;color:inherit;opacity:.6;cursor:pointer;
+        padding:0 0 0 2px;font-size:.6rem;line-height:1;margin-left:1px">✕</button>`;
+    row.insertBefore(chip, addBtn);
+  });
+  if(typeof tagDdSyncBtn === 'function') tagDdSyncBtn();
+}
+
+// Open/close picker
+function sbTagOpenPicker() {
+  if(!selectedBody) return;
+  const picker = document.getElementById('sbb-tag-picker');
+  picker.style.display = picker.style.display === 'none' ? '' : 'none';
+  if(picker.style.display !== 'none') {
+    _sbRenderPresetChips(selectedBody);
+    document.getElementById('sbb-tag-custom-input').value = '';
+    setTimeout(() => document.getElementById('sbb-tag-custom-input').focus(), 50);
+  }
+}
+function sbTagClosePicker() {
+  document.getElementById('sbb-tag-picker').style.display = 'none';
+}
+
+// Render preset chips inside the picker, highlighting active ones
+function _sbRenderPresetChips(name) {
+  const container = document.getElementById('sbb-tag-preset-chips');
+  if(!container) return;
+  container.innerHTML = '';
+  const activeTags = _sbGetTags(name).map(t => t.toLowerCase());
+
+  // Group headers + chips
+  const groups = [...new Set(SB_TAG_PRESETS.map(p => p.group))];
+  groups.forEach(g => {
+    const groupLabel = document.createElement('div');
+    groupLabel.style.cssText = 'width:100%;font-family:"JetBrains Mono",monospace;font-size:.62rem;' +
+      `letter-spacing:.08em;color:${SB_TAG_GROUP_COLORS[g]}99;margin:6px 0 3px;`;
+    groupLabel.textContent = g.toUpperCase();
+    container.appendChild(groupLabel);
+
+    SB_TAG_PRESETS.filter(p => p.group === g).forEach(p => {
+      const active = activeTags.includes(p.label.toLowerCase());
+      const chip = document.createElement('button');
+      chip.className = 'sb-tag-picker-chip';
+      chip.style.cssText = [
+        'font-family:"JetBrains Mono",monospace','font-size:.68rem','letter-spacing:.04em',
+        'padding:5px 13px','border-radius:10px','cursor:pointer','white-space:nowrap',
+        'transition:background .12s,border-color .12s',
+        active
+          ? `background:${p.color}28;border:1px solid ${p.color}90;color:${p.color}`
+          : `background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:rgba(160,180,220,.6)`,
+      ].join(';');
+      chip.textContent = p.label;
+      chip.onclick = () => {
+        sbTagToggle(name, p.label);
+        _sbRenderPresetChips(name); // re-render to reflect new state
+      };
+      container.appendChild(chip);
+    });
+  });
+}
+
+// Toggle a tag on/off
+function sbTagToggle(name, tag) {
+  // Always operate on selectedBody — name may be stale if body was switched
+  const target = (name && bodies[name]) ? name : selectedBody;
+  if(!target || !bodies[target]) return;
+  const tags = _sbGetTags(target);
+  const idx  = tags.findIndex(t => t.toLowerCase() === tag.toLowerCase());
+  if(idx >= 0) tags.splice(idx, 1);
+  else tags.push(tag);
+  _sbSetTags(target, tags);
+  fillTagRow(target);
+  pushUndo();
+}
+
+// Remove a tag (called from chip ✕ button)
+function sbTagRemove(name, tag) {
+  const target = (name && bodies[name]) ? name : selectedBody;
+  if(!target || !bodies[target]) return;
+  const tags = _sbGetTags(target).filter(t => t.toLowerCase() !== tag.toLowerCase());
+  _sbSetTags(target, tags);
+  fillTagRow(target);
+  if(document.getElementById('sbb-tag-picker').style.display !== 'none')
+    _sbRenderPresetChips(target);
+  pushUndo();
+}
+
+// Add custom tag from text input
+function sbTagAddCustom() {
+  if(!selectedBody) return;
+  const input = document.getElementById('sbb-tag-custom-input');
+  const tag   = input.value.trim();
+  if(!tag) return;
+  sbTagToggle(selectedBody, tag);
+  input.value = '';
+  input.focus();
+}
+
+// ── Tag dropdown (topbar) ──────────────────────────────────────────────────
+let _tagDropOpen = false;
+
+function _tagDdCountStatus() {
+  const total    = Object.keys(bodies).length;
+  if(total === 0) return { total, untagged: 0, allTagged: true };
+  const untagged = Object.values(bodies).filter(b => !b.data.editor || !b.data.editor.trim()).length;
+  return { total, untagged, allTagged: untagged === 0 };
+}
+
+function toggleTagDropdown() {
+  _tagDropOpen = !_tagDropOpen;
+  const dd  = document.getElementById('tag-dropdown');
+  const btn = document.getElementById('btn-tag');
+  if(_tagDropOpen) {
+    dd.style.display = 'block';
+    positionToolbarDropdown(dd, btn);
+    _tagDdRefreshStatus();
+    // Clear custom input / hint
+    const inp = document.getElementById('tag-dd-custom-input');
+    if(inp) inp.value = '';
+    const hint = document.getElementById('tag-dd-add-hint');
+    if(hint) hint.style.display = 'none';
+  }
+  dd.style.display = _tagDropOpen ? 'block' : 'none';
+}
+
+function _tagDdRefreshStatus() {
+  const { total, untagged, allTagged } = _tagDdCountStatus();
+  const status  = document.getElementById('tag-dd-status');
+  const summary = document.getElementById('tag-dd-summary');
+  const tbbtn   = document.getElementById('btn-tag');
+
+  if(total === 0) {
+    if(status)  { status.textContent = '—'; status.style.color = 'rgba(160,170,190,.5)'; }
+    if(summary) summary.textContent = 'No bodies in system yet';
+    if(tbbtn)   { tbbtn.style.borderColor = 'rgba(255,220,80,.35)'; tbbtn.style.color = '#ffd050'; }
+    return;
+  }
+
+  if(allTagged) {
+    if(status)  { status.textContent = '✓ All tagged'; status.style.color = 'rgba(48,224,144,.85)'; }
+    if(summary) { summary.textContent = `All ${total} ${total===1?'body':'bodies'} tagged`; summary.style.color = 'rgba(48,224,144,.8)'; }
+    if(tbbtn)   { tbbtn.style.borderColor = 'rgba(48,224,144,.4)'; tbbtn.style.color = '#30e090'; }
+  } else {
+    if(status)  { status.textContent = `⚠ ${untagged} untagged`; status.style.color = 'rgba(255,180,60,.9)'; }
+    if(summary) { summary.textContent = `${untagged} of ${total} ${total===1?'body':'bodies'} untagged!`; summary.style.color = 'rgba(255,180,60,.85)'; }
+    if(tbbtn)   { tbbtn.style.borderColor = 'rgba(255,180,60,.5)'; tbbtn.style.color = '#ffb43c'; }
+  }
+}
+
+// Called whenever bodies or tags change — updates topbar button indicator
+function tagDdSyncBtn() {
+  if(Object.keys(bodies).length === 0) return;
+  _tagDdRefreshStatus();
+}
+
+// Add custom tag to selected body from the topbar dropdown
+function tagDdAddCustom() {
+  const inp  = document.getElementById('tag-dd-custom-input');
+  const hint = document.getElementById('tag-dd-add-hint');
+  const tag  = inp?.value.trim();
+  if(!tag) return;
+  if(!selectedBody || !bodies[selectedBody]) {
+    // No body selected — show a brief note
+    if(hint) { hint.textContent = '⚠ Select a body first'; hint.style.color = 'rgba(255,120,80,.8)'; hint.style.display = ''; }
+    setTimeout(() => { if(hint) hint.style.display = 'none'; }, 2000);
+    return;
+  }
+  sbTagToggle(selectedBody, tag);
+  inp.value = '';
+  if(hint) {
+    hint.textContent  = `✓ "${tag}" applied to ${selectedBody}`;
+    hint.style.color  = 'rgba(48,224,144,.75)';
+    hint.style.display = '';
+    setTimeout(() => { hint.style.display = 'none'; }, 2000);
+  }
+  _tagDdRefreshStatus();
+}
+
+// Quick-add a preset tag (one click, no typing) — same underlying toggle as custom tags
+function tagDdQuickAdd(tag) {
+  const hint = document.getElementById('tag-dd-add-hint');
+  if(!selectedBody || !bodies[selectedBody]) {
+    if(hint) { hint.textContent = '⚠ Select a body first'; hint.style.color = 'rgba(255,120,80,.8)'; hint.style.display = ''; }
+    setTimeout(() => { if(hint) hint.style.display = 'none'; }, 2000);
+    return;
+  }
+  sbTagToggle(selectedBody, tag);
+  const nowOn = _sbGetTags(selectedBody).some(t => t.toLowerCase() === tag.toLowerCase());
+  if(hint) {
+    hint.textContent  = nowOn ? `✓ "${tag}" applied to ${selectedBody}` : `— "${tag}" removed from ${selectedBody}`;
+    hint.style.color  = nowOn ? 'rgba(48,224,144,.75)' : 'rgba(200,200,220,.6)';
+    hint.style.display = '';
+    setTimeout(() => { hint.style.display = 'none'; }, 2000);
+  }
+  _tagDdRefreshStatus();
+}
+
+// Open search modal pre-filtered to untagged
+function tagDdOpenUntagged() {
+  _tagDropOpen = false;
+  document.getElementById('tag-dropdown').style.display = 'none';
+  // Open body search with untagged filter pre-activated
+  openBodySearch();
+  _bsearchActiveTags.add('__untagged__');
+  _bsearchBuildTagFilters();
+  _bsearchRebuildNow();
+}
+
+// Remove all tags with confirmation
+function tagDdRemoveAll() {
+  const { total, untagged } = _tagDdCountStatus();
+  const tagged = total - untagged;
+  if(tagged === 0) {
+    alert('No tags to remove — all bodies are already untagged.');
+    return;
+  }
+  const confirmed = confirm(
+    `Remove all tags from ${tagged} ${tagged===1?'body':'bodies'}?\n\n` +
+    `⚠ Warning: some features (like tag filtering in body search) won't work without tags, ` +
+    `and you'll have to tag all your bodies again manually if you remove them now.`
+  );
+  if(!confirmed) return;
+  Object.values(bodies).forEach(b => { delete b.data.editor; });
+  // Refresh sidebar tag row if a body is open
+  if(selectedBody && bodies[selectedBody]) fillTagRow(selectedBody);
+  _tagDdRefreshStatus();
+  pushUndo();
+}
+
+// Close tag dropdown on outside click
+document.addEventListener('mousedown', e => {
+  try {
+    const wrap = document.getElementById('tag-dropdown-wrap');
+    const dd   = document.getElementById('tag-dropdown');
+    if(dd && !dd.contains(e.target) && (!wrap || !wrap.contains(e.target))) {
+      _tagDropOpen = false;
+      dd.style.display = 'none';
+    }
+  } catch(_){}
+}, true);
+
+
+
+
+
 // Render a shaded sphere SVG using the body's map color into #sbb-icon
 function updateBodyIcon(r, g, b, a){
   const cr = Math.min(1, r||0), cg = Math.min(1, g||0), cb = Math.min(1, b||0);
@@ -35,7 +382,7 @@ function selectBody(name){
   document.getElementById('sb-sel').textContent = name;
   fillSidebar(name);
   // Respect sidebar lock — select the body but don't open the panel
-  if(!window._lockSidebar) openSidebar();
+  if(!window._disablePlanetSelection) openSidebar();
   drawViewport();
 }
 
@@ -81,6 +428,283 @@ function confirmDeleteBody(){
   closeSidebar();
   drawViewport();
   syncAddBodyBtn();
+  if(typeof tagDdSyncBtn === 'function') tagDdSyncBtn();
+}
+
+// ── Change system center to an existing body (re-root the orbit tree) ────
+// Shows a modal listing all non-center bodies. Selecting one re-roots
+// the tree at that body: edges along the path are reversed, all other
+// orbits are untouched.
+
+function replaceCenterBody() {
+  const names      = Object.keys(bodies);
+  const centerName = names.find(n => bodies[n].isCenter);
+  if (!centerName) { alert('No system center found.'); return; }
+
+  const nonCenter = names.filter(n => !bodies[n].isCenter);
+  if (!nonCenter.length) { alert('No other bodies in the system to promote.'); return; }
+
+  // Build / show modal
+  let modal = document.getElementById('change-center-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'change-center-modal';
+    modal.style.cssText = `
+      position:fixed;inset:0;z-index:300000;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,.72);backdrop-filter:blur(4px)`;
+    modal.innerHTML = `
+      <div style="background:rgba(6,10,22,.98);border:1px solid rgba(255,180,80,.3);
+        border-radius:8px;padding:0;width:min(92vw,380px);
+        font-family:'JetBrains Mono',monospace;overflow:hidden">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          padding:12px 16px;border-bottom:1px solid rgba(255,180,80,.15)">
+          <span style="font-family:'Orbitron',sans-serif;font-size:.6rem;
+            color:rgba(255,180,80,.9);letter-spacing:.14em">⭐ CHANGE CENTER BODY</span>
+          <button onclick="document.getElementById('change-center-modal').style.display='none'"
+            style="background:none;border:none;cursor:pointer;color:rgba(180,180,210,.4);
+            font-size:1.1rem;padding:0 4px;line-height:1">✕</button>
+        </div>
+
+        <div style="padding:12px 16px">
+          <div style="font-size:.5rem;color:rgba(150,160,200,.55);margin-bottom:10px;line-height:1.6">
+            Select a body to become the new system center.<br>
+            Orbit edges along the path will be reversed. Bodies at the same level are re-parented to the new center.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;padding:8px 10px;background:rgba(255,180,80,.04);border:1px solid rgba(255,180,80,.12);border-radius:4px">
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.5rem;color:rgba(200,210,255,.7)">
+              <input type="checkbox" id="ccm-recompute-dist" checked
+                style="accent-color:#ffb450;width:13px;height:13px;cursor:pointer">
+              Recompute distances relative to new center
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.5rem;color:rgba(200,210,255,.7)">
+              <input type="checkbox" id="ccm-preserve-ecc"
+                style="accent-color:#ffb450;width:13px;height:13px;cursor:pointer">
+              Preserve eccentricity
+            </label>
+          </div>
+          <div style="font-size:.48rem;color:rgba(255,180,80,.45);margin-bottom:6px;letter-spacing:.08em">
+            CURRENT CENTER: <span id="ccm-current" style="color:rgba(255,200,100,.7)"></span>
+          </div>
+          <div id="ccm-list" style="display:flex;flex-direction:column;gap:4px;
+            max-height:min(50vh,320px);overflow-y:auto;padding-right:2px"></div>
+        </div>
+
+      </div>`;
+    document.body.appendChild(modal);
+    // Close on backdrop click
+    modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+  }
+
+  // Populate
+  document.getElementById('ccm-current').textContent = centerName;
+  const list = document.getElementById('ccm-list');
+  list.innerHTML = '';
+
+  // Sort by depth then name for readability
+  nonCenter
+    .slice()
+    .sort((a, b) => {
+      const da = _ccmDepth(a), db = _ccmDepth(b);
+      return da !== db ? da - db : a.localeCompare(b);
+    })
+    .forEach(name => {
+      const btn = document.createElement('button');
+      const depth = _ccmDepth(name);
+      const parent = bodies[name].data?.ORBIT_DATA?.parent || '?';
+      btn.style.cssText = `
+        display:flex;align-items:center;justify-content:space-between;
+        width:100%;padding:9px 12px;background:rgba(255,180,80,.05);
+        border:1px solid rgba(255,180,80,.15);border-radius:4px;
+        cursor:pointer;text-align:left;transition:background .12s;
+        font-family:'JetBrains Mono',monospace`;
+      btn.innerHTML = `
+        <span>
+          <span style="display:block;font-size:.6rem;color:rgba(220,230,255,.9)">${name}</span>
+          <span style="display:block;font-size:.46rem;color:rgba(150,160,200,.5);margin-top:2px">
+            orbits ${parent} · depth ${depth}
+          </span>
+        </span>
+        <span style="font-size:.52rem;color:rgba(255,180,80,.5);letter-spacing:.06em">PROMOTE →</span>`;
+      btn.onmouseenter = () => { btn.style.background = 'rgba(255,180,80,.12)'; };
+      btn.onmouseleave = () => { btn.style.background = 'rgba(255,180,80,.05)'; };
+      btn.onclick = () => {
+        const recomputeDist = document.getElementById('ccm-recompute-dist').checked;
+        const preserveEcc   = document.getElementById('ccm-preserve-ecc').checked;
+        modal.style.display = 'none';
+        _ccmApply(centerName, name, recomputeDist, preserveEcc);
+      };
+      list.appendChild(btn);
+    });
+
+  modal.style.display = 'flex';
+}
+
+// Depth of a body in the tree (center = 0)
+function _ccmDepth(name, visited) {
+  visited = visited || new Set();
+  if (visited.has(name)) return 99; // cycle guard
+  visited.add(name);
+  const b = bodies[name];
+  if (!b) return 99;
+  if (b.isCenter) return 0;
+  const parent = b.data?.ORBIT_DATA?.parent;
+  if (!parent || !bodies[parent]) return 1;
+  return 1 + _ccmDepth(parent, visited);
+}
+
+// Find path from `from` up to `to` (inclusive on both ends).
+// Returns array like [from, ..., to] or null if no path.
+function _ccmPath(from, to, visited) {
+  visited = visited || new Set();
+  if (from === to) return [from];
+  if (visited.has(from)) return null;
+  visited.add(from);
+  const b = bodies[from];
+  if (!b) return null;
+  const parent = b.data?.ORBIT_DATA?.parent;
+  if (!parent) return null;
+  const rest = _ccmPath(parent, to, visited);
+  if (!rest) return null;
+  return [from, ...rest];
+}
+
+// Apply the re-root: promote `newCenterName` to center,
+// reversing every edge along the path to the old center.
+// Compute absolute SMA from root by summing up the chain (uses raw semiMajorAxis, no difficulty scale)
+function _ccmAbsSMA(name, visited) {
+  visited = visited || new Set();
+  if (visited.has(name)) return 0; // cycle guard
+  visited.add(name);
+  const b = bodies[name];
+  if (!b) return 0;
+  if (b.isCenter) return 0;
+  const od = b.data?.ORBIT_DATA;
+  if (!od) return 0;
+  return od.semiMajorAxis + _ccmAbsSMA(od.parent, visited);
+}
+
+// Compute absolute world position (in metres, Y-up like SFS) by walking the orbit chain.
+// Uses orbitGeometry conventions: body sits at periapsis point defined by AOP.
+function _ccmAbsPos(name, visited) {
+  visited = visited || new Set();
+  if (visited.has(name)) return { x: 0, y: 0 };
+  visited.add(name);
+  const b = bodies[name];
+  if (!b || b.isCenter) return { x: 0, y: 0 };
+  const od = b.data?.ORBIT_DATA;
+  if (!od || !od.parent) return { x: 0, y: 0 };
+  const parentPos = _ccmAbsPos(od.parent, visited);
+  const sma = od.semiMajorAxis;
+  const ecc = od.eccentricity || 0;
+  const aopRad = (od.argumentOfPeriapsis || 0) * Math.PI / 180;
+  const c = sma * ecc; // focus offset
+  // Body sits at periapsis: distance from focus = sma*(1-ecc)
+  // bodyX = parentX + (sma - c)*cos(aop),  bodyY = parentY + (sma - c)*sin(aop)  [Y-up]
+  return {
+    x: parentPos.x + (sma - c) * Math.cos(aopRad),
+    y: parentPos.y + (sma - c) * Math.sin(aopRad)
+  };
+}
+
+function _ccmApply(oldCenterName, newCenterName, recomputeDist, preserveEcc) {
+  // Find path: newCenter → ... → oldCenter
+  const path = _ccmPath(newCenterName, oldCenterName);
+  if (!path) {
+    alert(`Cannot find path from "${newCenterName}" to "${oldCenterName}". Cannot re-root.`);
+    return;
+  }
+
+  pushUndo();
+
+  // Walk path pairs [newCenter, A], [A, B], ..., [N, oldCenter]
+  // For each pair [child, parent], we need to reverse: parent gets child's old orbit (with AOP flipped)
+  // We snapshot ORBIT_DATA before modifying anything
+  const snapshots = {};
+  path.forEach(n => {
+    const od = bodies[n].data?.ORBIT_DATA;
+    snapshots[n] = od ? JSON.parse(JSON.stringify(od)) : null;
+  });
+
+  // Compute absolute SMAs and positions before any modifications (needed for distance/AOP recompute)
+  const absSMA = {};
+  const absPos = {};
+  if (recomputeDist) {
+    Object.keys(bodies).forEach(name => {
+      absSMA[name] = _ccmAbsSMA(name);
+      absPos[name] = _ccmAbsPos(name);
+    });
+  }
+  const newCenterAbsSMA = recomputeDist ? (absSMA[newCenterName] || 0) : 0;
+  const newCenterPos    = recomputeDist ? (absPos[newCenterName] || { x: 0, y: 0 }) : { x: 0, y: 0 };
+
+  const pathSet = new Set(path);
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const childName  = path[i];     // was child
+    const parentName = path[i + 1]; // was parent — now becomes child of childName
+
+    const childOD = snapshots[childName]; // the orbit that child had around parent
+
+    if (childOD) {
+      // Reverse the edge: parentName now orbits childName
+      // SMA and eccentricity stay the same (same ellipse)
+      // AOP flips by 180° (periapsis on the other side)
+      bodies[parentName].data.ORBIT_DATA = {
+        parent:              childName,
+        semiMajorAxis:       childOD.semiMajorAxis,
+        smaDifficultyScale:  childOD.smaDifficultyScale  || {},
+        eccentricity:        childOD.eccentricity        || 0,
+        argumentOfPeriapsis: ((childOD.argumentOfPeriapsis || 0) + 180) % 360,
+        direction:           childOD.direction           ?? 1,
+        multiplierSOI:       childOD.multiplierSOI       ?? 2.5,
+        soiDifficultyScale:  childOD.soiDifficultyScale  || {}
+      };
+      bodies[parentName].isCenter = false;
+    }
+
+    // Re-parent all non-path bodies that orbited parentName to now orbit childName.
+    // parentName's position in the hierarchy is being taken over by childName.
+    Object.keys(bodies).forEach(name => {
+      if (pathSet.has(name)) return;
+      const od = bodies[name].data?.ORBIT_DATA;
+      if (od && od.parent === parentName) {
+        od.parent = childName;
+        if (recomputeDist) {
+          // Recompute SMA as Euclidean distance from new center
+          const bp = absPos[name] || { x: 0, y: 0 };
+          const dx = bp.x - newCenterPos.x;
+          const dy = bp.y - newCenterPos.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const newSMA = Math.max(1000, dist);
+          od.semiMajorAxis = newSMA;
+          if (!preserveEcc) od.eccentricity = 0;
+          // AOP = angle from new center to body (Y-up → atan2(dy, dx), converted to degrees)
+          od.argumentOfPeriapsis = Math.atan2(dy, dx) * 180 / Math.PI;
+        }
+      }
+    });
+  }
+
+  // Promote new center
+  delete bodies[newCenterName].data.ORBIT_DATA;
+  bodies[newCenterName].isCenter = true;
+
+  // Update center name label in sidebar header if present
+  const sbCenter = document.getElementById('sb-center');
+  if (sbCenter) sbCenter.textContent = newCenterName;
+
+  // _cachedSMAScale is invalidated automatically at the top of each drawViewport frame
+
+  if (typeof resizeViewport  === 'function') resizeViewport();
+  if (typeof updateStatusBar === 'function') updateStatusBar();
+  if (typeof drawViewport    === 'function') drawViewport();
+
+  // If selected body was affected, refresh sidebar
+  if (typeof fillSidebar === 'function' && selectedBody && bodies[selectedBody]) {
+    fillSidebar(selectedBody);
+  }
 }
 
 // ── Replace body preset (keep orbit, satellites unaffected) ──
@@ -144,6 +768,17 @@ function importBodyFromTxt(input){
   const reader = new FileReader();
   reader.onload = e => {
     let raw = e.target.result;
+
+    if(typeof _isLegacyPlanetText === 'function' && _isLegacyPlanetText(raw)){
+      if(typeof showLegacyFormatNotice === 'function'){
+        _legacyPending = { kind: 'addBody', items: [{ fileName: file.name, raw }] };
+        showLegacyFormatNotice([file.name], 'single');
+      } else {
+        alert('"' + file.name + '" uses the old pre-1.5 planet format and needs to be converted first.');
+      }
+      return;
+    }
+
     // Lenient parse: same fixes as zip importer
     try {
       raw = raw
@@ -155,33 +790,43 @@ function importBodyFromTxt(input){
     try { bodyData = normalizeDiffScaleKeys(JSON.parse(raw)); }
     catch(err) { alert('Could not parse .txt file:\n' + err.message); return; }
 
-    // Derive name from filename (strip .txt)
-    let name = file.name.replace(/\.txt$/i, '').trim() || 'Body';
+    _lcFinishAddBody(bodyData, file.name);
+  };
+  reader.readAsText(file);
+}
 
-    // Deduplicate name if it already exists
-    if(bodies[name]){
-      let n = 2;
-      while(bodies[name + '_' + n]) n++;
-      name = name + '_' + n;
+// Everything that happens once we have a valid (already-current-format) bodyData
+// object to add via the Add Body flow — split out of importBodyFromTxt so the
+// legacy-conversion path (see _legacyConvertPending in io.js) can reuse it
+// after converting a pre-1.5 file, instead of duplicating this logic.
+function _lcFinishAddBody(bodyData, fileName){
+  // Derive name from filename (strip .txt)
+  let name = (fileName || 'Body').replace(/\.txt$/i, '').trim() || 'Body';
+
+  // Deduplicate name if it already exists
+  if(bodies[name]){
+    let n = 2;
+    while(bodies[name + '_' + n]) n++;
+    name = name + '_' + n;
+  }
+
+  pushUndo();
+
+  // Determine if this should be the center
+  const lacksOrbit = !bodyData.ORBIT_DATA;
+  const existingCenter = Object.values(bodies).find(b => b.isCenter);
+
+  if(isForCenter){
+    // Called from openPreset(true) — replace center slot
+    if(existingCenter){
+      alert('A system center already exists. Remove it first.');
+      return;
     }
-
-    pushUndo();
-
-    // Determine if this should be the center
-    const lacksOrbit = !bodyData.ORBIT_DATA;
-    const existingCenter = Object.values(bodies).find(b => b.isCenter);
-
-    if(isForCenter){
-      // Called from openPreset(true) — replace center slot
-      if(existingCenter){
-        alert('A system center already exists. Remove it first.');
-        return;
-      }
-      delete bodyData.ORBIT_DATA;
-    } else if(lacksOrbit && !existingCenter){
-      // No center yet and file has no orbit — treat as center
-      // (fine — user dropped a star txt as first body)
-    } else if(lacksOrbit && existingCenter){
+    delete bodyData.ORBIT_DATA;
+  } else if(lacksOrbit && !existingCenter){
+    // No center yet and file has no orbit — treat as center
+    // (fine — user dropped a star txt as first body)
+  } else if(lacksOrbit && existingCenter){
       // File has no orbit data but a center exists — inject a smart default orbit
       const centerName = Object.keys(bodies).find(n => bodies[n].isCenter) || 'Sun';
       const parentName = (selectedBody && bodies[selectedBody]) ? selectedBody : centerName;
@@ -262,11 +907,10 @@ function importBodyFromTxt(input){
 
     closePreset();
     syncAddBodyBtn();
+    if(typeof tagDdSyncBtn === 'function') tagDdSyncBtn();
     updateStatusBar();
     selectBody(name);
     drawViewport();
-  };
-  reader.readAsText(file);
 }
 
 // ── Smooth animated zoom to a body ──
@@ -691,6 +1335,7 @@ function fillSidebar(name){
   nameInput.value = name;
   nameInput.classList.remove('conflict');
   document.getElementById('sbb-type').textContent = b.isCenter ? 'System Center' : '';
+  fillTagRow(name);
 
   // BASE
   const BD = d.BASE_DATA||{};
@@ -994,7 +1639,19 @@ function delPPKey(i){ document.getElementById('ppk-'+i)?.remove(); }
 // ── LANDMARKS ──
 function buildLandmarks(lms){
   const el=document.getElementById('lm-list'); el.innerHTML='';
-  lms.forEach((l,i)=>el.appendChild(makeLandmark(l,i)));
+  lms.forEach((l,i)=>{
+    let name = l.name || '';
+    let prefix = l.prefix || '';
+    if(!prefix && name){
+      const words = name.split(' ');
+      const lastWord = words[words.length - 1];
+      if(words.length > 1 && USGS_TERMS.some(t => t.term === lastWord)){
+        prefix = lastWord;
+        name = words.slice(0, -1).join(' ');
+      }
+    }
+    el.appendChild(makeLandmark({...l, name, prefix}, i));
+  });
 }
 
 // Draws a mini arc SVG showing where on a 360° circle the landmark sits.
@@ -1049,8 +1706,19 @@ function makeLandmark(l, i){
 
   const sa = typeof l.startAngle === 'number' ? l.startAngle : 0;
   const ea = typeof l.endAngle   === 'number' ? l.endAngle   : 10;
-  const centre = (sa + ea) / 2;
-  const width  = Math.abs(ea - sa) || 10;
+  // Match game's Math_Utility formulas exactly:
+  // AngularWidth = NormalizeAngleDegrees(endAngle - startAngle)  -> (-180, 180]
+  // Center       = NormalizePositiveAngleDegrees(startAngle + AngularWidth/2) -> [0, 360)
+  function normalizeAngleDeg(a){ while(a>180) a-=360; while(a<=-180) a+=360; return a; }
+  function normalizePosAngleDeg(a){ while(a>360) a-=360; while(a<0) a+=360; return a; }
+  const width  = normalizeAngleDeg(ea - sa) || 10;
+  const centre = normalizePosAngleDeg(sa + width / 2);
+
+  const prefixVal = (l.prefix || '').trim();
+
+  // Build sorted prefix options list
+  const _pfxOpts = USGS_TERMS.slice().sort((a,b)=>a.term.localeCompare(b.term))
+    .map(t=>`<option value="${t.term}" ${prefixVal===t.term?'selected':''}>${t.term}</option>`).join('');
 
   d.innerHTML = `
     <div class="pp-key-header">
@@ -1058,14 +1726,25 @@ function makeLandmark(l, i){
       <button class="lm-del" onclick="delLandmark(${i})">✕</button>
     </div>
 
-    <div class="frow" style="gap:5px">
+    <div class="frow" style="gap:5px;align-items:center">
       <span class="flabel" style="flex-shrink:0">Name</span>
       <input class="finput" id="lm-${i}-n" type="text" value="${(l.name||'').replace(/"/g,'&quot;')}"
         oninput="liveSync()" style="flex:1;min-width:0">
-      <button title="Add scientific descriptor suffix (USGS)" onclick="openSuffixModal(${i})"
-        style="flex-shrink:0;padding:3px 8px;background:rgba(204,153,68,.1);border:1px solid rgba(204,153,68,.3);border-radius:4px;color:var(--amber);font-family:'JetBrains Mono',monospace;font-size:.58rem;font-weight:700;cursor:pointer;transition:all .18s;white-space:nowrap;letter-spacing:.03em"
-        onmouseover="this.style.background='rgba(204,153,68,.22)';this.style.borderColor='rgba(204,153,68,.6)'"
-        onmouseout="this.style.background='rgba(204,153,68,.1)';this.style.borderColor='rgba(204,153,68,.3)'">+ SUFFIX</button>
+      <div style="position:relative;flex-shrink:0">
+        <select id="lm-${i}-pfx" onchange="liveSync()"
+          title="Planetary descriptor (USGS)"
+          style="appearance:none;-webkit-appearance:none;padding:4px 22px 4px 7px;
+            font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:700;
+            color:var(--amber);background:rgba(204,153,68,.1);
+            border:1px solid rgba(204,153,68,.3);border-radius:4px;cursor:pointer;
+            max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+            transition:all .18s;outline:none">
+          <option value="">— none —</option>
+          ${_pfxOpts}
+        </select>
+        <span style="pointer-events:none;position:absolute;right:5px;top:50%;transform:translateY(-50%);
+          font-size:.55rem;color:var(--amber);opacity:.7">▾</span>
+      </div>
     </div>
 
     <!-- Arc visualiser + computed start/end readout -->
@@ -1543,59 +2222,101 @@ function clWidthAutoSync(){
 }
 
 function syncCloudVel(){
-  const mode  = document.getElementById('cl-v-mode')?.value || 'ms';
-  const raw   = parseFloat(document.getElementById('cl-v-input')?.value) || 0;
-  const hint  = document.getElementById('cl-v-hint');
-  const hidden= document.getElementById('cl-v');
-  // Need planet circumference to convert rot↔m/s
-  // Use current body radius + cloud startHeight for inner circumference
-  const b = selectedBody && bodies[selectedBody];
+  const mode   = document.getElementById('cl-v-mode')?.value || 'raw';
+  const raw    = parseFloat(document.getElementById('cl-v-input')?.value) || 0;
+  const hint   = document.getElementById('cl-v-hint');
+  const hidden = document.getElementById('cl-v');
+  const b      = selectedBody && bodies[selectedBody];
   const radius = (b?.data?.BASE_DATA?.radius) || 314970;
-  const startH = getSimpleKmMetres('cl-sh') || 0;
-  const innerCirc = 2 * Math.PI * (radius + startH); // metres
+  const TWO_PI = Math.PI * 2;
 
-  let ms = 0; // final value in m/s
-  if(mode === 'ms'){
-    ms = raw;
+  // Convert input → game velocity (formula: vel = rph * R / 18000)
+  let vel = 0;
+  if(mode === 'raw'){
+    vel = raw;
   } else if(mode === 'rph'){
-    ms = (raw * innerCirc) / 3600;
+    vel = (raw * radius) / 18000;
   } else if(mode === 'rps'){
-    ms = raw * innerCirc;
+    vel = (raw * radius * 3600) / 18000;
+  } else if(mode === 'rpm'){
+    vel = (raw * radius * 60) / 18000;
+  } else if(mode === 'period_s'){
+    // period_s → rph = 3600/period_s → vel
+    if(raw !== 0) vel = (3600 / raw) * radius / 18000;
+  } else if(mode === 'period_m'){
+    if(raw !== 0) vel = (60 / raw) * radius / 18000;
+  } else if(mode === 'period_h'){
+    if(raw !== 0) vel = (1 / raw) * radius / 18000;
+  } else if(mode === 'ms'){
+    // wind_ms = 2π·R / period_s  →  period_s = 2π·R / wind_ms  →  rph = 3600/period_s
+    if(raw !== 0) vel = (raw * 18000) / (radius * TWO_PI);
+  } else if(mode === 'kms'){
+    if(raw !== 0) vel = (raw * 1000 * 18000) / (radius * TWO_PI);
   }
-  if(hidden) hidden.value = ms;
 
-  // Show hint with other units
-  if(hint && innerCirc > 0 && ms !== 0){
-    const rps = ms / innerCirc;
-    const rph = rps * 3600;
-    const period_s = 1 / Math.abs(rps);
+  if(hidden) hidden.value = vel;
+
+  // Build hint line: show key equivalent values
+  if(hint && radius > 0 && vel !== 0){
+    const rph      = (vel * 18000) / radius;          // rotations per hour
+    const period_s = Math.abs(3600 / rph);            // seconds per rotation
+    const period_m = period_s / 60;
     const period_h = period_s / 3600;
-    if(mode === 'ms')
-      hint.textContent = `${rph.toExponential(2)} rot/hr  ·  1 rot = ${period_h.toFixed(1)}h`;
-    else if(mode === 'rph')
-      hint.textContent = `${ms.toExponential(2)} m/s  ·  1 rot = ${period_h.toFixed(1)}h`;
-    else
-      hint.textContent = `${ms.toExponential(2)} m/s  ·  1 rot = ${period_h.toFixed(1)}h`;
+    const wind_ms  = (TWO_PI * radius) / period_s;   // surface tangential speed m/s
+    const wind_kms = wind_ms / 1000;
+
+    const fmtPeriod = period_s < 120
+      ? period_s.toFixed(1) + ' s'
+      : period_m < 120
+        ? period_m.toFixed(2) + ' min'
+        : period_h.toFixed(3) + ' h';
+
+    const fmtWind = wind_ms < 1000
+      ? wind_ms.toFixed(2) + ' m/s'
+      : wind_kms.toFixed(3) + ' km/s';
+
+    if(mode === 'raw'){
+      hint.textContent = `${rph.toExponential(3)} rot/hr  ·  ${fmtPeriod}  ·  ${fmtWind}`;
+    } else if(mode === 'rph' || mode === 'rps' || mode === 'rpm'){
+      hint.textContent = `vel=${vel.toExponential(3)}  ·  ${fmtPeriod}  ·  ${fmtWind}`;
+    } else if(mode === 'period_s' || mode === 'period_m' || mode === 'period_h'){
+      hint.textContent = `vel=${vel.toExponential(3)}  ·  ${rph.toExponential(3)} rot/hr  ·  ${fmtWind}`;
+    } else {
+      // m/s or km/s
+      hint.textContent = `vel=${vel.toExponential(3)}  ·  ${fmtPeriod}  ·  ${rph.toExponential(3)} rot/hr`;
+    }
   } else if(hint){
     hint.textContent = '';
   }
   liveSync();
 }
 
-// Populate cl-v-input from a raw m/s value (called when loading body)
-function setCloudVelDisplay(ms){
-  const mode = document.getElementById('cl-v-mode')?.value || 'ms';
-  const b = selectedBody && bodies[selectedBody];
+// Populate cl-v-input from a raw game velocity value (called when loading body)
+function setCloudVelDisplay(vel){
+  const mode   = document.getElementById('cl-v-mode')?.value || 'raw';
+  const b      = selectedBody && bodies[selectedBody];
   const radius = (b?.data?.BASE_DATA?.radius) || 314970;
-  const startH = getSimpleKmMetres('cl-sh') || 0;
-  const innerCirc = 2 * Math.PI * (radius + startH);
-  let display = ms;
-  if(mode === 'rph' && innerCirc > 0) display = (ms * 3600) / innerCirc;
-  else if(mode === 'rps' && innerCirc > 0) display = ms / innerCirc;
+  const TWO_PI = Math.PI * 2;
+  let display  = vel;
+
+  if(radius > 0 && vel !== 0){
+    const rph     = (vel * 18000) / radius;
+    const period_s = Math.abs(3600 / rph);
+    if     (mode === 'rph')      display = rph;
+    else if(mode === 'rps')      display = rph / 3600;
+    else if(mode === 'rpm')      display = rph / 60;
+    else if(mode === 'period_s') display = period_s;
+    else if(mode === 'period_m') display = period_s / 60;
+    else if(mode === 'period_h') display = period_s / 3600;
+    else if(mode === 'ms')       display = (TWO_PI * radius) / period_s;
+    else if(mode === 'kms')      display = (TWO_PI * radius) / period_s / 1000;
+    else                          display = vel; // raw
+  }
+
   const inp = document.getElementById('cl-v-input');
-  if(inp) inp.value = display ? display.toFixed(4).replace(/\.?0+$/, '') : '';
+  if(inp) inp.value = (display && display !== 0) ? (+display.toFixed(8)).toString() : '';
   const hidden = document.getElementById('cl-v');
-  if(hidden) hidden.value = ms;
+  if(hidden) hidden.value = vel;
   syncCloudVel();
 }
 let _finaliseRenameTimer = null;
@@ -1741,6 +2462,7 @@ function collectLandmarks(){
   const lms=[]; let i=0;
   while(document.getElementById('lm-'+i)){
     const name = document.getElementById(`lm-${i}-n`)?.value?.trim() || '';
+    const prefix = document.getElementById(`lm-${i}-pfx`)?.value?.trim() || '';
     // Read centre and width from number inputs (precise), fall back to range slider
     const centre = parseFloat(document.getElementById(`lm-${i}-c-num`)?.value
                 ?? document.getElementById(`lm-${i}-c`)?.value) || 0;
@@ -1748,7 +2470,8 @@ function collectLandmarks(){
                 ?? document.getElementById(`lm-${i}-w`)?.value) || 10;
     const startAngle = parseFloat((centre - width/2).toFixed(4));
     const endAngle   = parseFloat((centre + width/2).toFixed(4));
-    if(name) lms.push({ name, startAngle, endAngle });
+    const fullName = name && prefix ? `${name} ${prefix}` : (name || prefix);
+    if(fullName) lms.push({ name: fullName, startAngle, endAngle });
     i++;
   }
   return lms;

@@ -2119,17 +2119,6 @@ function _drawViewportNow(){
                 ctx2.globalAlpha *= baseAlpha;
                 ctx2.imageSmoothingEnabled = true;
                 ctx2.imageSmoothingQuality = 'high';
-                // SFS convention: cloud/ring textures are unlit source art with NO
-                // alpha channel (most are opaque JPGs) — black pixels mean "nothing
-                // here" and blend additively/emissively in-game, same convention
-                // already used for GRADIENT above (see the 'lighter' composite
-                // branch around line 1355). Left at the default 'source-over',
-                // every near-black texel (the vast majority of a ring texture like
-                // Ring_Somber, which is mostly empty space around a thin ring band)
-                // gets painted as an OPAQUE dark-grey disc instead of staying
-                // invisible, producing the muddy, mismatched smear seen over the
-                // planet instead of a clean ring silhouette.
-                ctx2.globalCompositeOperation = 'lighter';
                 ctx2.drawImage(wc, sp.x - outer_px, sp.y - outer_px, outer_px * 2, outer_px * 2);
                 ctx2.restore();
               }
