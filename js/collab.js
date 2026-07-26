@@ -57,7 +57,15 @@ const Collab = (() => {
   // credentials (metered.ca) — fine for development; swap in your own
   // TURN provider for production use.
   const ICE_SERVERS = [
-    { urls: 'stun:stun.relay.metered.ca:80' },
+    // Free, unlimited, no auth needed:
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.l.google.com:19302' },
+    // OpenRelay's public test TURN credentials — free but shared/rate-limited
+    // and has been reported flaky for some users. Kept as our TURN fallback
+    // for now since it needs no signup; the candidate-summary logging below
+    // will tell us definitively if it's the culprit (relay: 0 in the
+    // summary = this server gave us nothing usable).
+    { urls: 'stun:openrelay.metered.ca:80' },
     { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
     { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
     { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
@@ -185,6 +193,8 @@ const Collab = (() => {
     let opened = false;
     conn.on('open', () => { opened = true; });
 
+    const candidateTypes = { host: 0, srflx: 0, relay: 0, prflx: 0 };
+
     const attach = () => {
       const pc = conn.peerConnection;
       if(!pc){
@@ -197,6 +207,15 @@ const Collab = (() => {
 
       pc.addEventListener('icegatheringstatechange', () => {
         console.log(`[Collab:${label}] iceGatheringState ->`, pc.iceGatheringState, 'for', conn.peer);
+        if(pc.iceGatheringState === 'complete'){
+          // This is the definitive answer to "did TURN actually give us a
+          // usable relay candidate": if candidateTypes.relay is 0 here, the
+          // TURN server never handed out a relay candidate at all (auth
+          // failure, server down, blocked port, etc.) — distinct from
+          // "we got a relay candidate but it still didn't connect".
+          console.log(`[Collab:${label}] ── candidate summary for`, conn.peer, ':', {...candidateTypes},
+            candidateTypes.relay === 0 ? '⚠ NO RELAY CANDIDATES — TURN server gave us nothing usable' : '✓ relay candidate(s) obtained');
+        }
       });
       pc.addEventListener('iceconnectionstatechange', () => {
         console.log(`[Collab:${label}] iceConnectionState ->`, pc.iceConnectionState, 'for', conn.peer);
@@ -212,7 +231,9 @@ const Collab = (() => {
       });
       pc.addEventListener('icecandidate', (e) => {
         if(e.candidate){
-          console.log(`[Collab:${label}] local ICE candidate:`, e.candidate.type, e.candidate.protocol, e.candidate.address || e.candidate.candidate);
+          const type = e.candidate.type;
+          if(type in candidateTypes) candidateTypes[type]++;
+          console.log(`[Collab:${label}] local ICE candidate:`, type, e.candidate.protocol, e.candidate.address || e.candidate.candidate);
         } else {
           console.log(`[Collab:${label}] ICE candidate gathering complete for`, conn.peer);
         }
@@ -220,13 +241,20 @@ const Collab = (() => {
     };
     attach();
 
-    setTimeout(() => {
-      if(opened) return;
-      const pc = conn.peerConnection;
-      console.error(`[Collab:${label}] ⚠ STALL WATCHDOG — connection to`, conn.peer, 'has not opened after 6s.',
-        pc ? `iceConnectionState=${pc.iceConnectionState} connectionState=${pc.connectionState} signalingState=${pc.signalingState} iceGatheringState=${pc.iceGatheringState}` : '(no peerConnection object)',
-        '\nLikely cause: ICE candidates cannot establish a direct path (NAT/firewall) and PeerJS\'s free cloud broker does not provide a TURN relay fallback. Try both peers on the same network, or configure a TURN server in the Peer() constructor.');
-    }, 6000);
+    // Staged watchdog: an early check is often premature (gathering can
+    // still be in flight), so we re-check at 8s and again at 20s before
+    // treating it as truly dead. This also stops nagging once opened.
+    [8000, 20000].forEach(delay => {
+      setTimeout(() => {
+        if(opened) return;
+        const pc = conn.peerConnection;
+        console.error(`[Collab:${label}] ⚠ STALL WATCHDOG (${delay/1000}s) — connection to`, conn.peer, 'still not open.',
+          pc ? `iceConnectionState=${pc.iceConnectionState} connectionState=${pc.connectionState} signalingState=${pc.signalingState} iceGatheringState=${pc.iceGatheringState} candidates=${JSON.stringify(candidateTypes)}` : '(no peerConnection object)',
+          candidateTypes.relay === 0
+            ? '\nNo relay candidates were ever gathered — the TURN server itself is unreachable/rejecting auth, not just failing to connect. Check the icecandidateerror logs above for the specific server/port that failed.'
+            : '\nA relay candidate WAS obtained but the connection still hasn\'t completed — this points at something other than TURN availability (e.g. the other peer never got a matching relay candidate, or the offer/answer never reached them).');
+      }, delay);
+    });
   }
 
   function _hostHandleIncomingConn(conn){
