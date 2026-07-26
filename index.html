@@ -39,6 +39,10 @@
       <span class="mico">⭐</span>FEATURED SYSTEMS
       <span class="arr">›</span>
     </button>
+    <button class="menu-btn" id="btn-multiplayer" style="border-color:#4fc3f7" onclick="MP.openModal()">
+      <span class="mico">🌐</span>MULTIPLAYER
+      <span class="arr">›</span>
+    </button>
   </nav>
 
   <!-- ── Settings: small cog icon box, pinned top-right ── -->
@@ -1702,6 +1706,68 @@
   </div>
 </div>
 
+<!-- ══════════════ MULTIPLAYER MODAL ══════════════ -->
+<div id="modal-multiplayer">
+  <div class="mpanel" style="width:380px;max-height:90vh;overflow-y:auto">
+    <h2>🌐 MULTIPLAYER</h2>
+    <p>Edit a system together in real time — no account, no server to set up.</p>
+
+    <!-- Tab bar (Host / Join) -->
+    <div id="mp-tabbar" style="display:flex;gap:0;margin:10px 0 18px;border-bottom:1px solid var(--ac18)">
+      <button id="mp-tab-host" onclick="MP.switchTab('host')" style="flex:1;padding:9px 0;background:var(--ac13);border:1px solid var(--ac28);border-bottom:none;color:var(--sky2);font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.08em;cursor:pointer;border-radius:4px 4px 0 0;margin-right:2px">HOST</button>
+      <button id="mp-tab-join" onclick="MP.switchTab('join')" style="flex:1;padding:9px 0;background:transparent;border:1px solid transparent;border-bottom:none;color:var(--ink4);font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.08em;cursor:pointer;border-radius:4px 4px 0 0">JOIN</button>
+    </div>
+
+    <!-- Shared name field -->
+    <div style="margin-bottom:16px">
+      <label style="display:block;font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.06em;color:var(--ink4);margin-bottom:6px">YOUR DISPLAY NAME</label>
+      <input type="text" id="mp-name" maxlength="20" placeholder="e.g. Alex" value="Player"
+        style="width:100%;padding:10px 12px;background:var(--dp3);border:1px solid var(--ac22);border-radius:4px;color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:.78rem;box-sizing:border-box">
+    </div>
+
+    <!-- HOST tab content -->
+    <div id="mp-host-content">
+      <div id="mp-host-idle">
+        <p style="font-size:.68rem;line-height:1.6;color:var(--ink4);margin-bottom:16px">
+          You'll get a short code to share. Anyone who enters it joins your session directly — your browser is the host, nothing is uploaded anywhere.
+        </p>
+        <button class="menu-btn primary" style="width:100%" onclick="MP.startHost()">
+          <span class="mico">▶</span>START HOSTING
+        </button>
+      </div>
+      <div id="mp-host-active" style="display:none;text-align:center">
+        <p style="font-size:.6rem;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px">SHARE THIS CODE</p>
+        <div id="mp-code-display" style="font-family:'JetBrains Mono',monospace;font-size:1.8rem;letter-spacing:.18em;color:var(--sky2);background:var(--dp3);border:1.5px solid var(--ac30);border-radius:6px;padding:14px 8px;margin-bottom:10px;user-select:all;cursor:pointer" onclick="MP.copyCode()" title="Tap to copy">— — — — —</div>
+        <button class="mf-btn" style="width:100%;margin-bottom:14px" onclick="MP.copyCode()" id="mp-copy-btn">📋 COPY CODE</button>
+        <div id="mp-peer-list" style="text-align:left;margin-bottom:14px"></div>
+        <button class="mf-btn" style="width:100%;border-color:rgba(255,64,96,.5);color:var(--rose);background:rgba(255,64,96,.08)" onclick="MP.leave()">END SESSION</button>
+      </div>
+    </div>
+
+    <!-- JOIN tab content -->
+    <div id="mp-join-content" style="display:none">
+      <div id="mp-join-idle">
+        <label style="display:block;font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.06em;color:var(--ink4);margin-bottom:6px">SESSION CODE</label>
+        <input type="text" id="mp-code-input" maxlength="5" placeholder="XXXXX" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"
+          style="width:100%;padding:12px;background:var(--dp3);border:1px solid var(--ac22);border-radius:4px;color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:1.1rem;letter-spacing:.15em;text-align:center;text-transform:uppercase;box-sizing:border-box;margin-bottom:14px">
+        <button class="menu-btn primary" style="width:100%" onclick="MP.startJoin()">
+          <span class="mico">▶</span>JOIN SESSION
+        </button>
+        <p id="mp-join-error" style="display:none;font-size:.65rem;color:var(--rose);margin-top:10px;text-align:center"></p>
+      </div>
+      <div id="mp-join-active" style="display:none;text-align:center">
+        <p style="font-size:.68rem;color:var(--jade);margin-bottom:14px">✓ Connected</p>
+        <div id="mp-peer-list-join" style="text-align:left;margin-bottom:14px"></div>
+        <button class="mf-btn" style="width:100%;border-color:rgba(255,64,96,.5);color:var(--rose);background:rgba(255,64,96,.08)" onclick="MP.leave()">LEAVE SESSION</button>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="justify-content:center;margin-top:16px">
+      <button class="mf-btn" onclick="MP.closeModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ CLEAR ALL MODAL ══════════════ -->
 <div id="modal-clear">
   <div class="mpanel" style="width:400px;text-align:center">
@@ -1870,6 +1936,8 @@
 <script src="js/presets.js?v=5.13"></script>
 <script src="js/state.js?v=5.13"></script>
 <script src="js/collab.js?v=1.0"></script>
+<script src="js/collab-ui.js?v=1.0"></script>
+<script src="js/collab-debug.js?v=1.0"></script>
 <script src="js/autosave.js?v=5.13"></script>
 <script src="js/settings.js?v=5.13"></script>
 <script src="js/preset-modal.js?v=5.13"></script>

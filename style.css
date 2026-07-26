@@ -364,6 +364,22 @@ body.pseudo-fullscreen {
   opacity: 0; pointer-events: none; transition: opacity .25s;
 }
 #modal-appsettings.open { opacity: 1; pointer-events: all; }
+#modal-multiplayer {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(10,10,12,.88);
+  backdrop-filter: blur(12px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+#modal-multiplayer.open { opacity: 1; pointer-events: all; }
+.mp-peer-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; margin-bottom: 4px;
+  background: var(--dp3); border: 1px solid var(--ac18); border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace; font-size: .68rem; color: var(--ink3);
+}
+.mp-peer-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.mp-peer-you { opacity: .6; font-size: .58rem; margin-left: auto; }
 #modal-clear, #modal-delete, #modal-replace {
   background: rgba(10,10,12,.88);
   display: flex; align-items: center; justify-content: center;
@@ -1611,6 +1627,11 @@ body.pseudo-fullscreen {
 
   /* ── Body search modal: full-screen on mobile ── */
   #modal-body-search .mpanel { width: 100% !important; max-width: 100% !important; min-width: 0 !important; max-height: 92vh; }
+
+  /* ── Multiplayer modal: full-width, roomy tap targets, big code text stays legible ── */
+  #modal-multiplayer .mpanel { width: 92% !important; max-width: 400px !important; max-height: 92vh; }
+  #mp-code-display { font-size: 1.5rem !important; letter-spacing: .12em !important; }
+  #mp-tab-host, #mp-tab-join { padding: 12px 0 !important; font-size: .68rem !important; }
 
   /* ── Preset modal overlay: full height, aligned to top ── */
   #modal-preset { align-items: stretch; padding: 0; }
