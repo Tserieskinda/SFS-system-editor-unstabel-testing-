@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>SFS System Editor</title>
-<link rel="stylesheet" href="style.css?v=5.12">
+<link rel="stylesheet" href="style.css?v=5.13">
 </head>
 <body>
 
@@ -43,6 +43,8 @@
 
   <!-- ── Settings: small cog icon box, pinned top-right ── -->
   <button class="menu-cog-btn" onclick="openAppSettings()" title="Settings">⚙</button>
+  <!-- ── Fullscreen toggle, pinned top-right next to settings ── -->
+  <button class="menu-cog-btn menu-fs-btn" id="btn-fullscreen" onclick="toggleAppFullscreen()" title="Fullscreen">⛶</button>
 
   <!-- ── Create Textures sub-menu ── -->
   <nav class="menu-list" id="s-start-create-nav" style="display:none">
@@ -52,6 +54,10 @@
     </div>
     <button class="menu-btn primary" onclick="TC.open()">
       <span class="mico">🌫️</span>CREATE ATMOSPHERE TEXTURE
+      <span class="arr">›</span>
+    </button>
+    <button class="menu-btn" onclick="DC.open()">
+      <span class="mico">☀️</span>CREATE DAY/NIGHT TEXTURE
       <span class="arr">›</span>
     </button>
     <button class="menu-btn menu-btn-soon" disabled title="Coming soon">
@@ -364,6 +370,30 @@
         </div>
       </div>
 
+      <!-- ── PLERCONICUS GALAXY ── -->
+      <div class="fs-card">
+        <span class="fs-card-new-badge">NEW</span>
+        <div class="fs-card-header">
+          <span class="fs-card-title">PLERCONICUS GALAXY</span>
+          <span class="fs-card-author">by SillyZettian</span>
+        </div>
+        <div class="fs-card-preview" style="padding:0;overflow:hidden;border-radius:6px">
+          <img src="featured/PG.png" alt="Plerconicus Galaxy Preview" style="width:100%;height:auto;display:block">
+        </div>
+        <div class="fs-card-desc">
+          A dwarf galaxy, far away from the Milky Way, with catalogued objects and many objects you can go to. You start in Tare, and head off from there.
+        </div>
+        <div class="fs-card-actions">
+          <button class="fs-btn fs-btn-dl" onclick="trackFeatured('pg','import');importFeatured('featured/PG.zip','PG.zip')">⬇ IMPORT</button>
+          <button class="fs-btn fs-btn-open" onclick="trackFeatured('pg','open');loadZipFromUrl('featured/PG.zip','PG.zip')">▶ OPEN IN EDITOR</button>
+        </div>
+        <div class="fs-card-stats" id="fsstats-pg">
+          <span class="fs-stat">⬇ <span class="fs-stat-num fs-stat-loading" id="fsn-pg-import">…</span> imports</span>
+          <span class="fs-stat">▶ <span class="fs-stat-num fs-stat-loading" id="fsn-pg-open">…</span> opens</span>
+          <span class="fs-stat fs-stat-size">📦 <span class="fs-stat-num fs-stat-loading" id="fssz-pg">…</span> MB</span>
+        </div>
+      </div>
+
       <!-- ── BLANK CARD slot ── -->
       <div class="fs-card fs-card-empty">
         <div class="fs-empty-icon">＋</div>
@@ -672,7 +702,7 @@
           <div class="frow"><span class="flabel">Position Z</span>
             <input class="finput" id="av-pz" type="text" inputmode="decimal" step="500"></div>
           <div class="frow"><span class="flabel">Height (m)</span>
-            <input class="finput" style="flex:1;min-width:60px" id="av-height" type="text" inputmode="decimal" step="10000"><select class="funit-sel" id="av-height-unit" style="width:52px" onchange="onSimpleKmChange('av-height')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="av-height" type="text" inputmode="decimal" step="10000" oninput="updateCloudStackPreview()"><select class="funit-sel" id="av-height-unit" style="width:52px" onchange="onSimpleKmChange('av-height');updateCloudStackPreview()"><option value="m">m</option><option value="km" selected>km</option></select></div>
           <div class="frow"><span class="flabel">Texture</span>
             <div class="tpick-wrap" id="tpw-av-tex"><div class="tpick-field"><div class="tpick-preview" id="tpv-av-tex"><div class="tpick-preview-none">none</div></div><input class="tpick-input" id="av-tex" placeholder="Search texture…" autocomplete="off"><button class="tpick-clear" id="tpc-av-tex">✕</button></div><div class="tpick-dropdown" id="tpd-av-tex"></div></div>
           </div>
@@ -702,7 +732,17 @@
             <div id="cl-w-preview" style="font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;margin-top:4px;opacity:.85"></div>
           </div>
           <div class="frow"><span class="flabel">Height</span>
-            <input class="finput" style="flex:1;min-width:60px" id="cl-h" type="text" inputmode="decimal" step="1000"><select class="funit-sel" id="cl-h-unit" style="width:52px" onchange="onSimpleKmChange('cl-h')"><option value="m">m</option><option value="km" selected>km</option></select></div>
+            <input class="finput" style="flex:1;min-width:60px" id="cl-h" type="text" inputmode="decimal" step="1000" oninput="updateCloudStackPreview()"><select class="funit-sel" id="cl-h-unit" style="width:52px" onchange="onSimpleKmChange('cl-h');updateCloudStackPreview()"><option value="m">m</option><option value="km" selected>km</option></select></div>
+          <!-- Cloud stacking-bug fix: pads the texture + scales Height so it renders
+               once instead of repeating — same fix the community does by hand, see
+               fixCloudStacking() in sidebar.js for the derivation. -->
+          <div style="background:var(--bg2);border-radius:5px;padding:6px 8px;margin-bottom:4px;border:1px solid var(--ink5)">
+            <div style="font-size:.58rem;color:var(--ink4);font-family:'JetBrains Mono',monospace;margin-bottom:5px;letter-spacing:.05em">
+              STACKING FIX &nbsp;<span style="color:var(--ink5);font-weight:400">pads texture so it renders once, not N times</span>
+            </div>
+            <div id="cl-stack-preview" style="font-size:.6rem;color:var(--sky2);font-family:'JetBrains Mono',monospace;margin-bottom:6px">—</div>
+            <button id="cl-stack-fix-btn" class="mf-btn" style="width:100%;border-color:rgba(255,170,60,.5);color:rgba(255,190,100,.95);background:rgba(255,170,60,.08)" onclick="fixCloudStacking()" disabled>Fix Stacking</button>
+          </div>
           <div class="frow-s">
             <div class="frow-s-top"><span class="flabel">Cloud Alpha</span><span class="fval" id="cl-a-val">—</span><input class="finput" id="cl-a" type="text" inputmode="decimal" step="0.01" min="0" max="1" style="flex:0 0 72px;width:72px" oninput="syncSlider('cl-a',0,1)"></div>
             <input class="fslider" id="cl-a-sl" type="range" min="0" max="1" step="0.01" oninput="syncFromSlider('cl-a',0,1,2)">
@@ -1817,31 +1857,35 @@
   </div>
 </div>
 
-<script src="js/background.js?v=5.12"></script>
-<script src="js/ui-hue.js?v=5.12"></script>
-<script src="js/nav-state.js?v=5.12"></script>
+<!-- PeerJS: WebRTC wrapper used for serverless multiplayer signaling (see js/collab.js) -->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="js/background.js?v=5.13"></script>
+<script src="js/ui-hue.js?v=5.13"></script>
+<script src="js/nav-state.js?v=5.13"></script>
 <!-- io.js must precede presets.js — it declares dynamicPresets which
      buildAllPresets() references at parse/call time. -->
-<script src="js/idb-cache.js?v=5.12"></script>
-<script src="js/assets.js?v=5.12"></script>
+<script src="js/idb-cache.js?v=5.13"></script>
+<script src="js/assets.js?v=5.13"></script>
 <script src="js/io.js?v=5.14"></script>
-<script src="js/presets.js?v=5.12"></script>
-<script src="js/state.js?v=5.12"></script>
-<script src="js/autosave.js?v=5.12"></script>
-<script src="js/settings.js?v=5.12"></script>
-<script src="js/preset-modal.js?v=5.12"></script>
+<script src="js/presets.js?v=5.13"></script>
+<script src="js/state.js?v=5.13"></script>
+<script src="js/collab.js?v=1.0"></script>
+<script src="js/autosave.js?v=5.13"></script>
+<script src="js/settings.js?v=5.13"></script>
+<script src="js/preset-modal.js?v=5.13"></script>
 <script src="js/viewport.js?v=5.15"></script>
 <script src="js/tools.js?v=5.13"></script>
-<script src="js/units.js?v=5.12"></script>
+<script src="js/units.js?v=5.13"></script>
 <script src="js/sidebar.js?v=5.14"></script>
-<script src="js/export.js?v=5.12"></script>
-<script src="js/body-search.js?v=5.12"></script>
-<script src="js/namegen.js?v=5.12"></script>
-<script src="js/tex-creator.js?v=5.12"></script>
+<script src="js/export.js?v=5.13"></script>
+<script src="js/body-search.js?v=5.13"></script>
+<script src="js/namegen.js?v=5.13"></script>
+<script src="js/tex-creator.js?v=5.13"></script>
 <script src="js/planet-tex-creator.js?v=1.0"></script>
-<script src="js/sfx.js?v=5.12"></script>
+<script src="js/daycycle-tex-creator.js?v=1.0"></script>
+<script src="js/sfx.js?v=5.13"></script>
 <script src="js/utils.js?v=5.16"></script>
-<script src="js/images.js?v=5.12"></script>
+<script src="js/images.js?v=5.13"></script>
 <script src="js/placer.js?v=1.0"></script>
 <script src="js/procgen.js?v=1.0"></script>
 <script src="js/landmark-features.js?v=1.1"></script>
@@ -5324,6 +5368,12 @@ document.addEventListener('keydown', function(e){
                 oninput="document.getElementById('wmk-spread-val').textContent=parseFloat(this.value).toFixed(1);wmkQueueApply()">
             </label>
             <label style="font-family:'JetBrains Mono',monospace;font-size:.45rem;color:rgba(120,140,180,.6);
+              letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:8px">
+              SEAFLOOR TEXTURE <span id="wmk-texture-val" style="color:rgba(180,200,255,.7)">35%</span>
+              <input type="range" id="wmk-texture" min="0" max="100" value="35" style="flex:1;accent-color:rgba(100,160,255,.8);min-height:18px"
+                oninput="document.getElementById('wmk-texture-val').textContent=this.value+'%';wmkQueueApply()">
+            </label>
+            <label style="font-family:'JetBrains Mono',monospace;font-size:.45rem;color:rgba(120,140,180,.6);
               letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px">
               <input type="checkbox" id="wmk-terrain-circle" onchange="wmkRenderFinal()" style="accent-color:rgba(100,160,255,.8);width:14px;height:14px">
               TERRAIN CIRCLE
@@ -6632,6 +6682,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function wmkApplyDepth() {
     if (!wmkSeaField) return;
+    // Ensure we have a grayscale read of the source even when the current
+    // detection method is 'color' (wmkBuildGray is normally only called
+    // lazily by the threshold panel) — the texture blend below needs it
+    // regardless of how the sea/land split was produced.
+    wmkBuildGray();
     const cv = wmkGetCanvas(), w=cv.width, h=cv.height, ctx=wmkGetCtx();
     wmkGenerated  = ctx.createImageData(w,h);
     wmkEditLayer  = ctx.createImageData(w,h);
@@ -6639,12 +6694,22 @@ document.addEventListener('DOMContentLoaded', () => {
     for(let i=0;i<ed.length;i+=4){ed[i]=ed[i+1]=ed[i+2]=0;ed[i+3]=0;}
     const cw=+$('wmk-coast').value, sp=+$('wmk-spread').value;
     const shallowV=+$('wmk-shallow').value, deepV=+$('wmk-deep').value;
+    const texAmt=+$('wmk-texture').value/100;
     for(let i=0,p=0;i<wmkGenerated.data.length;i+=4,p++){
       if(!wmkSeaMask[p]){wmkGenerated.data[i]=wmkGenerated.data[i+1]=wmkGenerated.data[i+2]=255;}
       else{
         let t=Math.min(1,wmkCoastDist[p]/cw);
         t=Math.pow(t,sp); t=t*t*(3-2*t);
-        const v=shallowV*(1-t)+deepV*t;
+        const flatV=shallowV*(1-t)+deepV*t;
+        // Blend the flat coastal-falloff value with the source pixel's own
+        // luminance so far-from-shore water keeps ocean-floor texture detail
+        // instead of collapsing to a single flat deep-water color. The blend
+        // strength ramps in with depth (t) and is scaled by the TEXTURE
+        // slider, and is re-centred on flatV so it can only add/remove local
+        // contrast around the depth value, not blow past the shallow/deep
+        // range entirely.
+        const texMix = texAmt * t;
+        const v = flatV + (wmkGray[p] - flatV) * texMix;
         wmkGenerated.data[i]=wmkGenerated.data[i+1]=wmkGenerated.data[i+2]=v;
       }
       wmkGenerated.data[i+3]=255;
@@ -6769,7 +6834,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const SB_KEY = 'sb_publishable_7UarYndVEPrKEg3qFrfevQ_jbMh3dbI';
   const HEADERS = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
 
-  const KEYS = ['sfs-default', 'bgh', 'htss', 'ys', 'ch', 'rs'];
+  const KEYS = ['sfs-default', 'bgh', 'htss', 'ys', 'ch', 'rs', 'pg'];
   const ACTS = ['import', 'open'];
 
   const ZIP_URLS = {
@@ -6779,6 +6844,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'ys':          'featured/YS.zip',
     'ch':          'featured/CH.zip',
     'rs':          'featured/RS.zip',
+    'pg':          'featured/PG.zip',
   };
 
   // ── Increment via RPC and update display ──
