@@ -156,32 +156,69 @@ const Collab = (() => {
     });
   }
 
+  // Attaches low-level WebRTC diagnostics to a DataConnection as early as
+  // possible — NOT gated on conn.open, since that's exactly the event that's
+  // failing to fire. Also arms a watchdog that reports the stuck state if
+  // the connection hasn't opened within a few seconds (classic symptom of
+  // ICE candidates failing to find a path — no TURN relay configured, so a
+  // restrictive NAT/firewall on either side can strand the connection here
+  // forever with no error ever thrown).
+  function _wireIceDiagnostics(conn, label){
+    let opened = false;
+    conn.on('open', () => { opened = true; });
+
+    const attach = () => {
+      const pc = conn.peerConnection;
+      if(!pc){
+        // Not created yet — PeerJS sets this up asynchronously in some
+        // versions. Retry shortly rather than giving up.
+        setTimeout(attach, 100);
+        return;
+      }
+      console.log(`[Collab:${label}] peerConnection acquired for`, conn.peer, '- iceGatheringState:', pc.iceGatheringState, 'iceConnectionState:', pc.iceConnectionState, 'signalingState:', pc.signalingState);
+
+      pc.addEventListener('icegatheringstatechange', () => {
+        console.log(`[Collab:${label}] iceGatheringState ->`, pc.iceGatheringState, 'for', conn.peer);
+      });
+      pc.addEventListener('iceconnectionstatechange', () => {
+        console.log(`[Collab:${label}] iceConnectionState ->`, pc.iceConnectionState, 'for', conn.peer);
+      });
+      pc.addEventListener('connectionstatechange', () => {
+        console.log(`[Collab:${label}] connectionState ->`, pc.connectionState, 'for', conn.peer);
+      });
+      pc.addEventListener('signalingstatechange', () => {
+        console.log(`[Collab:${label}] signalingState ->`, pc.signalingState, 'for', conn.peer);
+      });
+      pc.addEventListener('icecandidateerror', (e) => {
+        console.error(`[Collab:${label}] icecandidateerror for`, conn.peer, '- code:', e.errorCode, 'text:', e.errorText, 'url:', e.url);
+      });
+      pc.addEventListener('icecandidate', (e) => {
+        if(e.candidate){
+          console.log(`[Collab:${label}] local ICE candidate:`, e.candidate.type, e.candidate.protocol, e.candidate.address || e.candidate.candidate);
+        } else {
+          console.log(`[Collab:${label}] ICE candidate gathering complete for`, conn.peer);
+        }
+      });
+    };
+    attach();
+
+    setTimeout(() => {
+      if(opened) return;
+      const pc = conn.peerConnection;
+      console.error(`[Collab:${label}] ⚠ STALL WATCHDOG — connection to`, conn.peer, 'has not opened after 6s.',
+        pc ? `iceConnectionState=${pc.iceConnectionState} connectionState=${pc.connectionState} signalingState=${pc.signalingState} iceGatheringState=${pc.iceGatheringState}` : '(no peerConnection object)',
+        '\nLikely cause: ICE candidates cannot establish a direct path (NAT/firewall) and PeerJS\'s free cloud broker does not provide a TURN relay fallback. Try both peers on the same network, or configure a TURN server in the Peer() constructor.');
+    }, 6000);
+  }
+
   function _hostHandleIncomingConn(conn){
     console.log('[Collab:HOST] _hostHandleIncomingConn — wiring listeners for', conn.peer, 'already open?', conn.open);
+    _wireIceDiagnostics(conn, 'HOST');
 
     conn.on('open', () => {
       console.log('[Collab:HOST] conn.open — DataConnection ready for', conn.peer, '(reliable:', conn.reliable, ', serialization:', conn.serialization, ')');
       hostConns.set(conn.peer, conn);
       console.log('[Collab:HOST] hostConns now:', [...hostConns.keys()]);
-
-      // Low-level WebRTC signaling state — if this never reaches
-      // "connected"/"completed", the data channel will silently never flow
-      // even though PeerJS's higher-level "connected" fired.
-      const pc = conn.peerConnection;
-      if(pc){
-        console.log('[Collab:HOST] initial iceConnectionState:', pc.iceConnectionState, 'connectionState:', pc.connectionState, 'signalingState:', pc.signalingState);
-        pc.addEventListener('iceconnectionstatechange', () => {
-          console.log('[Collab:HOST] iceConnectionState ->', pc.iceConnectionState, 'for', conn.peer);
-        });
-        pc.addEventListener('connectionstatechange', () => {
-          console.log('[Collab:HOST] connectionState ->', pc.connectionState, 'for', conn.peer);
-        });
-        pc.addEventListener('icecandidateerror', (e) => {
-          console.error('[Collab:HOST] icecandidateerror for', conn.peer, e.errorCode, e.errorText, e.url);
-        });
-      } else {
-        console.warn('[Collab:HOST] conn.peerConnection not available to inspect (PeerJS version difference?)');
-      }
     });
 
     conn.on('data', msg => {
@@ -365,27 +402,12 @@ const Collab = (() => {
         myPeerId = pid;
         hostConn = peer.connect(hostId, { reliable: true });
         console.log('[Collab:PEER] peer.connect() called, connectionId:', hostConn.connectionId, 'initial open?', hostConn.open);
+        _wireIceDiagnostics(hostConn, 'PEER');
 
         hostConn.on('open', () => {
           console.log('[Collab:PEER] hostConn.open — DataConnection to host is ready. Sending hello.');
           hostConn.send({ type: 'hello', name: myName, color: myColor });
           console.log('[Collab:PEER] hello sent:', { type: 'hello', name: myName, color: myColor });
-
-          const pc = hostConn.peerConnection;
-          if(pc){
-            console.log('[Collab:PEER] initial iceConnectionState:', pc.iceConnectionState, 'connectionState:', pc.connectionState, 'signalingState:', pc.signalingState);
-            pc.addEventListener('iceconnectionstatechange', () => {
-              console.log('[Collab:PEER] iceConnectionState ->', pc.iceConnectionState);
-            });
-            pc.addEventListener('connectionstatechange', () => {
-              console.log('[Collab:PEER] connectionState ->', pc.connectionState);
-            });
-            pc.addEventListener('icecandidateerror', (e) => {
-              console.error('[Collab:PEER] icecandidateerror:', e.errorCode, e.errorText, e.url);
-            });
-          } else {
-            console.warn('[Collab:PEER] hostConn.peerConnection not available to inspect');
-          }
         });
 
         hostConn.on('data', msg => {
