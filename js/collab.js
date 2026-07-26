@@ -45,6 +45,24 @@ const Collab = (() => {
   const LOCK_IDLE_MS = 60000;       // auto-release a lock after this long w/ no refresh
   const EDIT_THROTTLE_MS = 120;     // min gap between broadcast patches for the same body
 
+  // ── ICE server config ──
+  // PeerJS's default free broker only supplies STUN servers. STUN is enough
+  // when both peers can find a direct path (simple NATs, same network), but
+  // it does nothing when a direct path isn't possible (symmetric NAT,
+  // restrictive firewalls, some corporate/mobile networks) — the exact
+  // failure mode confirmed by the stall watchdog: iceGatheringState reaches
+  // "complete" but iceConnectionState never leaves "new". A TURN relay
+  // fallback fixes that by routing traffic through a relay server when a
+  // direct path can't be found. These are OpenRelay's public test TURN
+  // credentials (metered.ca) — fine for development; swap in your own
+  // TURN provider for production use.
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+  ];
+
   // ── Internal state ──
   let peer = null;                  // PeerJS Peer instance
   let isHost = false;
@@ -126,7 +144,7 @@ const Collab = (() => {
       const code = makeSessionCode();
       const id = peerIdFromCode(code);
       console.log('[Collab:HOST] creating Peer with id', id);
-      peer = new Peer(id, { debug: 2 });
+      peer = new Peer(id, { debug: 2, config: { iceServers: ICE_SERVERS } });
 
       peer.on('open', pid => {
         console.log('[Collab:HOST] peer.open — broker connection established, id =', pid);
@@ -395,7 +413,7 @@ const Collab = (() => {
 
       const hostId = peerIdFromCode(code);
       console.log('[Collab:PEER] joinSession — code:', code, '-> resolved hostId:', hostId);
-      peer = new Peer({ debug: 2 });
+      peer = new Peer({ debug: 2, config: { iceServers: ICE_SERVERS } });
 
       peer.on('open', pid => {
         console.log('[Collab:PEER] peer.open — my broker id is', pid, '- now connecting to host', hostId);
