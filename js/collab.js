@@ -67,7 +67,9 @@ const Collab = (() => {
   let stateProvider = null;         // () => bodies, set by the wiring layer (host only)
 
   function emit(evt, payload){
-    (listeners[evt] || []).forEach(fn => {
+    const subs = listeners[evt] || [];
+    console.log(`[Collab] emit("${evt}") ->`, subs.length, 'listener(s)', payload);
+    subs.forEach(fn => {
       try { fn(payload); } catch(err){ console.error(`[Collab] listener error for "${evt}":`, err); }
     });
   }
@@ -81,6 +83,7 @@ const Collab = (() => {
 
   function on(evt, fn){
     (listeners[evt] = listeners[evt] || []).push(fn);
+    console.log(`[Collab] on("${evt}") registered — now ${listeners[evt].length} listener(s)`);
   }
 
   function off(evt, fn){
@@ -122,38 +125,82 @@ const Collab = (() => {
 
       const code = makeSessionCode();
       const id = peerIdFromCode(code);
-      peer = new Peer(id, { debug: 1 });
+      console.log('[Collab:HOST] creating Peer with id', id);
+      peer = new Peer(id, { debug: 2 });
 
       peer.on('open', pid => {
+        console.log('[Collab:HOST] peer.open — broker connection established, id =', pid);
         myPeerId = pid;
         roster.set(pid, { name: myName, color: myColor });
         emit('hosted', { code, peerId: pid });
         resolve({ code, peerId: pid });
       });
 
-      peer.on('connection', conn => _hostHandleIncomingConn(conn));
+      peer.on('connection', conn => {
+        console.log('[Collab:HOST] peer.connection fired — incoming DataConnection from', conn.peer, 'metadata:', conn.metadata, 'connectionId:', conn.connectionId);
+        _hostHandleIncomingConn(conn);
+      });
 
       peer.on('error', err => {
+        console.error('[Collab:HOST] peer.error —', err.type, err.message || err);
         emit('error', { err, phase: 'host' });
         if(!myPeerId) reject(err); // failed before we ever got an id
       });
 
-      peer.on('disconnected', () => emit('host-disconnected'));
+      peer.on('disconnected', () => {
+        console.warn('[Collab:HOST] peer.disconnected from signaling broker');
+        emit('host-disconnected');
+      });
+
+      peer.on('close', () => console.warn('[Collab:HOST] peer.close — peer object destroyed'));
     });
   }
 
   function _hostHandleIncomingConn(conn){
+    console.log('[Collab:HOST] _hostHandleIncomingConn — wiring listeners for', conn.peer, 'already open?', conn.open);
+
     conn.on('open', () => {
+      console.log('[Collab:HOST] conn.open — DataConnection ready for', conn.peer, '(reliable:', conn.reliable, ', serialization:', conn.serialization, ')');
       hostConns.set(conn.peer, conn);
+      console.log('[Collab:HOST] hostConns now:', [...hostConns.keys()]);
+
+      // Low-level WebRTC signaling state — if this never reaches
+      // "connected"/"completed", the data channel will silently never flow
+      // even though PeerJS's higher-level "connected" fired.
+      const pc = conn.peerConnection;
+      if(pc){
+        console.log('[Collab:HOST] initial iceConnectionState:', pc.iceConnectionState, 'connectionState:', pc.connectionState, 'signalingState:', pc.signalingState);
+        pc.addEventListener('iceconnectionstatechange', () => {
+          console.log('[Collab:HOST] iceConnectionState ->', pc.iceConnectionState, 'for', conn.peer);
+        });
+        pc.addEventListener('connectionstatechange', () => {
+          console.log('[Collab:HOST] connectionState ->', pc.connectionState, 'for', conn.peer);
+        });
+        pc.addEventListener('icecandidateerror', (e) => {
+          console.error('[Collab:HOST] icecandidateerror for', conn.peer, e.errorCode, e.errorText, e.url);
+        });
+      } else {
+        console.warn('[Collab:HOST] conn.peerConnection not available to inspect (PeerJS version difference?)');
+      }
     });
 
-    conn.on('data', msg => _hostOnMessage(conn, msg));
+    conn.on('data', msg => {
+      console.log('[Collab:HOST] conn.data <- raw message from', conn.peer, ':', JSON.stringify(msg));
+      _hostOnMessage(conn, msg);
+    });
 
-    conn.on('close', () => _hostDropPeer(conn.peer));
-    conn.on('error', () => _hostDropPeer(conn.peer));
+    conn.on('close', () => {
+      console.warn('[Collab:HOST] conn.close for', conn.peer);
+      _hostDropPeer(conn.peer);
+    });
+    conn.on('error', (err) => {
+      console.error('[Collab:HOST] conn.error for', conn.peer, ':', err);
+      _hostDropPeer(conn.peer);
+    });
   }
 
   function _hostDropPeer(peerId){
+    console.warn('[Collab:HOST] _hostDropPeer —', peerId, '(was in hostConns?', hostConns.has(peerId), ')');
     hostConns.delete(peerId);
     roster.delete(peerId);
     // Release any locks that peer held
@@ -171,9 +218,14 @@ const Collab = (() => {
   }
 
   function _hostBroadcast(msg, excludePeerId){
+    console.log('[Collab:HOST] _hostBroadcast', msg.type, 'excluding:', excludePeerId, 'to conns:', [...hostConns.keys()]);
     for(const [pid, conn] of hostConns){
       if(pid === excludePeerId) continue;
-      if(conn.open) conn.send(msg);
+      if(conn.open){
+        conn.send(msg);
+      } else {
+        console.warn('[Collab:HOST] skipped broadcast to', pid, '— conn.open is false');
+      }
     }
     // Host applies to its own local state too, since the host is also a
     // participant — callers listening for these events don't need to know
@@ -183,7 +235,16 @@ const Collab = (() => {
 
   function _hostSendTo(peerId, msg){
     const conn = hostConns.get(peerId);
-    if(conn && conn.open) conn.send(msg);
+    if(!conn){
+      console.error('[Collab:HOST] _hostSendTo(', peerId, ') — NO CONNECTION FOUND in hostConns. Current keys:', [...hostConns.keys()]);
+      return;
+    }
+    if(!conn.open){
+      console.error('[Collab:HOST] _hostSendTo(', peerId, ') — connection exists but conn.open is FALSE. Message dropped:', msg.type);
+      return;
+    }
+    console.log('[Collab:HOST] _hostSendTo(', peerId, ') sending', msg.type);
+    conn.send(msg);
   }
 
   function _locksSnapshot(){
@@ -200,18 +261,23 @@ const Collab = (() => {
 
   function _hostOnMessage(conn, msg){
     const fromId = conn.peer;
+    console.log('[Collab:HOST] _hostOnMessage — type:', msg.type, 'from:', fromId);
     switch(msg.type){
       case 'hello': {
+        console.log('[Collab:HOST] hello from', fromId, '- name:', msg.name, 'color:', msg.color);
         // New peer introducing itself with a display name/color choice.
         roster.set(fromId, { name: msg.name || 'Peer', color: msg.color || nextColor() });
+        console.log('[Collab:HOST] roster updated:', _rosterSnapshot());
         // Send the newcomer a full snapshot so they converge on ground truth.
-        _hostSendTo(fromId, {
+        const syncMsg = {
           type: 'state-sync',
           bodies: stateProvider ? stateProvider() : {},
           locks: _locksSnapshot(),
           roster: _rosterSnapshot(),
           you: fromId
-        });
+        };
+        console.log('[Collab:HOST] sending state-sync to', fromId, '- stateProvider set?', !!stateProvider, 'bodies keys:', stateProvider ? Object.keys(syncMsg.bodies || {}).length : 'n/a');
+        _hostSendTo(fromId, syncMsg);
         _hostBroadcast({ type: 'peer-join', peerId: fromId, info: roster.get(fromId) }, fromId);
         emit('peer-joined', { peerId: fromId, info: roster.get(fromId) });
         break;
@@ -257,6 +323,8 @@ const Collab = (() => {
         emit('chat', { peerId: fromId, text: msg.text });
         break;
       }
+      default:
+        console.warn('[Collab:HOST] unrecognized message type from', fromId, ':', msg.type, msg);
     }
   }
 
@@ -289,35 +357,69 @@ const Collab = (() => {
       isHost = false;
 
       const hostId = peerIdFromCode(code);
-      peer = new Peer({ debug: 1 });
+      console.log('[Collab:PEER] joinSession — code:', code, '-> resolved hostId:', hostId);
+      peer = new Peer({ debug: 2 });
 
       peer.on('open', pid => {
+        console.log('[Collab:PEER] peer.open — my broker id is', pid, '- now connecting to host', hostId);
         myPeerId = pid;
         hostConn = peer.connect(hostId, { reliable: true });
+        console.log('[Collab:PEER] peer.connect() called, connectionId:', hostConn.connectionId, 'initial open?', hostConn.open);
 
         hostConn.on('open', () => {
+          console.log('[Collab:PEER] hostConn.open — DataConnection to host is ready. Sending hello.');
           hostConn.send({ type: 'hello', name: myName, color: myColor });
+          console.log('[Collab:PEER] hello sent:', { type: 'hello', name: myName, color: myColor });
+
+          const pc = hostConn.peerConnection;
+          if(pc){
+            console.log('[Collab:PEER] initial iceConnectionState:', pc.iceConnectionState, 'connectionState:', pc.connectionState, 'signalingState:', pc.signalingState);
+            pc.addEventListener('iceconnectionstatechange', () => {
+              console.log('[Collab:PEER] iceConnectionState ->', pc.iceConnectionState);
+            });
+            pc.addEventListener('connectionstatechange', () => {
+              console.log('[Collab:PEER] connectionState ->', pc.connectionState);
+            });
+            pc.addEventListener('icecandidateerror', (e) => {
+              console.error('[Collab:PEER] icecandidateerror:', e.errorCode, e.errorText, e.url);
+            });
+          } else {
+            console.warn('[Collab:PEER] hostConn.peerConnection not available to inspect');
+          }
         });
 
-        hostConn.on('data', msg => _peerOnMessage(msg, resolve));
+        hostConn.on('data', msg => {
+          console.log('[Collab:PEER] hostConn.data <- raw message from host:', JSON.stringify(msg));
+          _peerOnMessage(msg, resolve);
+        });
 
-        hostConn.on('close', () => emit('host-disconnected'));
+        hostConn.on('close', () => {
+          console.warn('[Collab:PEER] hostConn.close — connection to host closed');
+          emit('host-disconnected');
+        });
         hostConn.on('error', err => {
+          console.error('[Collab:PEER] hostConn.error —', err);
           emit('error', { err, phase: 'join' });
           reject(err);
         });
       });
 
       peer.on('error', err => {
+        console.error('[Collab:PEER] peer.error —', err.type, err.message || err);
         emit('error', { err, phase: 'join' });
         reject(err);
       });
+
+      peer.on('disconnected', () => console.warn('[Collab:PEER] peer.disconnected from signaling broker'));
+      peer.on('close', () => console.warn('[Collab:PEER] peer.close — peer object destroyed'));
     });
   }
 
   function _peerOnMessage(msg, joinResolve){
+    console.log('[Collab:PEER] _peerOnMessage — type:', msg.type);
     switch(msg.type){
       case 'state-sync':
+        console.log('[Collab:PEER] state-sync received — resolving joinSession promise. bodies keys:', Object.keys(msg.bodies || {}).length, 'roster:', msg.roster);
         peerLockMirror.clear();
         for(const [body, lock] of Object.entries(msg.locks || {})) peerLockMirror.set(body, lock.peerId);
         emit('state-sync', { bodies: msg.bodies, locks: msg.locks, roster: msg.roster });
@@ -346,6 +448,8 @@ const Collab = (() => {
       case 'chat':
         emit('chat', { peerId: msg.peerId, text: msg.text });
         break;
+      default:
+        console.warn('[Collab:PEER] unrecognized message type from host:', msg.type, msg);
     }
   }
 
