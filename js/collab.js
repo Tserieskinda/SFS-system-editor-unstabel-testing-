@@ -71,6 +71,18 @@ const Collab = (() => {
     { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
   ];
 
+  // ── Debug tracing ──
+  // Flip to true (or call Collab.setDebug(true) from the console) to get the
+  // full connection-lifecycle trace used to diagnose ICE/NAT issues —
+  // candidate types, signaling state transitions, per-message logs, etc.
+  // Left off by default: logging on every single message (locks, edits
+  // while dragging, etc.) adds real overhead and was making sync feel
+  // sluggish once connections were actually working.
+  let DEBUG = false;
+  function dlog(...args){ if(DEBUG) console.log(...args); }
+  function dwarn(...args){ if(DEBUG) console.warn(...args); }
+  function setDebug(v){ DEBUG = !!v; }
+
   // ── Internal state ──
   let peer = null;                  // PeerJS Peer instance
   let isHost = false;
@@ -94,7 +106,7 @@ const Collab = (() => {
 
   function emit(evt, payload){
     const subs = listeners[evt] || [];
-    console.log(`[Collab] emit("${evt}") ->`, subs.length, 'listener(s)', payload);
+    dlog(`[Collab] emit("${evt}") ->`, subs.length, 'listener(s)', payload);
     subs.forEach(fn => {
       try { fn(payload); } catch(err){ console.error(`[Collab] listener error for "${evt}":`, err); }
     });
@@ -109,7 +121,7 @@ const Collab = (() => {
 
   function on(evt, fn){
     (listeners[evt] = listeners[evt] || []).push(fn);
-    console.log(`[Collab] on("${evt}") registered — now ${listeners[evt].length} listener(s)`);
+    dlog(`[Collab] on("${evt}") registered — now ${listeners[evt].length} listener(s)`);
   }
 
   function off(evt, fn){
@@ -151,11 +163,11 @@ const Collab = (() => {
 
       const code = makeSessionCode();
       const id = peerIdFromCode(code);
-      console.log('[Collab:HOST] creating Peer with id', id);
+      dlog('[Collab:HOST] creating Peer with id', id);
       peer = new Peer(id, { debug: 2, config: { iceServers: ICE_SERVERS } });
 
       peer.on('open', pid => {
-        console.log('[Collab:HOST] peer.open — broker connection established, id =', pid);
+        dlog('[Collab:HOST] peer.open — broker connection established, id =', pid);
         myPeerId = pid;
         roster.set(pid, { name: myName, color: myColor });
         emit('hosted', { code, peerId: pid });
@@ -163,7 +175,7 @@ const Collab = (() => {
       });
 
       peer.on('connection', conn => {
-        console.log('[Collab:HOST] peer.connection fired — incoming DataConnection from', conn.peer, 'metadata:', conn.metadata, 'connectionId:', conn.connectionId);
+        dlog('[Collab:HOST] peer.connection fired — incoming DataConnection from', conn.peer, 'metadata:', conn.metadata, 'connectionId:', conn.connectionId);
         _hostHandleIncomingConn(conn);
       });
 
@@ -174,11 +186,11 @@ const Collab = (() => {
       });
 
       peer.on('disconnected', () => {
-        console.warn('[Collab:HOST] peer.disconnected from signaling broker');
+        dwarn('[Collab:HOST] peer.disconnected from signaling broker');
         emit('host-disconnected');
       });
 
-      peer.on('close', () => console.warn('[Collab:HOST] peer.close — peer object destroyed'));
+      peer.on('close', () => dwarn('[Collab:HOST] peer.close — peer object destroyed'));
     });
   }
 
@@ -190,6 +202,7 @@ const Collab = (() => {
   // restrictive NAT/firewall on either side can strand the connection here
   // forever with no error ever thrown).
   function _wireIceDiagnostics(conn, label){
+    if(!DEBUG) return; // skip entirely in normal use — see DEBUG flag above
     let opened = false;
     conn.on('open', () => { opened = true; });
 
@@ -203,28 +216,28 @@ const Collab = (() => {
         setTimeout(attach, 100);
         return;
       }
-      console.log(`[Collab:${label}] peerConnection acquired for`, conn.peer, '- iceGatheringState:', pc.iceGatheringState, 'iceConnectionState:', pc.iceConnectionState, 'signalingState:', pc.signalingState);
+      dlog(`[Collab:${label}] peerConnection acquired for`, conn.peer, '- iceGatheringState:', pc.iceGatheringState, 'iceConnectionState:', pc.iceConnectionState, 'signalingState:', pc.signalingState);
 
       pc.addEventListener('icegatheringstatechange', () => {
-        console.log(`[Collab:${label}] iceGatheringState ->`, pc.iceGatheringState, 'for', conn.peer);
+        dlog(`[Collab:${label}] iceGatheringState ->`, pc.iceGatheringState, 'for', conn.peer);
         if(pc.iceGatheringState === 'complete'){
           // This is the definitive answer to "did TURN actually give us a
           // usable relay candidate": if candidateTypes.relay is 0 here, the
           // TURN server never handed out a relay candidate at all (auth
           // failure, server down, blocked port, etc.) — distinct from
           // "we got a relay candidate but it still didn't connect".
-          console.log(`[Collab:${label}] ── candidate summary for`, conn.peer, ':', {...candidateTypes},
+          dlog(`[Collab:${label}] ── candidate summary for`, conn.peer, ':', {...candidateTypes},
             candidateTypes.relay === 0 ? '⚠ NO RELAY CANDIDATES — TURN server gave us nothing usable' : '✓ relay candidate(s) obtained');
         }
       });
       pc.addEventListener('iceconnectionstatechange', () => {
-        console.log(`[Collab:${label}] iceConnectionState ->`, pc.iceConnectionState, 'for', conn.peer);
+        dlog(`[Collab:${label}] iceConnectionState ->`, pc.iceConnectionState, 'for', conn.peer);
       });
       pc.addEventListener('connectionstatechange', () => {
-        console.log(`[Collab:${label}] connectionState ->`, pc.connectionState, 'for', conn.peer);
+        dlog(`[Collab:${label}] connectionState ->`, pc.connectionState, 'for', conn.peer);
       });
       pc.addEventListener('signalingstatechange', () => {
-        console.log(`[Collab:${label}] signalingState ->`, pc.signalingState, 'for', conn.peer);
+        dlog(`[Collab:${label}] signalingState ->`, pc.signalingState, 'for', conn.peer);
       });
       pc.addEventListener('icecandidateerror', (e) => {
         console.error(`[Collab:${label}] icecandidateerror for`, conn.peer, '- code:', e.errorCode, 'text:', e.errorText, 'url:', e.url);
@@ -233,9 +246,9 @@ const Collab = (() => {
         if(e.candidate){
           const type = e.candidate.type;
           if(type in candidateTypes) candidateTypes[type]++;
-          console.log(`[Collab:${label}] local ICE candidate:`, type, e.candidate.protocol, e.candidate.address || e.candidate.candidate);
+          dlog(`[Collab:${label}] local ICE candidate:`, type, e.candidate.protocol, e.candidate.address || e.candidate.candidate);
         } else {
-          console.log(`[Collab:${label}] ICE candidate gathering complete for`, conn.peer);
+          dlog(`[Collab:${label}] ICE candidate gathering complete for`, conn.peer);
         }
       });
     };
@@ -258,22 +271,22 @@ const Collab = (() => {
   }
 
   function _hostHandleIncomingConn(conn){
-    console.log('[Collab:HOST] _hostHandleIncomingConn — wiring listeners for', conn.peer, 'already open?', conn.open);
+    dlog('[Collab:HOST] _hostHandleIncomingConn — wiring listeners for', conn.peer, 'already open?', conn.open);
     _wireIceDiagnostics(conn, 'HOST');
 
     conn.on('open', () => {
-      console.log('[Collab:HOST] conn.open — DataConnection ready for', conn.peer, '(reliable:', conn.reliable, ', serialization:', conn.serialization, ')');
+      dlog('[Collab:HOST] conn.open — DataConnection ready for', conn.peer, '(reliable:', conn.reliable, ', serialization:', conn.serialization, ')');
       hostConns.set(conn.peer, conn);
-      console.log('[Collab:HOST] hostConns now:', [...hostConns.keys()]);
+      dlog('[Collab:HOST] hostConns now:', [...hostConns.keys()]);
     });
 
     conn.on('data', msg => {
-      console.log('[Collab:HOST] conn.data <- raw message from', conn.peer, ':', JSON.stringify(msg));
+      if(DEBUG) dlog('[Collab:HOST] conn.data <- raw message from', conn.peer, ':', JSON.stringify(msg));
       _hostOnMessage(conn, msg);
     });
 
     conn.on('close', () => {
-      console.warn('[Collab:HOST] conn.close for', conn.peer);
+      dwarn('[Collab:HOST] conn.close for', conn.peer);
       _hostDropPeer(conn.peer);
     });
     conn.on('error', (err) => {
@@ -283,7 +296,7 @@ const Collab = (() => {
   }
 
   function _hostDropPeer(peerId){
-    console.warn('[Collab:HOST] _hostDropPeer —', peerId, '(was in hostConns?', hostConns.has(peerId), ')');
+    dwarn('[Collab:HOST] _hostDropPeer —', peerId, '(was in hostConns?', hostConns.has(peerId), ')');
     hostConns.delete(peerId);
     roster.delete(peerId);
     // Release any locks that peer held
@@ -301,13 +314,13 @@ const Collab = (() => {
   }
 
   function _hostBroadcast(msg, excludePeerId){
-    console.log('[Collab:HOST] _hostBroadcast', msg.type, 'excluding:', excludePeerId, 'to conns:', [...hostConns.keys()]);
+    if(DEBUG) dlog('[Collab:HOST] _hostBroadcast', msg.type, 'excluding:', excludePeerId, 'to conns:', [...hostConns.keys()]);
     for(const [pid, conn] of hostConns){
       if(pid === excludePeerId) continue;
       if(conn.open){
         conn.send(msg);
       } else {
-        console.warn('[Collab:HOST] skipped broadcast to', pid, '— conn.open is false');
+        dwarn('[Collab:HOST] skipped broadcast to', pid, '— conn.open is false');
       }
     }
     // Host applies to its own local state too, since the host is also a
@@ -326,7 +339,7 @@ const Collab = (() => {
       console.error('[Collab:HOST] _hostSendTo(', peerId, ') — connection exists but conn.open is FALSE. Message dropped:', msg.type);
       return;
     }
-    console.log('[Collab:HOST] _hostSendTo(', peerId, ') sending', msg.type);
+    dlog('[Collab:HOST] _hostSendTo(', peerId, ') sending', msg.type);
     conn.send(msg);
   }
 
@@ -344,13 +357,13 @@ const Collab = (() => {
 
   function _hostOnMessage(conn, msg){
     const fromId = conn.peer;
-    console.log('[Collab:HOST] _hostOnMessage — type:', msg.type, 'from:', fromId);
+    dlog('[Collab:HOST] _hostOnMessage — type:', msg.type, 'from:', fromId);
     switch(msg.type){
       case 'hello': {
-        console.log('[Collab:HOST] hello from', fromId, '- name:', msg.name, 'color:', msg.color);
+        dlog('[Collab:HOST] hello from', fromId, '- name:', msg.name, 'color:', msg.color);
         // New peer introducing itself with a display name/color choice.
         roster.set(fromId, { name: msg.name || 'Peer', color: msg.color || nextColor() });
-        console.log('[Collab:HOST] roster updated:', _rosterSnapshot());
+        dlog('[Collab:HOST] roster updated:', _rosterSnapshot());
         // Send the newcomer a full snapshot so they converge on ground truth.
         const syncMsg = {
           type: 'state-sync',
@@ -359,7 +372,7 @@ const Collab = (() => {
           roster: _rosterSnapshot(),
           you: fromId
         };
-        console.log('[Collab:HOST] sending state-sync to', fromId, '- stateProvider set?', !!stateProvider, 'bodies keys:', stateProvider ? Object.keys(syncMsg.bodies || {}).length : 'n/a');
+        dlog('[Collab:HOST] sending state-sync to', fromId, '- stateProvider set?', !!stateProvider, 'bodies keys:', stateProvider ? Object.keys(syncMsg.bodies || {}).length : 'n/a');
         _hostSendTo(fromId, syncMsg);
         _hostBroadcast({ type: 'peer-join', peerId: fromId, info: roster.get(fromId) }, fromId);
         emit('peer-joined', { peerId: fromId, info: roster.get(fromId) });
@@ -407,7 +420,7 @@ const Collab = (() => {
         break;
       }
       default:
-        console.warn('[Collab:HOST] unrecognized message type from', fromId, ':', msg.type, msg);
+        dwarn('[Collab:HOST] unrecognized message type from', fromId, ':', msg.type, msg);
     }
   }
 
@@ -440,29 +453,29 @@ const Collab = (() => {
       isHost = false;
 
       const hostId = peerIdFromCode(code);
-      console.log('[Collab:PEER] joinSession — code:', code, '-> resolved hostId:', hostId);
+      dlog('[Collab:PEER] joinSession — code:', code, '-> resolved hostId:', hostId);
       peer = new Peer({ debug: 2, config: { iceServers: ICE_SERVERS } });
 
       peer.on('open', pid => {
-        console.log('[Collab:PEER] peer.open — my broker id is', pid, '- now connecting to host', hostId);
+        dlog('[Collab:PEER] peer.open — my broker id is', pid, '- now connecting to host', hostId);
         myPeerId = pid;
         hostConn = peer.connect(hostId, { reliable: true });
-        console.log('[Collab:PEER] peer.connect() called, connectionId:', hostConn.connectionId, 'initial open?', hostConn.open);
+        dlog('[Collab:PEER] peer.connect() called, connectionId:', hostConn.connectionId, 'initial open?', hostConn.open);
         _wireIceDiagnostics(hostConn, 'PEER');
 
         hostConn.on('open', () => {
-          console.log('[Collab:PEER] hostConn.open — DataConnection to host is ready. Sending hello.');
+          dlog('[Collab:PEER] hostConn.open — DataConnection to host is ready. Sending hello.');
           hostConn.send({ type: 'hello', name: myName, color: myColor });
-          console.log('[Collab:PEER] hello sent:', { type: 'hello', name: myName, color: myColor });
+          dlog('[Collab:PEER] hello sent:', { type: 'hello', name: myName, color: myColor });
         });
 
         hostConn.on('data', msg => {
-          console.log('[Collab:PEER] hostConn.data <- raw message from host:', JSON.stringify(msg));
+          if(DEBUG) dlog('[Collab:PEER] hostConn.data <- raw message from host:', JSON.stringify(msg));
           _peerOnMessage(msg, resolve);
         });
 
         hostConn.on('close', () => {
-          console.warn('[Collab:PEER] hostConn.close — connection to host closed');
+          dwarn('[Collab:PEER] hostConn.close — connection to host closed');
           emit('host-disconnected');
         });
         hostConn.on('error', err => {
@@ -478,16 +491,16 @@ const Collab = (() => {
         reject(err);
       });
 
-      peer.on('disconnected', () => console.warn('[Collab:PEER] peer.disconnected from signaling broker'));
-      peer.on('close', () => console.warn('[Collab:PEER] peer.close — peer object destroyed'));
+      peer.on('disconnected', () => dwarn('[Collab:PEER] peer.disconnected from signaling broker'));
+      peer.on('close', () => dwarn('[Collab:PEER] peer.close — peer object destroyed'));
     });
   }
 
   function _peerOnMessage(msg, joinResolve){
-    console.log('[Collab:PEER] _peerOnMessage — type:', msg.type);
+    dlog('[Collab:PEER] _peerOnMessage — type:', msg.type);
     switch(msg.type){
       case 'state-sync':
-        console.log('[Collab:PEER] state-sync received — resolving joinSession promise. bodies keys:', Object.keys(msg.bodies || {}).length, 'roster:', msg.roster);
+        dlog('[Collab:PEER] state-sync received — resolving joinSession promise. bodies keys:', Object.keys(msg.bodies || {}).length, 'roster:', msg.roster);
         peerLockMirror.clear();
         for(const [body, lock] of Object.entries(msg.locks || {})) peerLockMirror.set(body, lock.peerId);
         emit('state-sync', { bodies: msg.bodies, locks: msg.locks, roster: msg.roster });
@@ -517,7 +530,7 @@ const Collab = (() => {
         emit('chat', { peerId: msg.peerId, text: msg.text });
         break;
       default:
-        console.warn('[Collab:PEER] unrecognized message type from host:', msg.type, msg);
+        dwarn('[Collab:PEER] unrecognized message type from host:', msg.type, msg);
     }
   }
 
@@ -620,7 +633,7 @@ const Collab = (() => {
         hostConn.close();
       }
       peer.destroy();
-    } catch(err){ console.warn('[Collab] error during leave:', err); }
+    } catch(err){ dwarn('[Collab] error during leave:', err); }
     peer = null;
     isHost = false;
     hostConn = null;
@@ -646,6 +659,7 @@ const Collab = (() => {
     requestLock, releaseLock, isLockedByOther,
     broadcastEdit, sendChat,
     setStateProvider,
-    getMyInfo, isActive
+    getMyInfo, isActive,
+    setDebug
   };
 })();
