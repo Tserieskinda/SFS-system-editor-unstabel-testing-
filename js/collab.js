@@ -296,6 +296,7 @@ const Collab = (() => {
   }
 
   function _hostDropPeer(peerId){
+    if(!roster.has(peerId) && !hostConns.has(peerId)) return; // already dropped (e.g. 'bye' beat the transport close event)
     dwarn('[Collab:HOST] _hostDropPeer —', peerId, '(was in hostConns?', hostConns.has(peerId), ')');
     hostConns.delete(peerId);
     roster.delete(peerId);
@@ -419,6 +420,25 @@ const Collab = (() => {
         emit('chat', { peerId: fromId, text: msg.text });
         break;
       }
+
+      case 'bye': {
+        // Explicit graceful-leave notice — handle immediately rather than
+        // waiting on the (slow/unreliable) transport-level conn.close event.
+        _hostDropPeer(fromId);
+        break;
+      }
+
+      case 'full-sync': {
+        // A peer's whole `bodies` shape changed (add/delete/rename/import/
+        // etc.) — relay to everyone else, and emit locally too so the
+        // host's own app-level state gets updated the same way a peer's
+        // would (collab.js has no idea what `bodies` even is; the actual
+        // apply happens in the app-level listener for this event).
+        _hostBroadcast({ type: 'full-sync', bodies: msg.bodies, peerId: fromId }, fromId);
+        emit('full-sync', { bodies: msg.bodies, peerId: fromId });
+        break;
+      }
+
       default:
         dwarn('[Collab:HOST] unrecognized message type from', fromId, ':', msg.type, msg);
     }
@@ -529,6 +549,9 @@ const Collab = (() => {
       case 'chat':
         emit('chat', { peerId: msg.peerId, text: msg.text });
         break;
+      case 'full-sync':
+        emit('full-sync', { bodies: msg.bodies, peerId: msg.peerId });
+        break;
       default:
         dwarn('[Collab:PEER] unrecognized message type from host:', msg.type, msg);
     }
@@ -610,6 +633,21 @@ const Collab = (() => {
     });
   }
 
+  // Broadcast a whole-`bodies` snapshot — used for structural changes (a
+  // body added/deleted/renamed, a system imported/restored/preset applied,
+  // etc.) rather than a single body's data, which broadcastEdit already
+  // handles at much lower overhead. Not lock-gated: unlike per-body edits,
+  // structural changes aren't tied to holding a specific body's lock.
+  function broadcastFullSync(bodiesSnapshot){
+    if(!peer) return;
+    const payload = JSON.parse(JSON.stringify(bodiesSnapshot));
+    if(isHost){
+      _hostBroadcast({ type: 'full-sync', bodies: payload, peerId: myPeerId });
+    } else if(hostConn && hostConn.open){
+      hostConn.send({ type: 'full-sync', bodies: payload, peerId: myPeerId });
+    }
+  }
+
   function sendChat(text){
     if(!peer) return;
     if(isHost){
@@ -622,6 +660,7 @@ const Collab = (() => {
 
   function leaveSession(){
     if(!peer) return;
+    const peerRef = peer; // capture before we null out the outer `peer` below
     try {
       if(isHost){
         _hostBroadcast({ type: 'peer-leave', peerId: myPeerId });
@@ -629,10 +668,20 @@ const Collab = (() => {
         hostConns.clear();
         locks.clear();
         roster.clear();
+        peerRef.destroy();
       } else if(hostConn){
+        // Tell the host explicitly rather than relying on the transport-level
+        // 'close' event alone — that event is slow/unreliable (especially
+        // relayed through TURN) and can get cut off entirely if we destroy()
+        // the peer before the close frame finishes sending. A small delay
+        // gives the reliable data channel a chance to actually flush 'bye'
+        // before we tear the connection down.
+        if(hostConn.open) hostConn.send({ type: 'bye', peerId: myPeerId });
         hostConn.close();
+        setTimeout(() => { try { peerRef.destroy(); } catch(e){} }, 150);
+      } else {
+        peerRef.destroy();
       }
-      peer.destroy();
     } catch(err){ dwarn('[Collab] error during leave:', err); }
     peer = null;
     isHost = false;
@@ -653,11 +702,29 @@ const Collab = (() => {
 
   _startIdleSweep();
 
+  // Best-effort notice on abrupt tab close (browser back button, closing
+  // the tab, navigating away) — the person never clicked "Leave Session" so
+  // leaveSession()'s explicit messages never ran. 'pagehide' fires more
+  // reliably than 'beforeunload' for this (including on mobile Safari).
+  // Not guaranteed to arrive — the page may already be torn down before the
+  // send completes — but costs nothing to try, and the transport-level
+  // close/error handlers remain as the fallback either way.
+  window.addEventListener('pagehide', () => {
+    if(!peer) return;
+    try {
+      if(isHost){
+        _hostBroadcast({ type: 'peer-leave', peerId: myPeerId });
+      } else if(hostConn && hostConn.open){
+        hostConn.send({ type: 'bye', peerId: myPeerId });
+      }
+    } catch(e){ /* page is already unloading — nothing more we can do */ }
+  });
+
   return {
     on, off,
     hostSession, joinSession, leaveSession,
     requestLock, releaseLock, isLockedByOther,
-    broadcastEdit, sendChat,
+    broadcastEdit, broadcastFullSync, sendChat,
     setStateProvider,
     getMyInfo, isActive,
     setDebug
