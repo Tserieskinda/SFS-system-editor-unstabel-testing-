@@ -82,25 +82,35 @@
   // (on join) and 'full-sync' (any later structural change: add/delete/
   // rename/import/restore/preset/procgen/etc., whatever the source). ──
   function _applyIncomingBodies(newBodies){
+    console.log('[CollabSync] applying incoming bodies —', Object.keys(newBodies || {}).length, 'bodies:', Object.keys(newBodies || {}));
     applyingRemote = true;
-    bodies = JSON.parse(JSON.stringify(newBodies || {}));
-    _lastBodiesFp = _bodiesFp(); // baseline so our own poll doesn't immediately re-broadcast this right back
+    try {
+      bodies = JSON.parse(JSON.stringify(newBodies || {}));
+      _lastBodiesFp = _bodiesFp(); // baseline so our own poll doesn't immediately re-broadcast this right back
 
-    if(selectedBody && !bodies[selectedBody]){
-      selectedBody = null;
-      if(typeof closeSidebar === 'function') closeSidebar();
-    } else if(selectedBody && typeof fillSidebar === 'function'){
-      fillSidebar(selectedBody); // keep an open sidebar in sync if that body still exists
+      if(selectedBody && !bodies[selectedBody]){
+        selectedBody = null;
+        if(typeof closeSidebar === 'function') closeSidebar();
+      } else if(selectedBody && typeof fillSidebar === 'function'){
+        fillSidebar(selectedBody); // keep an open sidebar in sync if that body still exists
+      }
+
+      const hasCenter = Object.values(bodies).some(b => b.isCenter);
+      const empty = document.getElementById('empty-state');
+      if(empty) empty.classList.toggle('gone', hasCenter);
+      if(typeof updateStatusBar === 'function') updateStatusBar();
+      if(typeof syncAddBodyBtn === 'function') syncAddBodyBtn();
+      if(typeof resizeViewport === 'function') resizeViewport();
+      if(typeof drawViewport === 'function') drawViewport();
+    } catch(err){
+      // Explicit catch (not just relying on Collab.emit()'s own try/catch)
+      // so this shows up clearly, AND so `finally` below still runs even if
+      // something in here throws — otherwise applyingRemote could get stuck
+      // `true` forever, silently blocking all further outgoing sync.
+      console.error('[CollabSync] error applying incoming bodies:', err);
+    } finally {
+      applyingRemote = false;
     }
-
-    const hasCenter = Object.values(bodies).some(b => b.isCenter);
-    const empty = document.getElementById('empty-state');
-    if(empty) empty.classList.toggle('gone', hasCenter);
-    if(typeof updateStatusBar === 'function') updateStatusBar();
-    if(typeof syncAddBodyBtn === 'function') syncAddBodyBtn();
-    if(typeof resizeViewport === 'function') resizeViewport();
-    if(typeof drawViewport === 'function') drawViewport();
-    applyingRemote = false;
   }
 
   Collab.on('state-sync', d => {
@@ -147,6 +157,7 @@
     if(!Collab.isActive() || applyingRemote) return;
     const fp = _bodiesFp();
     if(fp !== _lastBodiesFp){
+      console.log('[CollabSync] structural change detected — broadcasting full-sync. bodies:', Object.keys(bodies));
       _lastBodiesFp = fp;
       Collab.broadcastFullSync(bodies);
     }
@@ -181,10 +192,15 @@
   Collab.on('remote-edit', ({ body, patch }) => {
     if(!bodies[body]) return;
     applyingRemote = true;
-    bodies[body].data = JSON.parse(JSON.stringify(patch));
-    if(selectedBody === body && typeof fillSidebar === 'function') fillSidebar(body);
-    if(typeof drawViewport === 'function') drawViewport();
-    applyingRemote = false;
+    try {
+      bodies[body].data = JSON.parse(JSON.stringify(patch));
+      if(selectedBody === body && typeof fillSidebar === 'function') fillSidebar(body);
+      if(typeof drawViewport === 'function') drawViewport();
+    } catch(err){
+      console.error('[CollabSync] error applying remote edit:', err);
+    } finally {
+      applyingRemote = false;
+    }
   });
 
   // ── Hook selectBody: request the lock whenever a session is active ──

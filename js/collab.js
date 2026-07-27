@@ -434,6 +434,10 @@ const Collab = (() => {
         // host's own app-level state gets updated the same way a peer's
         // would (collab.js has no idea what `bodies` even is; the actual
         // apply happens in the app-level listener for this event).
+        // Unconditional (not DEBUG-gated) — full-sync only fires on actual
+        // structural changes, not per-keystroke, so it won't spam the
+        // console, and it's the key trace point for diagnosing sync gaps.
+        console.log('[Collab:HOST] full-sync received from peer', fromId, '—', Object.keys(msg.bodies || {}).length, 'bodies:', Object.keys(msg.bodies || {}));
         _hostBroadcast({ type: 'full-sync', bodies: msg.bodies, peerId: fromId }, fromId);
         emit('full-sync', { bodies: msg.bodies, peerId: fromId });
         break;
@@ -550,6 +554,7 @@ const Collab = (() => {
         emit('chat', { peerId: msg.peerId, text: msg.text });
         break;
       case 'full-sync':
+        console.log('[Collab:PEER] full-sync received from host —', Object.keys(msg.bodies || {}).length, 'bodies:', Object.keys(msg.bodies || {}));
         emit('full-sync', { bodies: msg.bodies, peerId: msg.peerId });
         break;
       default:
@@ -639,12 +644,19 @@ const Collab = (() => {
   // handles at much lower overhead. Not lock-gated: unlike per-body edits,
   // structural changes aren't tied to holding a specific body's lock.
   function broadcastFullSync(bodiesSnapshot){
-    if(!peer) return;
+    if(!peer){
+      console.warn('[Collab] broadcastFullSync called with no active peer — ignored');
+      return;
+    }
     const payload = JSON.parse(JSON.stringify(bodiesSnapshot));
     if(isHost){
+      console.log('[Collab:HOST] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to', hostConns.size, 'peer(s):', Object.keys(payload));
       _hostBroadcast({ type: 'full-sync', bodies: payload, peerId: myPeerId });
     } else if(hostConn && hostConn.open){
+      console.log('[Collab:PEER] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to host:', Object.keys(payload));
       hostConn.send({ type: 'full-sync', bodies: payload, peerId: myPeerId });
+    } else {
+      console.warn('[Collab:PEER] broadcastFullSync — hostConn not open, message DROPPED. hostConn exists?', !!hostConn, 'open?', hostConn?.open);
     }
   }
 
