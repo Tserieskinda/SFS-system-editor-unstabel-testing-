@@ -653,17 +653,20 @@ const Collab = (() => {
   function broadcastFullSync(bodiesSnapshot){
     if(!peer){
       console.warn('[Collab] broadcastFullSync called with no active peer — ignored');
-      return;
+      return false;
     }
     const payload = JSON.parse(JSON.stringify(bodiesSnapshot));
     if(isHost){
       console.log('[Collab:HOST] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to', hostConns.size, 'peer(s):', Object.keys(payload));
       _hostBroadcast({ type: 'full-sync', bodies: payload, peerId: myPeerId });
+      return true;
     } else if(hostConn && hostConn.open){
       console.log('[Collab:PEER] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to host:', Object.keys(payload));
       hostConn.send({ type: 'full-sync', bodies: payload, peerId: myPeerId });
+      return true;
     } else {
       console.warn('[Collab:PEER] broadcastFullSync — hostConn not open, message DROPPED. hostConn exists?', !!hostConn, 'open?', hostConn?.open);
+      return false;
     }
   }
 

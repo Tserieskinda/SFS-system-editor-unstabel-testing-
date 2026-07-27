@@ -86,9 +86,13 @@
   // potentially many MB of base64 texture/heightmap data into that would be
   // a real bandwidth/mobile-memory problem. Uploading a new asset mid-
   // session won't reach already-connected peers in this pass.
-  if(typeof assets !== 'undefined'){
-    Collab.setAssetsProvider(() => assets);
-  }
+  // Registered unconditionally — the typeof check happens lazily INSIDE the
+  // callback (matching how setStateProvider is registered in collab-ui.js),
+  // not eagerly here at script-parse time. An eager check here would
+  // silently and permanently skip registration if `assets` weren't defined
+  // yet at the exact moment this line ran (e.g. subtle script-order
+  // sensitivity) — this is a strictly safer pattern.
+  Collab.setAssetsProvider(() => (typeof assets !== 'undefined' ? assets : null));
 
   function _mergeIncomingAssets(remoteAssets){
     if(!remoteAssets || typeof assets === 'undefined') return;
@@ -200,8 +204,15 @@
     const fp = _bodiesFp();
     if(fp !== _lastBodiesFp){
       console.log('[CollabSync] structural change detected — broadcasting full-sync. bodies:', Object.keys(bodies));
-      _lastBodiesFp = fp;
-      Collab.broadcastFullSync(bodies);
+      const sent = Collab.broadcastFullSync(bodies);
+      // Only advance the baseline if the send actually went out. If it
+      // didn't (e.g. hostConn not open for a moment), leave the baseline
+      // stale so the NEXT poll tick sees the same diff and retries —
+      // otherwise a single dropped send would permanently lose that change,
+      // since a future tick would compare against a baseline we'd already
+      // (wrongly) advanced past it.
+      if(sent) _lastBodiesFp = fp;
+      else console.warn('[CollabSync] full-sync send failed — will retry next poll tick');
     }
   }
   setInterval(_checkStructuralChange, 1200);
