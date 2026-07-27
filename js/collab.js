@@ -103,6 +103,7 @@ const Collab = (() => {
   const listeners = {};             // eventName -> [fn, ...]
   const editThrottles = new Map();  // bodyName -> { timer, pending }
   let stateProvider = null;         // () => bodies, set by the wiring layer (host only)
+  let assetsProvider = null;        // () => assets (textures/heightmaps/other), set by the wiring layer (host only)
 
   function emit(evt, payload){
     const subs = listeners[evt] || [];
@@ -112,11 +113,14 @@ const Collab = (() => {
     });
   }
 
-  // The wiring layer calls this once so the host can hand out full-state
+  // The wiring layer calls these once so the host can hand out full-state
   // snapshots to newly-joined peers without collab.js needing to import or
-  // know about `bodies` directly.
+  // know about `bodies`/`assets` directly.
   function setStateProvider(fn){
     stateProvider = fn;
+  }
+  function setAssetsProvider(fn){
+    assetsProvider = fn;
   }
 
   function on(evt, fn){
@@ -369,11 +373,14 @@ const Collab = (() => {
         const syncMsg = {
           type: 'state-sync',
           bodies: stateProvider ? stateProvider() : {},
+          assets: assetsProvider ? assetsProvider() : null,
           locks: _locksSnapshot(),
           roster: _rosterSnapshot(),
           you: fromId
         };
-        dlog('[Collab:HOST] sending state-sync to', fromId, '- stateProvider set?', !!stateProvider, 'bodies keys:', stateProvider ? Object.keys(syncMsg.bodies || {}).length : 'n/a');
+        console.log('[Collab:HOST] sending state-sync to', fromId, '—',
+          Object.keys(syncMsg.bodies || {}).length, 'bodies,',
+          syncMsg.assets ? ((syncMsg.assets.textures||[]).length + ' textures, ' + (syncMsg.assets.heightmaps||[]).length + ' heightmaps') : 'no assets provider set');
         _hostSendTo(fromId, syncMsg);
         _hostBroadcast({ type: 'peer-join', peerId: fromId, info: roster.get(fromId) }, fromId);
         emit('peer-joined', { peerId: fromId, info: roster.get(fromId) });
@@ -737,7 +744,7 @@ const Collab = (() => {
     hostSession, joinSession, leaveSession,
     requestLock, releaseLock, isLockedByOther,
     broadcastEdit, broadcastFullSync, sendChat,
-    setStateProvider,
+    setStateProvider, setAssetsProvider,
     getMyInfo, isActive,
     setDebug
   };

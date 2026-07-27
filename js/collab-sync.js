@@ -78,6 +78,47 @@
     }
   }
 
+  // Host hands this to a newly-joining peer as part of state-sync, so they
+  // start with the same textures/heightmaps the host's system actually
+  // uses instead of missing assets and rendering blank/default bodies.
+  // Scoped to JOIN TIME ONLY, deliberately not part of the ongoing
+  // structural-change poll below — that runs every ~1.2s, and stuffing
+  // potentially many MB of base64 texture/heightmap data into that would be
+  // a real bandwidth/mobile-memory problem. Uploading a new asset mid-
+  // session won't reach already-connected peers in this pass.
+  if(typeof assets !== 'undefined'){
+    Collab.setAssetsProvider(() => assets);
+  }
+
+  function _mergeIncomingAssets(remoteAssets){
+    if(!remoteAssets || typeof assets === 'undefined') return;
+    let added = 0;
+
+    const merge = (list, type) => {
+      for(const entry of (list || [])){
+        if(assets[type].find(a => a.name === entry.name)) continue; // already have it locally
+        assets[type].push(entry);
+        added++;
+        if(type === 'textures'){
+          const texName = entry.name.replace(/\.[^.]+$/, '');
+          if(entry.url && typeof cacheTexture === 'function') cacheTexture(texName, entry.url);
+          if(typeof renderAssetThumb === 'function') renderAssetThumb(entry);
+        } else {
+          if(typeof renderAssetRow === 'function') renderAssetRow(entry, type);
+          if(type === 'heightmaps' && typeof injectCustomHeightmap === 'function') injectCustomHeightmap(entry.name);
+        }
+      }
+    };
+
+    merge(remoteAssets.textures, 'textures');
+    merge(remoteAssets.heightmaps, 'heightmaps');
+    merge(remoteAssets.other, 'other');
+
+    console.log('[CollabSync] merged', added, 'incoming asset(s) from host —',
+      'textures:', assets.textures.length, 'heightmaps:', assets.heightmaps.length, 'other:', assets.other.length);
+    if(typeof refreshTexPickerLists === 'function') refreshTexPickerLists();
+  }
+
   // ── Apply an incoming full `bodies` snapshot — shared by 'state-sync'
   // (on join) and 'full-sync' (any later structural change: add/delete/
   // rename/import/restore/preset/procgen/etc., whatever the source). ──
@@ -114,6 +155,7 @@
   }
 
   Collab.on('state-sync', d => {
+    _mergeIncomingAssets(d.assets);
     _applyIncomingBodies(d.bodies);
     peerInfo = {};
     for(const [pid, info] of Object.entries(d.roster || {})) peerInfo[pid] = info;
