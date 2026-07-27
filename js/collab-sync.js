@@ -131,19 +131,27 @@
   // to get rid of.
   let _lastBodiesFp = null;
   function _bodiesFp(){
-    if(!selectedBody || !bodies[selectedBody]) return JSON.stringify(bodies);
-    const rest = {};
-    for(const k in bodies) if(k !== selectedBody) rest[k] = bodies[k];
-    return JSON.stringify(rest);
+    // The full set of body NAMES always participates in the fingerprint —
+    // that's what changes on add/delete/rename, including the common
+    // "add a body, immediately select it for editing" flow, where the new
+    // body IS selectedBody from the very first poll tick. Excluding it
+    // entirely (as an earlier version of this did) made a brand-new body's
+    // fingerprint identical to "nothing changed" and silently missed it.
+    // Only the selected body's own DATA CONTENTS are excluded from the deep
+    // comparison, since those already propagate via the fast per-edit
+    // broadcastEdit/remote-edit channel.
+    const names = Object.keys(bodies).sort();
+    return names.map(name => name === selectedBody ? name : name + ':' + JSON.stringify(bodies[name])).join('|');
   }
-  setInterval(() => {
+  function _checkStructuralChange(){
     if(!Collab.isActive() || applyingRemote) return;
     const fp = _bodiesFp();
     if(fp !== _lastBodiesFp){
       _lastBodiesFp = fp;
       Collab.broadcastFullSync(bodies);
     }
-  }, 1200);
+  }
+  setInterval(_checkStructuralChange, 1200);
   Collab.on('hosted', () => { _lastBodiesFp = _bodiesFp(); });
 
   // Host: 'locks-changed' always carries the full current snapshot, so it's
@@ -189,6 +197,11 @@
     if(Collab.isActive()){
       Collab.requestLock(name);
       _refreshLockUI();
+      // Covers "add a body, immediately select it" — without this, a
+      // brand-new body wouldn't reach the other side until the next 1.2s
+      // poll tick, and any edits made in the meantime would be silently
+      // dropped on their end since they don't have the body yet at all.
+      _checkStructuralChange();
     }
   };
 
