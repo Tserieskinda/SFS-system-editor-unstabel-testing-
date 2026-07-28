@@ -104,6 +104,7 @@ const Collab = (() => {
   const editThrottles = new Map();  // bodyName -> { timer, pending }
   let stateProvider = null;         // () => bodies, set by the wiring layer (host only)
   let assetsProvider = null;        // () => assets (textures/heightmaps/other), set by the wiring layer (host only)
+  let settingsProvider = null;      // () => systemSettings (importSettings/spaceCenterData), set by the wiring layer (host only)
 
   function emit(evt, payload){
     const subs = listeners[evt] || [];
@@ -121,6 +122,9 @@ const Collab = (() => {
   }
   function setAssetsProvider(fn){
     assetsProvider = fn;
+  }
+  function setSettingsProvider(fn){
+    settingsProvider = fn;
   }
 
   function on(evt, fn){
@@ -374,13 +378,15 @@ const Collab = (() => {
           type: 'state-sync',
           bodies: stateProvider ? stateProvider() : {},
           assets: assetsProvider ? assetsProvider() : null,
+          settings: settingsProvider ? settingsProvider() : null,
           locks: _locksSnapshot(),
           roster: _rosterSnapshot(),
           you: fromId
         };
         console.log('[Collab:HOST] sending state-sync to', fromId, '—',
           Object.keys(syncMsg.bodies || {}).length, 'bodies,',
-          syncMsg.assets ? ((syncMsg.assets.textures||[]).length + ' textures, ' + (syncMsg.assets.heightmaps||[]).length + ' heightmaps') : 'no assets provider set');
+          syncMsg.assets ? ((syncMsg.assets.textures||[]).length + ' textures, ' + (syncMsg.assets.heightmaps||[]).length + ' heightmaps') : 'no assets provider set,',
+          syncMsg.settings ? 'settings included' : 'no settings provider set');
         _hostSendTo(fromId, syncMsg);
         _hostBroadcast({ type: 'peer-join', peerId: fromId, info: roster.get(fromId) }, fromId);
         emit('peer-joined', { peerId: fromId, info: roster.get(fromId) });
@@ -444,9 +450,22 @@ const Collab = (() => {
         // Unconditional (not DEBUG-gated) — full-sync only fires on actual
         // structural changes, not per-keystroke, so it won't spam the
         // console, and it's the key trace point for diagnosing sync gaps.
-        console.log('[Collab:HOST] full-sync received from peer', fromId, '—', Object.keys(msg.bodies || {}).length, 'bodies:', Object.keys(msg.bodies || {}));
-        _hostBroadcast({ type: 'full-sync', bodies: msg.bodies, peerId: fromId }, fromId);
-        emit('full-sync', { bodies: msg.bodies, peerId: fromId });
+        console.log('[Collab:HOST] full-sync received from peer', fromId, '—', Object.keys(msg.bodies || {}).length, 'bodies:', Object.keys(msg.bodies || {}), msg.settings ? '+ settings' : '');
+        _hostBroadcast({ type: 'full-sync', bodies: msg.bodies, settings: msg.settings, peerId: fromId }, fromId);
+        emit('full-sync', { bodies: msg.bodies, settings: msg.settings, peerId: fromId });
+        break;
+      }
+
+      case 'asset-sync': {
+        // Delta only (added entries + removed names), not the whole asset
+        // library — asset payloads carry real image data, unlike bodies'
+        // small JSON, so re-sending everything on every change would be
+        // wasteful. Same relay-then-emit-locally pattern as full-sync.
+        const addedCount = Object.values(msg.added || {}).reduce((n, l) => n + (l?.length || 0), 0);
+        const removedCount = Object.values(msg.removed || {}).reduce((n, l) => n + (l?.length || 0), 0);
+        console.log('[Collab:HOST] asset-sync received from peer', fromId, '—', addedCount, 'added,', removedCount, 'removed');
+        _hostBroadcast({ type: 'asset-sync', added: msg.added, removed: msg.removed, peerId: fromId }, fromId);
+        emit('asset-sync', { added: msg.added, removed: msg.removed, peerId: fromId });
         break;
       }
 
@@ -561,9 +580,16 @@ const Collab = (() => {
         emit('chat', { peerId: msg.peerId, text: msg.text });
         break;
       case 'full-sync':
-        console.log('[Collab:PEER] full-sync received from host —', Object.keys(msg.bodies || {}).length, 'bodies:', Object.keys(msg.bodies || {}));
-        emit('full-sync', { bodies: msg.bodies, peerId: msg.peerId });
+        console.log('[Collab:PEER] full-sync received from host —', Object.keys(msg.bodies || {}).length, 'bodies:', Object.keys(msg.bodies || {}), msg.settings ? '+ settings' : '');
+        emit('full-sync', { bodies: msg.bodies, settings: msg.settings, peerId: msg.peerId });
         break;
+      case 'asset-sync': {
+        const addedCount = Object.values(msg.added || {}).reduce((n, l) => n + (l?.length || 0), 0);
+        const removedCount = Object.values(msg.removed || {}).reduce((n, l) => n + (l?.length || 0), 0);
+        console.log('[Collab:PEER] asset-sync received from host —', addedCount, 'added,', removedCount, 'removed');
+        emit('asset-sync', { added: msg.added, removed: msg.removed, peerId: msg.peerId });
+        break;
+      }
       default:
         dwarn('[Collab:PEER] unrecognized message type from host:', msg.type, msg);
     }
@@ -650,22 +676,57 @@ const Collab = (() => {
   // etc.) rather than a single body's data, which broadcastEdit already
   // handles at much lower overhead. Not lock-gated: unlike per-body edits,
   // structural changes aren't tied to holding a specific body's lock.
-  function broadcastFullSync(bodiesSnapshot){
+  // Broadcast a whole-`bodies` (+ optional `settings`) snapshot — used for
+  // structural changes (a body added/deleted/renamed, a system imported/
+  // restored/preset applied, importSettings/spaceCenterData edited, etc.)
+  // rather than a single body's data, which broadcastEdit already handles
+  // at much lower overhead. Not lock-gated: unlike per-body edits,
+  // structural changes aren't tied to holding a specific body's lock.
+  function broadcastFullSync(bodiesSnapshot, settingsSnapshot){
     if(!peer){
       console.warn('[Collab] broadcastFullSync called with no active peer — ignored');
       return false;
     }
     const payload = JSON.parse(JSON.stringify(bodiesSnapshot));
+    const settingsPayload = settingsSnapshot ? JSON.parse(JSON.stringify(settingsSnapshot)) : null;
     if(isHost){
-      console.log('[Collab:HOST] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to', hostConns.size, 'peer(s):', Object.keys(payload));
-      _hostBroadcast({ type: 'full-sync', bodies: payload, peerId: myPeerId });
+      console.log('[Collab:HOST] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to', hostConns.size, 'peer(s):', Object.keys(payload), settingsPayload ? '+ settings' : '');
+      _hostBroadcast({ type: 'full-sync', bodies: payload, settings: settingsPayload, peerId: myPeerId });
       return true;
     } else if(hostConn && hostConn.open){
-      console.log('[Collab:PEER] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to host:', Object.keys(payload));
-      hostConn.send({ type: 'full-sync', bodies: payload, peerId: myPeerId });
+      console.log('[Collab:PEER] broadcastFullSync — sending', Object.keys(payload).length, 'bodies to host:', Object.keys(payload), settingsPayload ? '+ settings' : '');
+      hostConn.send({ type: 'full-sync', bodies: payload, settings: settingsPayload, peerId: myPeerId });
       return true;
     } else {
       console.warn('[Collab:PEER] broadcastFullSync — hostConn not open, message DROPPED. hostConn exists?', !!hostConn, 'open?', hostConn?.open);
+      return false;
+    }
+  }
+
+  // Broadcast a DELTA of asset changes (newly added entries with full data,
+  // plus names of removed entries) — unlike broadcastFullSync, deliberately
+  // NOT the whole asset library every time, since asset entries carry real
+  // image data. Used for live sync when someone uploads/deletes a texture
+  // or heightmap, or when a system import/restore brings in new assets.
+  function broadcastAssetSync(added, removed){
+    if(!peer){
+      console.warn('[Collab] broadcastAssetSync called with no active peer — ignored');
+      return false;
+    }
+    const addedPayload = JSON.parse(JSON.stringify(added || {}));
+    const removedPayload = JSON.parse(JSON.stringify(removed || {}));
+    const addedCount = Object.values(addedPayload).reduce((n, l) => n + (l?.length || 0), 0);
+    const removedCount = Object.values(removedPayload).reduce((n, l) => n + (l?.length || 0), 0);
+    if(isHost){
+      console.log('[Collab:HOST] broadcastAssetSync — sending', addedCount, 'added,', removedCount, 'removed to', hostConns.size, 'peer(s)');
+      _hostBroadcast({ type: 'asset-sync', added: addedPayload, removed: removedPayload, peerId: myPeerId });
+      return true;
+    } else if(hostConn && hostConn.open){
+      console.log('[Collab:PEER] broadcastAssetSync — sending', addedCount, 'added,', removedCount, 'removed to host');
+      hostConn.send({ type: 'asset-sync', added: addedPayload, removed: removedPayload, peerId: myPeerId });
+      return true;
+    } else {
+      console.warn('[Collab:PEER] broadcastAssetSync — hostConn not open, message DROPPED.');
       return false;
     }
   }
@@ -746,8 +807,8 @@ const Collab = (() => {
     on, off,
     hostSession, joinSession, leaveSession,
     requestLock, releaseLock, isLockedByOther,
-    broadcastEdit, broadcastFullSync, sendChat,
-    setStateProvider, setAssetsProvider,
+    broadcastEdit, broadcastFullSync, broadcastAssetSync, sendChat,
+    setStateProvider, setAssetsProvider, setSettingsProvider,
     getMyInfo, isActive,
     setDebug
   };
