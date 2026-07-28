@@ -83,6 +83,101 @@
     });
   };
 
+  // ── Multiplayer-scoped undo ──
+  // Solo undo is a whole-`bodies` snapshot rollback — fine with one editor,
+  // but in a shared session it would revert EVERYONE's changes back to that
+  // point in time, not just the local user's own last action (if peer B
+  // edited Mars after peer A's last push, peer A hitting undo would wipe out
+  // B's edit too, even though A never touched Mars). Instead of a snapshot
+  // rollback, multiplayer mode computes a per-body DIFF (which specific
+  // bodies your own action added/removed/changed) and undo reverts only
+  // those exact keys on top of whatever the CURRENT shared state is —
+  // leaving anything anyone else has since changed untouched.
+  //
+  // Solo mode (Collab inactive) always falls through to the original
+  // pushUndo/undoAction unchanged.
+  let _mpUndoStack = []; // [{ bodyName: {before, after}, ... }, ...]
+
+  function _computeBodiesDiff(before, after){
+    const diff = {};
+    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for(const key of allKeys){
+      const b = before[key], a = after[key];
+      if(JSON.stringify(b) !== JSON.stringify(a)) diff[key] = { before: b, after: a };
+    }
+    return diff;
+  }
+
+  function _setUndoBtnState(active){
+    const undoBtn = document.getElementById('undo-btn');
+    if(!undoBtn) return;
+    undoBtn.disabled = !active;
+    undoBtn.classList.toggle('undo-active', active);
+  }
+
+  const _origPushUndo = pushUndo;
+  pushUndo = function(){
+    if(!Collab.isActive()){ _origPushUndo(); return; }
+    // Every pushUndo() call site is a synchronous `pushUndo(); <mutate bodies>;`
+    // pair (confirmed across tools.js/sidebar.js/placer.js/preset-modal.js/
+    // procgen.js — none of them are async), so capturing "after" on the next
+    // tick reliably lands once that mutation has completed.
+    const before = JSON.parse(JSON.stringify(bodies));
+    setTimeout(() => {
+      const after = JSON.parse(JSON.stringify(bodies));
+      const diff = _computeBodiesDiff(before, after);
+      if(Object.keys(diff).length){
+        _mpUndoStack.push(diff);
+        if(_mpUndoStack.length > MAX_UNDO) _mpUndoStack.shift();
+        _setUndoBtnState(true);
+      }
+    }, 0);
+  };
+
+  const _origUndoAction = undoAction;
+  undoAction = function(){
+    if(!Collab.isActive()){ _origUndoAction(); return; }
+    if(!_mpUndoStack.length) return;
+    const diff = _mpUndoStack.pop();
+
+    for(const [name, { before }] of Object.entries(diff)){
+      if(before === undefined) delete bodies[name]; // this key didn't exist before my action
+      else bodies[name] = before;                   // restore to what it was before my action
+    }
+
+    if(selectedBody && !bodies[selectedBody]){
+      selectedBody = null;
+      if(typeof closeSidebar === 'function') closeSidebar();
+    } else if(selectedBody && typeof fillSidebar === 'function'){
+      fillSidebar(selectedBody);
+    }
+    const hasCenter = Object.values(bodies).some(b => b.isCenter);
+    const empty = document.getElementById('empty-state');
+    if(empty) empty.classList.toggle('gone', hasCenter);
+    if(typeof updateStatusBar === 'function') updateStatusBar();
+    if(typeof syncAddBodyBtn === 'function') syncAddBodyBtn();
+    if(typeof resizeViewport === 'function') resizeViewport();
+    if(typeof drawViewport === 'function') drawViewport();
+    _setUndoBtnState(_mpUndoStack.length > 0);
+
+    // This is a genuine local change (not a remote one), so it should
+    // propagate to everyone else like any other structural change — do it
+    // immediately rather than waiting up to 1.2s for the next poll tick.
+    _checkStructuralChange();
+  };
+
+  // Fresh session, fresh undo history — a stale diff from a previous
+  // session (or from before joining) shouldn't be replayable in a new one.
+  Collab.on('hosted', () => { _mpUndoStack = []; _setUndoBtnState(false); });
+  Collab.on('state-sync', () => { _mpUndoStack = []; _setUndoBtnState(false); });
+  Collab.on('left', () => {
+    _mpUndoStack = [];
+    // Control reverts to the original solo undoStack, which was untouched
+    // the whole time we were bypassing it above — reflect ITS actual state
+    // rather than blindly disabling (it may still hold pre-session history).
+    _setUndoBtnState(typeof undoStack !== 'undefined' && undoStack.length > 0);
+  });
+
   function _me(){ return Collab.getMyInfo(); }
 
   // ── Lock bookkeeping ──
