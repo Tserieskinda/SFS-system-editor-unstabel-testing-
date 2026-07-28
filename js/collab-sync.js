@@ -301,6 +301,18 @@
     return m;
   }
   let _lastAssetSig = null; // { textures: Map(name->size), heightmaps: Map, other: Map }
+
+  // Caps how many newly-added entries go into a single asset-sync message.
+  // A single upload is small and fine in one shot; a bulk restore/import
+  // can add dozens of textures at once, and stuffing all of them into one
+  // message means many MB of base64 image data in a single WebRTC send —
+  // much riskier than the single-file case, especially over a TURN-relayed
+  // connection with real bandwidth limits. Capping this turns a bulk load
+  // into a steady trickle (a few entries every ~1.2s) instead of one large
+  // burst that's more likely to stall or get dropped. Removed entries
+  // (just names, not data) aren't capped — those are cheap regardless of count.
+  const ASSET_SYNC_MAX_PER_TICK = 3;
+
   function _checkAssetChange(){
     if(!Collab.isActive() || applyingRemote || typeof assets === 'undefined') return;
     const cur = { textures: _assetSigMap('textures'), heightmaps: _assetSigMap('heightmaps'), other: _assetSigMap('other') };
@@ -309,13 +321,16 @@
     const added = { textures: [], heightmaps: [], other: [] };
     const removed = { textures: [], heightmaps: [], other: [] };
     let hasChange = false;
+    let totalNew = 0, sentThisTick = 0;
 
     for(const type of ['textures', 'heightmaps', 'other']){
       const prev = _lastAssetSig[type], now = cur[type];
       for(const [name, size] of now){
         if(!prev.has(name) || prev.get(name) !== size){
+          totalNew++;
+          if(sentThisTick >= ASSET_SYNC_MAX_PER_TICK) continue; // leave it queued for a later tick — see baseline note below
           const entry = assets[type].find(a => a.name === name);
-          if(entry){ added[type].push(entry); hasChange = true; }
+          if(entry){ added[type].push(entry); hasChange = true; sentThisTick++; }
         }
       }
       for(const name of prev.keys()){
@@ -324,10 +339,28 @@
     }
 
     if(hasChange){
-      console.log('[CollabSync] asset change detected — added:', Object.fromEntries(Object.entries(added).map(([k,v])=>[k,v.map(a=>a.name)])), 'removed:', removed);
+      console.log('[CollabSync] asset change detected — sending', sentThisTick, 'of', totalNew, 'new entries',
+        totalNew > sentThisTick ? `(${totalNew - sentThisTick} more queued for next tick(s))` : '', '— removed:', removed);
       const sent = Collab.broadcastAssetSync(added, removed);
-      if(sent) _lastAssetSig = cur;
-      else console.warn('[CollabSync] asset-sync send failed — will retry next poll tick');
+      if(sent){
+        // Only advance the baseline for what we actually sent this tick —
+        // build the next baseline from the previous one, plus what went
+        // out, minus what got removed. Anything still queued (beyond the
+        // per-tick cap) stays "not yet known", so the next tick's diff
+        // picks it up naturally rather than needing separate bookkeeping.
+        const nextSig = {
+          textures: new Map(_lastAssetSig.textures),
+          heightmaps: new Map(_lastAssetSig.heightmaps),
+          other: new Map(_lastAssetSig.other)
+        };
+        for(const type of ['textures', 'heightmaps', 'other']){
+          for(const entry of added[type]) nextSig[type].set(entry.name, entry.size || 0);
+          for(const name of removed[type]) nextSig[type].delete(name);
+        }
+        _lastAssetSig = nextSig;
+      } else {
+        console.warn('[CollabSync] asset-sync send failed — will retry next poll tick');
+      }
     }
   }
 

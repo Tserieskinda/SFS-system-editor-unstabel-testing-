@@ -553,7 +553,7 @@ const Collab = (() => {
         dlog('[Collab:PEER] state-sync received — resolving joinSession promise. bodies keys:', Object.keys(msg.bodies || {}).length, 'roster:', msg.roster);
         peerLockMirror.clear();
         for(const [body, lock] of Object.entries(msg.locks || {})) peerLockMirror.set(body, lock.peerId);
-        emit('state-sync', { bodies: msg.bodies, locks: msg.locks, roster: msg.roster });
+        emit('state-sync', { bodies: msg.bodies, assets: msg.assets, settings: msg.settings, locks: msg.locks, roster: msg.roster });
         if(joinResolve){ joinResolve({ peerId: myPeerId }); joinResolve = null; }
         break;
       case 'lock-ack':
