@@ -224,8 +224,6 @@ const CollabDebug = (() => {
     panelEl.id = 'cd-panel';
     panelEl.classList.add('hidden');
     document.body.appendChild(panelEl);
-
-    _wireEvents();
   }
 
   function show(){
@@ -244,7 +242,17 @@ const CollabDebug = (() => {
     visible ? hide() : show();
   }
 
-  document.addEventListener('DOMContentLoaded', _ensureDom);
+  // Wired immediately (not lazily inside _ensureDom) so the passive
+  // roster/lock/log mirrors stay accurate for the whole session even while
+  // the visible tab/panel remain hidden — otherwise calling show() mid-
+  // session would display stale/empty data until the next event happened
+  // to fire. _log()'s _render() call is a safe no-op while panelEl/visible
+  // aren't set yet.
+  _wireEvents();
+
+  // No longer auto-created on page load — call CollabDebug.show() from the
+  // console when you actually want the debug HUD. show()/_ensureDom()
+  // create the tab + panel together on first use.
 
   return { show, hide, toggle, host, join, leave, tryLock, tryUnlock };
 })();
