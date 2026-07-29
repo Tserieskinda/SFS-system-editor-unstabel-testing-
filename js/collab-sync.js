@@ -180,6 +180,33 @@
 
   function _me(){ return Collab.getMyInfo(); }
 
+  // ── Small "syncing" status pill ──
+  // Distinct from the full-screen join loading overlay above — this is a
+  // brief, unobtrusive heads-up for ongoing mid-session transfers (a
+  // structural change, an asset batch, a preset) so people aren't left
+  // wondering why something just appeared/changed with no explanation,
+  // especially during a bulk restore/import that trickles in over several
+  // seconds.
+  let _syncPillEl = null, _syncPillHideTimer = null;
+  function _showSyncPill(text){
+    if(!_syncPillEl){
+      _syncPillEl = document.createElement('div');
+      _syncPillEl.id = 'cs-sync-pill';
+      _syncPillEl.style.cssText = 'position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:99997;'
+        + 'background:rgba(20,20,24,.95); border:1px solid var(--ac28); border-radius:20px; padding:6px 14px;'
+        + 'font-size:.7rem; color:var(--ink2, #ddd); display:flex; align-items:center; gap:7px;'
+        + 'box-shadow:0 2px 10px rgba(0,0,0,.4); opacity:0; transition:opacity .2s; pointer-events:none;'
+        + 'font-family:inherit;';
+      _syncPillEl.innerHTML = `<span style="width:9px;height:9px;border-radius:50%;border:2px solid var(--ac28);border-top-color:var(--sky2);animation:cs-spin .8s linear infinite;display:inline-block;flex-shrink:0"></span><span id="cs-sync-pill-text"></span>`;
+      document.body.appendChild(_syncPillEl);
+    }
+    const t = document.getElementById('cs-sync-pill-text');
+    if(t) t.textContent = text;
+    _syncPillEl.style.opacity = '1';
+    clearTimeout(_syncPillHideTimer);
+    _syncPillHideTimer = setTimeout(() => { if(_syncPillEl) _syncPillEl.style.opacity = '0'; }, 1800);
+  }
+
   // ── Lock bookkeeping ──
   function _setLockOwnersFromSnapshot(snapshot){
     lockOwners = {};
@@ -247,6 +274,12 @@
   // Small plain object, no binaries, so (unlike assets) this rides along
   // with every full-sync too, not just the initial join.
   Collab.setSettingsProvider(() => (typeof systemSettings !== 'undefined' ? systemSettings : null));
+
+  // Custom procgen presets (_pgUserPresets) — small JSON (body-data
+  // templates, no embedded binaries), additive-merge like assets rather
+  // than a destructive replace like bodies, since a peer's own unrelated
+  // saved presets from before joining shouldn't get wiped out.
+  Collab.setPresetsProvider(() => (typeof _pgUserPresets !== 'undefined' ? _pgUserPresets : null));
 
   function _mergeIncomingAssets(remoteAssets){
     if(!remoteAssets || typeof assets === 'undefined') return;
@@ -343,6 +376,7 @@
         totalNew > sentThisTick ? `(${totalNew - sentThisTick} more queued for next tick(s))` : '', '— removed:', removed);
       const sent = Collab.broadcastAssetSync(added, removed);
       if(sent){
+        _showSyncPill(totalNew > sentThisTick ? `Syncing assets… (${totalNew - sentThisTick} more queued)` : 'Syncing assets…');
         // Only advance the baseline for what we actually sent this tick —
         // build the next baseline from the previous one, plus what went
         // out, minus what got removed. Anything still queued (beyond the
@@ -368,6 +402,7 @@
     if(typeof assets === 'undefined') return;
     applyingRemote = true;
     try {
+      _showSyncPill('Receiving assets…');
       _mergeIncomingAssets(added);
       for(const type of ['textures', 'heightmaps', 'other']){
         for(const name of (removed?.[type] || [])){
@@ -389,6 +424,76 @@
 
   Collab.on('asset-sync', d => _applyIncomingAssetSync(d.added, d.removed));
 
+  // ── Live preset sync (save/delete a custom procgen preset, mid-session) ──
+  // Structurally the same problem as assets: additive-merge, not a
+  // destructive replace, and multiple mutation paths (save-from-editor,
+  // JSON import in the procgen panel) rather than one. Small JSON though —
+  // no per-tick batching cap needed like assets' base64 image data.
+  function _mergeIncomingPresets(remotePresets){
+    if(!remotePresets || typeof _pgUserPresets === 'undefined') return;
+    let added = 0;
+    for(const [name, entry] of Object.entries(remotePresets)){
+      if(typeof _pgRegisterUserPreset === 'function'){
+        _pgRegisterUserPreset(name, entry.data, entry.category, entry.typeOverride);
+        added++;
+      }
+    }
+    console.log('[CollabSync] merged', added, 'incoming preset(s) from host —', Object.keys(_pgUserPresets).length, 'total');
+    if(typeof pgPresetsRender === 'function') pgPresetsRender();
+  }
+
+  function _presetSigMap(){
+    const m = new Map();
+    if(typeof _pgUserPresets === 'undefined') return m;
+    for(const [name, entry] of Object.entries(_pgUserPresets)) m.set(name, JSON.stringify(entry).length);
+    return m;
+  }
+  let _lastPresetSig = null; // Map(name -> serialized length)
+  function _checkPresetChange(){
+    if(!Collab.isActive() || applyingRemote || typeof _pgUserPresets === 'undefined') return;
+    const cur = _presetSigMap();
+    if(!_lastPresetSig){ _lastPresetSig = cur; return; }
+
+    const added = {};
+    const removed = [];
+    let hasChange = false;
+    for(const [name, len] of cur){
+      if(!_lastPresetSig.has(name) || _lastPresetSig.get(name) !== len){
+        added[name] = _pgUserPresets[name];
+        hasChange = true;
+      }
+    }
+    for(const name of _lastPresetSig.keys()){
+      if(!cur.has(name)){ removed.push(name); hasChange = true; }
+    }
+
+    if(hasChange){
+      console.log('[CollabSync] preset change detected — added:', Object.keys(added), 'removed:', removed);
+      const sent = Collab.broadcastPresetSync(added, removed);
+      if(sent){ _lastPresetSig = cur; _showSyncPill('Syncing presets…'); }
+      else console.warn('[CollabSync] preset-sync send failed — will retry next poll tick');
+    }
+  }
+
+  function _applyIncomingPresetSync(added, removed){
+    if(typeof _pgUserPresets === 'undefined') return;
+    applyingRemote = true;
+    try {
+      _showSyncPill('Receiving presets…');
+      _mergeIncomingPresets(added);
+      for(const name of (removed || [])){
+        if(typeof pgPresetsRemove === 'function') pgPresetsRemove(name);
+      }
+      _lastPresetSig = _presetSigMap();
+    } catch(err){
+      console.error('[CollabSync] error applying incoming preset-sync:', err);
+    } finally {
+      applyingRemote = false;
+    }
+  }
+
+  Collab.on('preset-sync', d => _applyIncomingPresetSync(d.added, d.removed));
+
   // ── Apply an incoming full `bodies` (+ optional `settings`) snapshot —
   // shared by 'state-sync' (on join) and 'full-sync' (any later structural
   // change: add/delete/rename/import/restore/preset/procgen/settings edit/
@@ -397,6 +502,9 @@
     console.log('[CollabSync] applying incoming state —', Object.keys(newBodies || {}).length, 'bodies:', Object.keys(newBodies || {}), newSettings ? '+ settings' : '');
     applyingRemote = true;
     try {
+      _showSyncPill('Receiving system update…');
+      const prevCenter = Object.keys(bodies).find(n => bodies[n]?.isCenter) || null;
+
       bodies = JSON.parse(JSON.stringify(newBodies || {}));
       if(newSettings && typeof systemSettings !== 'undefined'){
         systemSettings = JSON.parse(JSON.stringify(newSettings));
@@ -410,7 +518,29 @@
         fillSidebar(selectedBody); // keep an open sidebar in sync if that body still exists
       }
 
-      const hasCenter = Object.values(bodies).some(b => b.isCenter);
+      // Locks are keyed by body name — if a body got deleted/renamed out
+      // from under a lock (whether it's the center or not), that name is
+      // now orphaned in our local lockOwners mirror. Left alone it'd only
+      // clear on the next actual lock/unlock event, or linger and
+      // incorrectly appear to lock a same-named body someone creates later.
+      for(const name of Object.keys(lockOwners)){
+        if(!bodies[name]) delete lockOwners[name];
+      }
+
+      // Center changed (added/removed/replaced) — the rendering itself
+      // already handles this fine (viewport/status bar re-derive the
+      // center fresh on every draw, never cache it), but a structural
+      // change like this is disorienting enough to call out explicitly
+      // rather than leaving people to notice the system just looks
+      // different now.
+      const newCenter = Object.keys(bodies).find(n => bodies[n]?.isCenter) || null;
+      if(newCenter !== prevCenter && chatBubbleEl){
+        if(!prevCenter && newCenter) _pushChatMsg({ system: true, text: `System center set to ${newCenter}` });
+        else if(prevCenter && !newCenter) _pushChatMsg({ system: true, text: `System center (${prevCenter}) was removed` });
+        else if(prevCenter && newCenter) _pushChatMsg({ system: true, text: `System center changed from ${prevCenter} to ${newCenter}` });
+      }
+
+      const hasCenter = !!newCenter;
       const empty = document.getElementById('empty-state');
       if(empty) empty.classList.toggle('gone', hasCenter);
       if(typeof updateStatusBar === 'function') updateStatusBar();
@@ -430,6 +560,7 @@
 
   Collab.on('state-sync', d => {
     _mergeIncomingAssets(d.assets);
+    _mergeIncomingPresets(d.presets);
     _applyIncomingState(d.bodies, d.settings);
     peerInfo = {};
     for(const [pid, info] of Object.entries(d.roster || {})) peerInfo[pid] = info;
@@ -486,13 +617,14 @@
       // otherwise a single dropped send would permanently lose that change,
       // since a future tick would compare against a baseline we'd already
       // (wrongly) advanced past it.
-      if(sent) _lastStateFp = fp;
+      if(sent){ _lastStateFp = fp; _showSyncPill('Syncing system…'); }
       else console.warn('[CollabSync] full-sync send failed — will retry next poll tick');
     }
   }
-  setInterval(() => { _checkStructuralChange(); _checkAssetChange(); }, 1200);
+  setInterval(() => { _checkStructuralChange(); _checkAssetChange(); _checkPresetChange(); }, 1200);
   Collab.on('hosted', () => { _lastAssetSig = { textures: _assetSigMap('textures'), heightmaps: _assetSigMap('heightmaps'), other: _assetSigMap('other') }; });
   Collab.on('hosted', () => { _lastStateFp = _stateFp(); });
+  Collab.on('hosted', () => { _lastPresetSig = _presetSigMap(); });
 
   // Settings are edited via the Settings modal's save button rather than
   // live-dragged like a body's fields — trigger an immediate check on save
@@ -585,4 +717,42 @@
   // Re-apply the lock UI whenever the sidebar visibly opens/closes, in case
   // something outside our hooks changed selectedBody (undo, delete, etc.)
   Collab.on('hosted', _refreshLockUI);
+
+  // ── Main-menu button label ──
+  // goStart() already swaps "CREATE NEW SYSTEM" -> "RESUME SESSION" when
+  // `bodies` isn't empty, but that's solo-session language and only gets
+  // (re-)evaluated when goStart() itself runs (navigating TO the start
+  // screen). A peer who joins WHILE ALREADY on that screen never
+  // re-triggers it — bodies populate via state-sync, but the button stays
+  // stuck on stale text ("CREATE NEW SYSTEM") with nothing indicating the
+  // connection/sync actually succeeded. Fixed two ways: a distinct label
+  // for the multiplayer case, and re-applying it right after a successful
+  // join/host rather than only when goStart() happens to run.
+  function _refreshStartLabelForMultiplayer(){
+    if(!Collab.isActive()) return;
+    const lbl  = document.getElementById('btn-new-label');
+    const mico = document.getElementById('btn-new-mico');
+    const btn  = document.getElementById('btn-new-system');
+    if(lbl)  lbl.textContent  = 'ENTER SYNCED SESSION';
+    if(mico) mico.textContent = '⇄';
+    if(btn){ btn.style.borderColor = 'rgba(48,224,144,.45)'; btn.style.color = 'var(--jade)'; }
+  }
+
+  if(typeof goStart === 'function'){
+    const _origGoStart = goStart;
+    goStart = function(){
+      _origGoStart();
+      _refreshStartLabelForMultiplayer(); // no-op if not in a session
+    };
+  }
+
+  Collab.on('state-sync', () => _refreshStartLabelForMultiplayer()); // peer just joined + synced
+  Collab.on('hosted',     () => _refreshStartLabelForMultiplayer()); // host just started hosting
+  Collab.on('left', () => {
+    // Back to solo semantics — re-run goStart()'s own logic if the start
+    // screen happens to be the one currently visible, so the label reflects
+    // the (untouched-during-the-session) solo undoStack/bodies state again.
+    const startScreen = document.getElementById('s-start');
+    if(typeof goStart === 'function' && startScreen && !startScreen.classList.contains('hide')) goStart();
+  });
 })();

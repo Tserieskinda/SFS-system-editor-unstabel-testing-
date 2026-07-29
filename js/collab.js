@@ -105,6 +105,7 @@ const Collab = (() => {
   let stateProvider = null;         // () => bodies, set by the wiring layer (host only)
   let assetsProvider = null;        // () => assets (textures/heightmaps/other), set by the wiring layer (host only)
   let settingsProvider = null;      // () => systemSettings (importSettings/spaceCenterData), set by the wiring layer (host only)
+  let presetsProvider = null;       // () => _pgUserPresets (custom procgen presets), set by the wiring layer (host only)
 
   function emit(evt, payload){
     const subs = listeners[evt] || [];
@@ -125,6 +126,9 @@ const Collab = (() => {
   }
   function setSettingsProvider(fn){
     settingsProvider = fn;
+  }
+  function setPresetsProvider(fn){
+    presetsProvider = fn;
   }
 
   function on(evt, fn){
@@ -379,6 +383,7 @@ const Collab = (() => {
           bodies: stateProvider ? stateProvider() : {},
           assets: assetsProvider ? assetsProvider() : null,
           settings: settingsProvider ? settingsProvider() : null,
+          presets: presetsProvider ? presetsProvider() : null,
           locks: _locksSnapshot(),
           roster: _rosterSnapshot(),
           you: fromId
@@ -386,7 +391,8 @@ const Collab = (() => {
         console.log('[Collab:HOST] sending state-sync to', fromId, '—',
           Object.keys(syncMsg.bodies || {}).length, 'bodies,',
           syncMsg.assets ? ((syncMsg.assets.textures||[]).length + ' textures, ' + (syncMsg.assets.heightmaps||[]).length + ' heightmaps') : 'no assets provider set,',
-          syncMsg.settings ? 'settings included' : 'no settings provider set');
+          syncMsg.settings ? 'settings included,' : 'no settings provider set,',
+          syncMsg.presets ? (Object.keys(syncMsg.presets).length + ' presets') : 'no presets provider set');
         _hostSendTo(fromId, syncMsg);
         _hostBroadcast({ type: 'peer-join', peerId: fromId, info: roster.get(fromId) }, fromId);
         emit('peer-joined', { peerId: fromId, info: roster.get(fromId) });
@@ -466,6 +472,19 @@ const Collab = (() => {
         console.log('[Collab:HOST] asset-sync received from peer', fromId, '—', addedCount, 'added,', removedCount, 'removed');
         _hostBroadcast({ type: 'asset-sync', added: msg.added, removed: msg.removed, peerId: fromId }, fromId);
         emit('asset-sync', { added: msg.added, removed: msg.removed, peerId: fromId });
+        break;
+      }
+
+      case 'preset-sync': {
+        // Same delta pattern as asset-sync, for custom procgen presets
+        // (_pgUserPresets) — small JSON, no binary payload concerns, but
+        // still additive-merge rather than a destructive full replace since
+        // a peer's own unrelated saved presets shouldn't get wiped out.
+        const addedCount = Object.keys(msg.added || {}).length;
+        const removedCount = (msg.removed || []).length;
+        console.log('[Collab:HOST] preset-sync received from peer', fromId, '—', addedCount, 'added,', removedCount, 'removed');
+        _hostBroadcast({ type: 'preset-sync', added: msg.added, removed: msg.removed, peerId: fromId }, fromId);
+        emit('preset-sync', { added: msg.added, removed: msg.removed, peerId: fromId });
         break;
       }
 
@@ -553,7 +572,7 @@ const Collab = (() => {
         dlog('[Collab:PEER] state-sync received — resolving joinSession promise. bodies keys:', Object.keys(msg.bodies || {}).length, 'roster:', msg.roster);
         peerLockMirror.clear();
         for(const [body, lock] of Object.entries(msg.locks || {})) peerLockMirror.set(body, lock.peerId);
-        emit('state-sync', { bodies: msg.bodies, assets: msg.assets, settings: msg.settings, locks: msg.locks, roster: msg.roster });
+        emit('state-sync', { bodies: msg.bodies, assets: msg.assets, settings: msg.settings, presets: msg.presets, locks: msg.locks, roster: msg.roster });
         if(joinResolve){ joinResolve({ peerId: myPeerId }); joinResolve = null; }
         break;
       case 'lock-ack':
@@ -588,6 +607,13 @@ const Collab = (() => {
         const removedCount = Object.values(msg.removed || {}).reduce((n, l) => n + (l?.length || 0), 0);
         console.log('[Collab:PEER] asset-sync received from host —', addedCount, 'added,', removedCount, 'removed');
         emit('asset-sync', { added: msg.added, removed: msg.removed, peerId: msg.peerId });
+        break;
+      }
+      case 'preset-sync': {
+        const addedCount = Object.keys(msg.added || {}).length;
+        const removedCount = (msg.removed || []).length;
+        console.log('[Collab:PEER] preset-sync received from host —', addedCount, 'added,', removedCount, 'removed');
+        emit('preset-sync', { added: msg.added, removed: msg.removed, peerId: msg.peerId });
         break;
       }
       default:
@@ -731,6 +757,29 @@ const Collab = (() => {
     }
   }
 
+  // Same delta pattern as broadcastAssetSync, for custom procgen presets
+  // (added: {name: {data,category,typeOverride}, ...}, removed: [names]).
+  function broadcastPresetSync(added, removed){
+    if(!peer){
+      console.warn('[Collab] broadcastPresetSync called with no active peer — ignored');
+      return false;
+    }
+    const addedPayload = JSON.parse(JSON.stringify(added || {}));
+    const removedPayload = JSON.parse(JSON.stringify(removed || []));
+    if(isHost){
+      console.log('[Collab:HOST] broadcastPresetSync — sending', Object.keys(addedPayload).length, 'added,', removedPayload.length, 'removed to', hostConns.size, 'peer(s)');
+      _hostBroadcast({ type: 'preset-sync', added: addedPayload, removed: removedPayload, peerId: myPeerId });
+      return true;
+    } else if(hostConn && hostConn.open){
+      console.log('[Collab:PEER] broadcastPresetSync — sending', Object.keys(addedPayload).length, 'added,', removedPayload.length, 'removed to host');
+      hostConn.send({ type: 'preset-sync', added: addedPayload, removed: removedPayload, peerId: myPeerId });
+      return true;
+    } else {
+      console.warn('[Collab:PEER] broadcastPresetSync — hostConn not open, message DROPPED.');
+      return false;
+    }
+  }
+
   function sendChat(text){
     if(!peer) return;
     if(isHost){
@@ -807,8 +856,8 @@ const Collab = (() => {
     on, off,
     hostSession, joinSession, leaveSession,
     requestLock, releaseLock, isLockedByOther,
-    broadcastEdit, broadcastFullSync, broadcastAssetSync, sendChat,
-    setStateProvider, setAssetsProvider, setSettingsProvider,
+    broadcastEdit, broadcastFullSync, broadcastAssetSync, broadcastPresetSync, sendChat,
+    setStateProvider, setAssetsProvider, setSettingsProvider, setPresetsProvider,
     getMyInfo, isActive,
     setDebug
   };
