@@ -621,7 +621,14 @@
       else console.warn('[CollabSync] full-sync send failed — will retry next poll tick');
     }
   }
-  setInterval(() => { _checkStructuralChange(); _checkAssetChange(); _checkPresetChange(); }, 1200);
+  // 350ms rather than the original 1200ms — this is the safety-net fallback
+  // for anything NOT covered by an immediate-trigger hook below (bulk
+  // procgen regeneration, system import, autosave restore, and anything
+  // else that touches `bodies`/`assets`/presets without going through one
+  // of the specific commit points we hook). The immediate hooks make the
+  // common interactive cases (add, delete, rename, re-root, asset/preset
+  // save-or-delete) propagate right away instead of waiting on this at all.
+  setInterval(() => { _checkStructuralChange(); _checkAssetChange(); _checkPresetChange(); }, 350);
   Collab.on('hosted', () => { _lastAssetSig = { textures: _assetSigMap('textures'), heightmaps: _assetSigMap('heightmaps'), other: _assetSigMap('other') }; });
   Collab.on('hosted', () => { _lastStateFp = _stateFp(); });
   Collab.on('hosted', () => { _lastPresetSig = _presetSigMap(); });
@@ -700,6 +707,10 @@
       Collab.releaseLock(selectedBody);
     }
     _origCloseSidebar();
+    // Covers delete specifically — confirmDeleteBody() always closes the
+    // sidebar right after removing the body (and its satellites), so this
+    // makes deletion propagate immediately instead of waiting on the poll.
+    if(Collab.isActive()) _checkStructuralChange();
   };
 
   // ── Hook _liveSyncNow: broadcast the freshly-rebuilt body data ──
@@ -713,6 +724,44 @@
     if(!b) return;
     Collab.broadcastEdit(selectedBody, JSON.parse(JSON.stringify(b.data)));
   };
+
+  // ── Hook finaliseRename: rename doesn't close the sidebar (you keep
+  // editing the same body under its new name), so closeSidebar's hook
+  // above never fires for this — needs its own immediate trigger. ──
+  if(typeof finaliseRename === 'function'){
+    const _origFinaliseRename = finaliseRename;
+    finaliseRename = function(newName){
+      _origFinaliseRename(newName);
+      if(Collab.isActive()) _checkStructuralChange();
+    };
+  }
+
+  // ── Hook removeAsset: synchronous (unlike upload, which is async via
+  // FileReader and harder to hook at exactly the right completion moment —
+  // left to the tightened poll interval instead). ──
+  if(typeof removeAsset === 'function'){
+    const _origRemoveAsset = removeAsset;
+    removeAsset = function(safeName, type){
+      _origRemoveAsset(safeName, type);
+      if(Collab.isActive()) _checkAssetChange();
+    };
+  }
+
+  // ── Hook preset save/delete for the same reason ──
+  if(typeof _pgRegisterUserPreset === 'function'){
+    const _origRegisterUserPreset = _pgRegisterUserPreset;
+    _pgRegisterUserPreset = function(name, data, category, typeOverride){
+      _origRegisterUserPreset(name, data, category, typeOverride);
+      if(Collab.isActive()) _checkPresetChange();
+    };
+  }
+  if(typeof pgPresetsRemove === 'function'){
+    const _origPgPresetsRemove = pgPresetsRemove;
+    pgPresetsRemove = function(name){
+      _origPgPresetsRemove(name);
+      if(Collab.isActive()) _checkPresetChange();
+    };
+  }
 
   // Re-apply the lock UI whenever the sidebar visibly opens/closes, in case
   // something outside our hooks changed selectedBody (undo, delete, etc.)
