@@ -99,6 +99,29 @@ const Collab = (() => {
   let hostConn = null;              // DataConnection to the host
   const peerLockMirror = new Map(); // bodyName -> peerId — peers' local view of host's `locks`
 
+  // Reconnection (peer-side): retry joining the same session automatically
+  // if the connection to the host drops unexpectedly, rather than
+  // immediately giving up. Not used for a plain first-attempt join
+  // failure (wrong code, host not there) — only for a connection that WAS
+  // open and then died.
+  let _explicitLeave = false;   // true while leaveSession() itself is tearing things down — skips auto-reconnect
+  let _lastJoinCode = null;
+  let _lastJoinName = null;
+  let _reconnectAttempt = 0;
+  let _reconnectTimer = null;
+  const RECONNECT_MAX_ATTEMPTS = 5;
+  const RECONNECT_BASE_DELAY_MS = 1000; // exponential backoff: 1s, 2s, 4s, 8s, 16s
+
+  // Reconnection (host-side): if the host's connection to PeerJS's
+  // signaling broker drops (the peer-to-peer DataConnections to already-
+  // connected peers can survive this — only new connections/discovery need
+  // the broker), retry via PeerJS's own built-in reconnect() rather than
+  // giving up immediately. This preserves the same peer ID (so the session
+  // code keeps working) and doesn't touch existing DataConnections at all —
+  // a fundamentally different mechanism than the peer-side rejoin above.
+  let _hostReconnectAttempt = 0;
+  const HOST_RECONNECT_MAX_ATTEMPTS = 5;
+
   // Shared:
   const listeners = {};             // eventName -> [fn, ...]
   const editThrottles = new Map();  // bodyName -> { timer, pending }
@@ -182,6 +205,16 @@ const Collab = (() => {
         dlog('[Collab:HOST] peer.open — broker connection established, id =', pid);
         myPeerId = pid;
         roster.set(pid, { name: myName, color: myColor });
+        if(_hostReconnectAttempt > 0){
+          // This is PeerJS re-firing 'open' after a successful reconnect(),
+          // not the initial hosting flow — don't re-resolve the (already
+          // resolved) hostSession promise or re-emit 'hosted' (which would
+          // confusingly re-trigger the "you're now hosting" UI).
+          console.log('[Collab:HOST] broker reconnect succeeded after', _hostReconnectAttempt, 'attempt(s)');
+          _hostReconnectAttempt = 0;
+          emit('host-reconnected');
+          return;
+        }
         emit('hosted', { code, peerId: pid });
         resolve({ code, peerId: pid });
       });
@@ -199,7 +232,15 @@ const Collab = (() => {
 
       peer.on('disconnected', () => {
         dwarn('[Collab:HOST] peer.disconnected from signaling broker');
-        emit('host-disconnected');
+        if(_hostReconnectAttempt >= HOST_RECONNECT_MAX_ATTEMPTS){
+          console.warn('[Collab:HOST] broker reconnect — giving up after', _hostReconnectAttempt, 'attempt(s)');
+          emit('host-broker-lost');
+          return;
+        }
+        _hostReconnectAttempt++;
+        console.warn('[Collab:HOST] broker reconnect attempt', _hostReconnectAttempt, '/', HOST_RECONNECT_MAX_ATTEMPTS);
+        emit('host-reconnecting', { attempt: _hostReconnectAttempt, max: HOST_RECONNECT_MAX_ATTEMPTS });
+        try { peer.reconnect(); } catch(e){ console.error('[Collab:HOST] peer.reconnect() threw:', e); }
       });
 
       peer.on('close', () => dwarn('[Collab:HOST] peer.close — peer object destroyed'));
@@ -356,6 +397,64 @@ const Collab = (() => {
     conn.send(msg);
   }
 
+  // Delivers the host's current assets + presets to ONE newly-joined peer
+  // as a series of small chunked messages (reusing the exact same
+  // 'asset-sync'/'preset-sync' shape and receive-side merge logic as the
+  // ongoing live-sync — the receiving end can't tell the difference and
+  // needs no special-casing) rather than stuffing everything into the
+  // one-shot state-sync. A host with a large library could otherwise mean
+  // one message carrying many MB of base64 image data — much riskier over
+  // a TURN-relayed connection than a handful of small ones sent in
+  // sequence. Targeted directly at the joining peer (_hostSendTo), not
+  // broadcast — other already-synced peers don't need any of this.
+  function _hostSendAssetPresetCatchup(peerId){
+    const CHUNK_SIZE = 5;
+    const CHUNK_DELAY_MS = 200;
+    const chunks = []; // list of { type, added, removed }
+
+    const assetsSnap = assetsProvider ? assetsProvider() : null;
+    if(assetsSnap){
+      for(const type of ['textures', 'heightmaps', 'other']){
+        const list = assetsSnap[type] || [];
+        for(let i = 0; i < list.length; i += CHUNK_SIZE){
+          const slice = list.slice(i, i + CHUNK_SIZE);
+          chunks.push({ type: 'asset-sync', added: { [type]: slice }, removed: {} });
+        }
+      }
+    }
+
+    const presetsSnap = presetsProvider ? presetsProvider() : null;
+    if(presetsSnap){
+      const names = Object.keys(presetsSnap);
+      for(let i = 0; i < names.length; i += CHUNK_SIZE){
+        const added = {};
+        for(const name of names.slice(i, i + CHUNK_SIZE)) added[name] = presetsSnap[name];
+        chunks.push({ type: 'preset-sync', added, removed: [] });
+      }
+    }
+
+    console.log('[Collab:HOST] asset/preset catch-up for', peerId, '—', chunks.length, 'chunk(s) queued');
+
+    let i = 0;
+    const sendNext = () => {
+      if(i >= chunks.length){
+        // Explicit completion signal — without this, a peer joining a host
+        // with an empty/small library (zero chunks) would have nothing to
+        // ever tell it the catch-up finished, leaving the join loading
+        // screen stuck until only the 12s safety-timeout message (which
+        // doesn't even hide it, just adds a note) ever fired.
+        _hostSendTo(peerId, { type: 'catchup-complete', peerId: myPeerId });
+        return;
+      }
+      const chunk = chunks[i++];
+      const payload = JSON.parse(JSON.stringify(chunk));
+      payload.peerId = myPeerId;
+      _hostSendTo(peerId, payload);
+      setTimeout(sendNext, CHUNK_DELAY_MS);
+    };
+    sendNext();
+  }
+
   function _locksSnapshot(){
     const out = {};
     for(const [body, lock] of locks) out[body] = { peerId: lock.peerId, ts: lock.ts };
@@ -377,23 +476,25 @@ const Collab = (() => {
         // New peer introducing itself with a display name/color choice.
         roster.set(fromId, { name: msg.name || 'Peer', color: msg.color || nextColor() });
         dlog('[Collab:HOST] roster updated:', _rosterSnapshot());
-        // Send the newcomer a full snapshot so they converge on ground truth.
+        // Send the newcomer the core system snapshot first — small and
+        // fast, so they're not stuck on a loading screen waiting for
+        // potentially many MB of texture/heightmap data. Assets/presets
+        // follow separately as a chunked catch-up (see below) so a large
+        // library doesn't go out as one risky giant message, same reasoning
+        // as the ongoing live asset-sync/preset-sync batching.
         const syncMsg = {
           type: 'state-sync',
           bodies: stateProvider ? stateProvider() : {},
-          assets: assetsProvider ? assetsProvider() : null,
           settings: settingsProvider ? settingsProvider() : null,
-          presets: presetsProvider ? presetsProvider() : null,
           locks: _locksSnapshot(),
           roster: _rosterSnapshot(),
           you: fromId
         };
         console.log('[Collab:HOST] sending state-sync to', fromId, '—',
           Object.keys(syncMsg.bodies || {}).length, 'bodies,',
-          syncMsg.assets ? ((syncMsg.assets.textures||[]).length + ' textures, ' + (syncMsg.assets.heightmaps||[]).length + ' heightmaps') : 'no assets provider set,',
-          syncMsg.settings ? 'settings included,' : 'no settings provider set,',
-          syncMsg.presets ? (Object.keys(syncMsg.presets).length + ' presets') : 'no presets provider set');
+          syncMsg.settings ? 'settings included' : 'no settings provider set');
         _hostSendTo(fromId, syncMsg);
+        _hostSendAssetPresetCatchup(fromId);
         _hostBroadcast({ type: 'peer-join', peerId: fromId, info: roster.get(fromId) }, fromId);
         emit('peer-joined', { peerId: fromId, info: roster.get(fromId) });
         break;
@@ -517,9 +618,20 @@ const Collab = (() => {
   function joinSession(code, name){
     return new Promise((resolve, reject) => {
       if(peer){ reject(new Error('Already in a session — leave first.')); return; }
+      _explicitLeave = false;
+      _lastJoinCode = code;
+      _lastJoinName = name;
       myName = name || 'Peer';
       myColor = nextColor();
       isHost = false;
+      // Fresh for THIS attempt specifically (including each reconnect
+      // retry) — distinguishes "never successfully connected this attempt"
+      // (a real join failure: bad code, host not there — reject normally)
+      // from "was connected, then it broke" (worth retrying). Can't use
+      // myPeerId for this: it's set as soon as the broker connection opens,
+      // before hostConn even exists, so it's always truthy by the time any
+      // of hostConn's handlers could fire.
+      let hostConnEverOpened = false;
 
       const hostId = peerIdFromCode(code);
       dlog('[Collab:PEER] joinSession — code:', code, '-> resolved hostId:', hostId);
@@ -534,8 +646,11 @@ const Collab = (() => {
 
         hostConn.on('open', () => {
           dlog('[Collab:PEER] hostConn.open — DataConnection to host is ready. Sending hello.');
+          hostConnEverOpened = true;
           hostConn.send({ type: 'hello', name: myName, color: myColor });
           dlog('[Collab:PEER] hello sent:', { type: 'hello', name: myName, color: myColor });
+          // A prior reconnect attempt (if any) just succeeded.
+          if(_reconnectAttempt > 0){ _reconnectAttempt = 0; emit('reconnected'); }
         });
 
         hostConn.on('data', msg => {
@@ -545,24 +660,60 @@ const Collab = (() => {
 
         hostConn.on('close', () => {
           dwarn('[Collab:PEER] hostConn.close — connection to host closed');
-          emit('host-disconnected');
+          if(_explicitLeave) return; // leaveSession() is already tearing things down normally
+          if(hostConnEverOpened) _attemptReconnect();
+          else { const e = new Error('Connection closed before it opened'); emit('error', { err: e, phase: 'join' }); reject(e); }
         });
         hostConn.on('error', err => {
           console.error('[Collab:PEER] hostConn.error —', err);
-          emit('error', { err, phase: 'join' });
-          reject(err);
+          if(_explicitLeave) return;
+          if(hostConnEverOpened) _attemptReconnect();
+          else { emit('error', { err, phase: 'join' }); reject(err); }
         });
       });
 
       peer.on('error', err => {
         console.error('[Collab:PEER] peer.error —', err.type, err.message || err);
-        emit('error', { err, phase: 'join' });
-        reject(err);
+        if(_explicitLeave) return;
+        if(hostConnEverOpened) _attemptReconnect(); // rare, but possible: a broker-level error after we were already properly connected
+        else { emit('error', { err, phase: 'join' }); reject(err); }
       });
 
       peer.on('disconnected', () => dwarn('[Collab:PEER] peer.disconnected from signaling broker'));
       peer.on('close', () => dwarn('[Collab:PEER] peer.close — peer object destroyed'));
     });
+  }
+
+  // Retries joining the same session (same code/name) with exponential
+  // backoff after an unexpected disconnection. Gives up and falls back to
+  // the existing 'host-disconnected' handling (alert + reset UI) after
+  // RECONNECT_MAX_ATTEMPTS — this is a bounded recovery attempt, not an
+  // infinite retry loop.
+  function _attemptReconnect(){
+    if(_explicitLeave || !_lastJoinCode) return;
+    if(_reconnectAttempt >= RECONNECT_MAX_ATTEMPTS){
+      console.warn('[Collab:PEER] reconnect — giving up after', _reconnectAttempt, 'attempt(s)');
+      emit('host-disconnected');
+      return;
+    }
+    _reconnectAttempt++;
+    const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, _reconnectAttempt - 1);
+    console.warn('[Collab:PEER] reconnect attempt', _reconnectAttempt, '/', RECONNECT_MAX_ATTEMPTS, '— retrying in', delay, 'ms');
+    emit('reconnecting', { attempt: _reconnectAttempt, max: RECONNECT_MAX_ATTEMPTS, delayMs: delay });
+
+    try { if(peer) peer.destroy(); } catch(e){ /* already dead — fine */ }
+    peer = null; hostConn = null; myPeerId = null;
+
+    clearTimeout(_reconnectTimer);
+    _reconnectTimer = setTimeout(() => {
+      joinSession(_lastJoinCode, _lastJoinName).catch(() => {
+        // joinSession's own peer.on('error')/hostConn.on('error') already
+        // route back through _attemptReconnect for anything that isn't a
+        // first-attempt failure; this catch just prevents an unhandled
+        // rejection if it happens to reject directly instead.
+        if(!_explicitLeave) _attemptReconnect();
+      });
+    }, delay);
   }
 
   function _peerOnMessage(msg, joinResolve){
@@ -616,6 +767,10 @@ const Collab = (() => {
         emit('preset-sync', { added: msg.added, removed: msg.removed, peerId: msg.peerId });
         break;
       }
+      case 'catchup-complete':
+        console.log('[Collab:PEER] catchup-complete received — join sequence fully done');
+        emit('catchup-complete');
+        break;
       default:
         dwarn('[Collab:PEER] unrecognized message type from host:', msg.type, msg);
     }
@@ -792,6 +947,9 @@ const Collab = (() => {
 
   function leaveSession(){
     if(!peer) return;
+    _explicitLeave = true; // so hostConn's own close/error handlers don't treat this as a drop worth reconnecting from
+    clearTimeout(_reconnectTimer);
+    _reconnectAttempt = 0;
     const peerRef = peer; // capture before we null out the outer `peer` below
     try {
       if(isHost){

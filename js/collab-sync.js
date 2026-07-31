@@ -36,6 +36,8 @@
   // handshake + state-sync takes, before it's abruptly replaced by the
   // host's actual system. This masks that transition instead.
   let _joinLoadingTimeout = null;
+  let _joinOverlayVisible = false;
+  let _joinCatchupCount = 0;
   function _showJoinLoadingScreen(){
     let el = document.getElementById('cs-join-overlay');
     if(!el){
@@ -55,10 +57,18 @@
       document.body.appendChild(el);
     }
     el.style.display = 'flex';
-
-    // Safety net: if state-sync never arrives (join failed silently, host
-    // vanished mid-handshake, etc.) don't trap the person behind this
-    // overlay forever.
+    _joinOverlayVisible = true;
+    _joinCatchupCount = 0;
+    _armJoinStallWatchdog();
+  }
+  function _armJoinStallWatchdog(){
+    // Safety net: if nothing arrives for a while (state-sync never showed
+    // up, or the catch-up sequence stalls partway through), don't trap the
+    // person behind this overlay forever with no explanation. Re-armed on
+    // every chunk received (see _bumpJoinCatchupProgress) rather than set
+    // once — a large library sending many chunks 200ms apart can
+    // legitimately take longer than 12s in total while still actively
+    // making progress the whole time.
     clearTimeout(_joinLoadingTimeout);
     _joinLoadingTimeout = setTimeout(() => {
       const sub = document.getElementById('cs-join-overlay-sub');
@@ -67,8 +77,16 @@
   }
   function _hideJoinLoadingScreen(){
     clearTimeout(_joinLoadingTimeout);
+    _joinOverlayVisible = false;
     const el = document.getElementById('cs-join-overlay');
     if(el) el.style.display = 'none';
+  }
+  function _bumpJoinCatchupProgress(n){
+    if(!_joinOverlayVisible) return;
+    _joinCatchupCount += n;
+    _armJoinStallWatchdog(); // progress is happening — push the stall warning back out
+    const sub = document.getElementById('cs-join-overlay-sub');
+    if(sub) sub.textContent = `Receiving assets & presets… (${_joinCatchupCount} so far)`;
   }
 
   // Wraps the public API method directly — every caller (the Multiplayer
@@ -206,6 +224,58 @@
     clearTimeout(_syncPillHideTimer);
     _syncPillHideTimer = setTimeout(() => { if(_syncPillEl) _syncPillEl.style.opacity = '0'; }, 1800);
   }
+
+  // ── Reconnection banner ──
+  // Unlike the sync pill, this STAYS visible until explicitly cleared — an
+  // in-progress reconnect isn't something to flash-and-forget, someone
+  // might be watching it to know whether to just wait or give up and
+  // rejoin manually. Covers both the peer-side auto-rejoin and the host-
+  // side broker reconnect (different mechanisms in collab.js, same UI).
+  let _reconnectBannerEl = null;
+  function _showReconnectBanner(text, tone){
+    if(!_reconnectBannerEl){
+      _reconnectBannerEl = document.createElement('div');
+      _reconnectBannerEl.id = 'cs-reconnect-banner';
+      _reconnectBannerEl.style.cssText = 'position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:99999;'
+        + 'padding:8px 16px; border-radius:20px; font-size:.72rem; font-family:inherit;'
+        + 'display:flex; align-items:center; gap:8px; box-shadow:0 2px 12px rgba(0,0,0,.45);';
+      document.body.appendChild(_reconnectBannerEl);
+    }
+    const isWarn = tone === 'warn';
+    _reconnectBannerEl.style.background = isWarn ? 'rgba(90,30,30,.95)' : 'rgba(20,20,24,.95)';
+    _reconnectBannerEl.style.border = '1px solid ' + (isWarn ? 'var(--rose)' : 'var(--ac28)');
+    _reconnectBannerEl.style.color = isWarn ? '#ffb3b3' : 'var(--ink2, #ddd)';
+    const spinner = isWarn ? '' : `<span style="width:10px;height:10px;border-radius:50%;border:2px solid var(--ac28);border-top-color:var(--sky2);animation:cs-spin .8s linear infinite;display:inline-block;flex-shrink:0"></span>`;
+    _reconnectBannerEl.innerHTML = spinner + `<span>${text}</span>`;
+    _reconnectBannerEl.style.display = 'flex';
+  }
+  function _hideReconnectBanner(){
+    if(_reconnectBannerEl) _reconnectBannerEl.style.display = 'none';
+  }
+
+  // Peer-side: auto-rejoin in progress after an unexpected drop.
+  Collab.on('reconnecting', d => {
+    _showReconnectBanner(`⚠ Lost connection to host — reconnecting… (attempt ${d.attempt}/${d.max})`);
+  });
+  Collab.on('reconnected', () => {
+    _hideReconnectBanner();
+    _showSyncPill('Reconnected!');
+  });
+
+  // Host-side: PeerJS's own broker reconnect in progress. Existing
+  // connections to already-joined peers keep working through this — only
+  // NEW peers trying to join would be affected — so the wording stays calm
+  // rather than alarming.
+  Collab.on('host-reconnecting', d => {
+    _showReconnectBanner(`⚠ Reconnecting to signaling service… (attempt ${d.attempt}/${d.max})`);
+  });
+  Collab.on('host-reconnected', () => {
+    _hideReconnectBanner();
+    _showSyncPill('Reconnected!');
+  });
+  Collab.on('host-broker-lost', () => {
+    _showReconnectBanner('⚠ Lost connection to the signaling service — new players can\'t join until you restart hosting. Already-connected players should be unaffected.', 'warn');
+  });
 
   // ── Lock bookkeeping ──
   function _setLockOwnersFromSnapshot(snapshot){
@@ -403,6 +473,7 @@
     applyingRemote = true;
     try {
       _showSyncPill('Receiving assets…');
+      _bumpJoinCatchupProgress(Object.values(added || {}).reduce((n, l) => n + (l?.length || 0), 0));
       _mergeIncomingAssets(added);
       for(const type of ['textures', 'heightmaps', 'other']){
         for(const name of (removed?.[type] || [])){
@@ -480,6 +551,7 @@
     applyingRemote = true;
     try {
       _showSyncPill('Receiving presets…');
+      _bumpJoinCatchupProgress(Object.keys(added || {}).length);
       _mergeIncomingPresets(added);
       for(const name of (removed || [])){
         if(typeof pgPresetsRemove === 'function') pgPresetsRemove(name);
@@ -559,14 +631,20 @@
   }
 
   Collab.on('state-sync', d => {
-    _mergeIncomingAssets(d.assets);
-    _mergeIncomingPresets(d.presets);
+    // Note: assets/presets no longer travel in this message — they arrive
+    // separately via chunked asset-sync/preset-sync messages (see
+    // _hostSendAssetPresetCatchup in collab.js), applied by the handlers
+    // for those events elsewhere in this file. The join loading screen
+    // stays up until 'catchup-complete' confirms that sequence finished —
+    // hiding it here instead would drop the peer into a system that's
+    // still visibly missing textures for however long the catch-up takes.
     _applyIncomingState(d.bodies, d.settings);
     peerInfo = {};
     for(const [pid, info] of Object.entries(d.roster || {})) peerInfo[pid] = info;
     _setLockOwnersFromSnapshot(d.locks);
-    _hideJoinLoadingScreen();
   });
+
+  Collab.on('catchup-complete', () => _hideJoinLoadingScreen());
 
   Collab.on('full-sync', d => _applyIncomingState(d.bodies, d.settings));
 
@@ -661,7 +739,7 @@
 
   Collab.on('peer-joined', d => { peerInfo[d.peerId] = d.info || {}; });
   Collab.on('peer-left',   d => { delete peerInfo[d.peerId]; }); // any locks they held are released host-side via individual 'unlock' broadcasts already
-  Collab.on('left',              () => { lockOwners = {}; peerInfo = {}; _refreshLockUI(); _hideJoinLoadingScreen(); });
+  Collab.on('left',              () => { lockOwners = {}; peerInfo = {}; _refreshLockUI(); _hideJoinLoadingScreen(); _hideReconnectBanner(); });
   Collab.on('host-disconnected', () => { lockOwners = {}; peerInfo = {}; _refreshLockUI(); _hideJoinLoadingScreen(); });
 
   // ── Remote edits: apply the incoming patch. broadcastEdit() below always
