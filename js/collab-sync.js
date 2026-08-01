@@ -225,7 +225,58 @@
     _syncPillHideTimer = setTimeout(() => { if(_syncPillEl) _syncPillEl.style.opacity = '0'; }, 1800);
   }
 
-  // ── Reconnection banner ──
+  // ── Persistent session status indicator ──
+  // Unlike the sync pill above, this doesn't auto-hide — it's meant to
+  // answer "which session am I even in right now?" at a glance, from
+  // anywhere in the app, without needing to reopen the Multiplayer modal.
+  // Solo mode: hidden entirely. The main risk this addresses isn't a
+  // technical double-session bug (Collab.hostSession/joinSession already
+  // refuse to run if a session is already active) — it's a person losing
+  // track of their own role after the modal's closed, or two people each
+  // assuming the other one is hosting.
+  let _statusPillEl = null;
+  function _ensureStatusPill(){
+    if(_statusPillEl) return;
+    _statusPillEl = document.createElement('div');
+    _statusPillEl.id = 'cs-status-pill';
+    _statusPillEl.style.cssText = 'position:fixed; top:56px; right:10px; z-index:99996;'
+      + 'background:rgba(20,20,24,.95); border:1px solid var(--ac28); border-radius:16px; padding:6px 12px;'
+      + 'font-size:.66rem; color:var(--ink2, #ddd); display:none; align-items:center; gap:7px;'
+      + 'box-shadow:0 2px 10px rgba(0,0,0,.4); font-family:\'JetBrains Mono\', monospace; letter-spacing:.03em;'
+      + 'cursor:pointer; max-width:min(220px, calc(100vw - 20px));';
+    _statusPillEl.title = 'Click to open the Multiplayer panel';
+    _statusPillEl.onclick = () => { if(typeof MP !== 'undefined' && MP.openModal) MP.openModal(); };
+    document.body.appendChild(_statusPillEl);
+  }
+  function _refreshStatusPill(){
+    _ensureStatusPill();
+    if(!Collab.isActive()){
+      _statusPillEl.style.display = 'none';
+      return;
+    }
+    const me = Collab.getMyInfo();
+    const peerCount = Object.keys(peerInfo).length;
+    const dotColor = 'var(--jade, #30e090)';
+    let text;
+    if(me.isHost){
+      text = `HOSTING${peerCount ? ' · ' + peerCount + ' peer' + (peerCount > 1 ? 's' : '') : ' · alone'}`;
+    } else {
+      const hostInfo = me.hostPeerId ? peerInfo[me.hostPeerId] : null;
+      const hostName = hostInfo?.name || 'host';
+      text = `CONNECTED to ${hostName}`;
+    }
+    _statusPillEl.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${text}</span>`;
+    _statusPillEl.style.display = 'flex';
+  }
+  Collab.on('hosted',            _refreshStatusPill);
+  Collab.on('state-sync',        _refreshStatusPill);
+  Collab.on('peer-joined',       _refreshStatusPill);
+  Collab.on('peer-left',         _refreshStatusPill);
+  Collab.on('reconnected',       _refreshStatusPill);
+  Collab.on('left',              _refreshStatusPill);
+  Collab.on('host-disconnected', _refreshStatusPill);
+
+
   // Unlike the sync pill, this STAYS visible until explicitly cleared — an
   // in-progress reconnect isn't something to flash-and-forget, someone
   // might be watching it to know whether to just wait or give up and

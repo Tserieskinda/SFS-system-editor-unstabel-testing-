@@ -983,7 +983,7 @@ const Collab = (() => {
   }
 
   function getMyInfo(){
-    return { peerId: myPeerId, name: myName, color: myColor, isHost };
+    return { peerId: myPeerId, name: myName, color: myColor, isHost, hostPeerId: isHost ? myPeerId : (hostConn?.peer || null) };
   }
 
   function isActive(){

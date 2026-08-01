@@ -46,6 +46,18 @@ const MP = (() => {
       alert('Already in a session — leave it first.');
       return;
     }
+    // Hosting isn't destructive (it never clears your system), so the real
+    // risk isn't data loss — it's mis-clicking HOST when you meant to JOIN
+    // someone else's session, and not noticing until you're confused about
+    // why nothing matches what your friend is looking at. Joining already
+    // has a natural confirmation step (typing a code); hosting doesn't, so
+    // give it one specifically when there's existing content that would
+    // otherwise make the mistake easy to miss.
+    const bodyCount = typeof bodies !== 'undefined' ? Object.keys(bodies).length : 0;
+    if(bodyCount > 0){
+      const ok = confirm(`Start hosting with your current system (${bodyCount} bod${bodyCount === 1 ? 'y' : 'ies'})?\n\nIf you meant to join someone else's session instead, switch to the JOIN tab.`);
+      if(!ok) return;
+    }
     Collab.setStateProvider(() => (typeof bodies !== 'undefined' ? bodies : {}));
     const btn = event?.target?.closest?.('button');
     if(btn){ btn.disabled = true; btn.textContent = 'Starting…'; }
