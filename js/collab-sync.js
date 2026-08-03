@@ -17,10 +17,13 @@
 // renamed/imported/restored/regenerated/etc.) via a polling-based change
 // detector rather than hooking each mutation site individually,
 // systemSettings sync (importSettings/spaceCenterData from settings.js)
-// riding along with that same mechanism, AND live asset sync (upload/
+// riding along with that same mechanism, live asset/preset sync (upload/
 // delete, including bulk imports/restores that add many at once) via a
 // parallel poll that sends only the delta — newly added entries + removed
-// names — rather than the whole library each time. NOT covered: real
+// names — rather than the whole library each time, and a role-based
+// permission system (manager/member/visitor, see collab.js for the
+// authoritative host-side enforcement — the client-side guards here are a
+// UX layer only, not the real security boundary). NOT covered: real
 // conflict resolution for two people making structural changes at the same
 // instant (last-write-wins, same as most casual P2P collab tools).
 (function(){
@@ -263,7 +266,8 @@
     } else {
       const hostInfo = me.hostPeerId ? peerInfo[me.hostPeerId] : null;
       const hostName = hostInfo?.name || 'host';
-      text = `CONNECTED to ${hostName}`;
+      const roleLabel = { manager: 'Manager', member: 'Member', visitor: 'Visitor' }[me.role] || me.role;
+      text = `CONNECTED to ${hostName} · ${roleLabel}`;
     }
     _statusPillEl.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${text}</span>`;
     _statusPillEl.style.display = 'flex';
@@ -275,6 +279,7 @@
   Collab.on('reconnected',       _refreshStatusPill);
   Collab.on('left',              _refreshStatusPill);
   Collab.on('host-disconnected', _refreshStatusPill);
+  Collab.on('role-changed',      _refreshStatusPill);
 
 
   // Unlike the sync pill, this STAYS visible until explicitly cleared — an
@@ -362,16 +367,19 @@
       return;
     }
 
+    const isVisitor = _me().role === 'visitor';
     const ownerId = lockOwners[selectedBody];
-    const lockedByOther = !!(ownerId && ownerId !== _me().peerId);
+    const lockedByOther = isVisitor || !!(ownerId && ownerId !== _me().peerId);
 
     if(sbBody){
       sbBody.style.pointerEvents = lockedByOther ? 'none' : '';
       sbBody.style.opacity = lockedByOther ? '.55' : '';
     }
-    if(lockedByOther){
+    if(isVisitor){
+      _ensureLockBanner().innerHTML = `<svg class="icon"><use href="#icon-eye"></use></svg> Visitor role — view only`;
+    } else if(lockedByOther){
       const name = peerInfo[ownerId]?.name || 'Someone';
-      _ensureLockBanner().textContent = `🔒 Locked by ${name} — view only`;
+      _ensureLockBanner().innerHTML = `<svg class="icon"><use href="#icon-lock"></use></svg> Locked by ${name} — view only`;
     } else if(banner){
       banner.remove();
     }
@@ -814,12 +822,13 @@
   // ── Hook selectBody: request the lock whenever a session is active ──
   const _origSelectBody = selectBody;
   selectBody = function(name){
-    if(Collab.isActive() && selectedBody && selectedBody !== name && !Collab.isLockedByOther(selectedBody)){
+    const myRole = Collab.isActive() ? Collab.getMyInfo().role : 'manager';
+    if(Collab.isActive() && selectedBody && selectedBody !== name && myRole !== 'visitor' && !Collab.isLockedByOther(selectedBody)){
       Collab.releaseLock(selectedBody);
     }
     _origSelectBody(name);
     if(Collab.isActive()){
-      Collab.requestLock(name);
+      if(myRole !== 'visitor') Collab.requestLock(name); // visitors never hold a lock — no point asking, host would reject it anyway
       _refreshLockUI();
       // Covers "add a body, immediately select it" — without this, a
       // brand-new body wouldn't reach the other side until the next 1.2s
@@ -832,7 +841,8 @@
   // ── Hook closeSidebar: release whatever lock we're holding ──
   const _origCloseSidebar = closeSidebar;
   closeSidebar = function(){
-    if(Collab.isActive() && selectedBody && !Collab.isLockedByOther(selectedBody)){
+    const myRole = Collab.isActive() ? Collab.getMyInfo().role : 'manager';
+    if(Collab.isActive() && selectedBody && myRole !== 'visitor' && !Collab.isLockedByOther(selectedBody)){
       Collab.releaseLock(selectedBody);
     }
     _origCloseSidebar();
@@ -854,6 +864,48 @@
     Collab.broadcastEdit(selectedBody, JSON.parse(JSON.stringify(b.data)));
   };
 
+  // ── Client-side permission guards ──
+  // Host-side enforcement in collab.js is the REAL security boundary (a
+  // modified/malicious client could ignore anything client-side) — this is
+  // purely a UX layer so a blocked action gives an immediate, clear reason
+  // instead of silently vanishing after a round-trip to the host and back.
+  function _denyIfBelow(minRole, what){
+    if(!Collab.isActive()) return false; // solo mode — no restrictions
+    const rank = { visitor: 0, member: 1, manager: 2 };
+    const myRole = Collab.getMyInfo().role;
+    if(rank[myRole] < rank[minRole]){
+      alert(`Your role (${myRole}) doesn't allow ${what}.${myRole === 'member' ? ' Ask a manager.' : ''}`);
+      return true;
+    }
+    return false;
+  }
+
+  // Delete/clear-all/import-a-system are exactly the "very destructive"
+  // actions a 'member' shouldn't be able to do (per the role spec) — a
+  // 'visitor' is already blocked from everything via the read-only lock UI
+  // above, so this specifically targets the member-but-not-manager gap.
+  if(typeof confirmDeleteBody === 'function'){
+    const _origConfirmDeleteBody = confirmDeleteBody;
+    confirmDeleteBody = function(){
+      if(_denyIfBelow('manager', 'deleting bodies')) return;
+      _origConfirmDeleteBody();
+    };
+  }
+  if(typeof confirmClearAll === 'function'){
+    const _origConfirmClearAll = confirmClearAll;
+    confirmClearAll = function(){
+      if(_denyIfBelow('manager', 'clearing the system')) return;
+      _origConfirmClearAll();
+    };
+  }
+  if(typeof openImportSystemModal === 'function'){
+    const _origOpenImportSystemModal = openImportSystemModal;
+    openImportSystemModal = function(){
+      if(_denyIfBelow('manager', 'loading a different system')) return;
+      _origOpenImportSystemModal();
+    };
+  }
+
   // ── Hook finaliseRename: rename doesn't close the sidebar (you keep
   // editing the same body under its new name), so closeSidebar's hook
   // above never fires for this — needs its own immediate trigger. ──
@@ -867,16 +919,19 @@
 
   // ── Hook removeAsset: synchronous (unlike upload, which is async via
   // FileReader and harder to hook at exactly the right completion moment —
-  // left to the tightened poll interval instead). ──
+  // left to the tightened poll interval instead). Also gated: removal
+  // counts as destructive for a 'member', same as body deletion. ──
   if(typeof removeAsset === 'function'){
     const _origRemoveAsset = removeAsset;
     removeAsset = function(safeName, type){
+      if(_denyIfBelow('manager', 'deleting assets')) return;
       _origRemoveAsset(safeName, type);
       if(Collab.isActive()) _checkAssetChange();
     };
   }
 
-  // ── Hook preset save/delete for the same reason ──
+  // ── Hook preset save/delete for the same reason (save is fine for
+  // members — additive, not destructive — only removal is gated) ──
   if(typeof _pgRegisterUserPreset === 'function'){
     const _origRegisterUserPreset = _pgRegisterUserPreset;
     _pgRegisterUserPreset = function(name, data, category, typeOverride){
@@ -887,6 +942,7 @@
   if(typeof pgPresetsRemove === 'function'){
     const _origPgPresetsRemove = pgPresetsRemove;
     pgPresetsRemove = function(name){
+      if(_denyIfBelow('manager', 'deleting presets')) return;
       _origPgPresetsRemove(name);
       if(Collab.isActive()) _checkPresetChange();
     };
@@ -895,6 +951,7 @@
   // Re-apply the lock UI whenever the sidebar visibly opens/closes, in case
   // something outside our hooks changed selectedBody (undo, delete, etc.)
   Collab.on('hosted', _refreshLockUI);
+  Collab.on('role-changed', _refreshLockUI);
 
   // ── Main-menu button label ──
   // goStart() already swaps "CREATE NEW SYSTEM" -> "RESUME SESSION" when
@@ -912,7 +969,7 @@
     const mico = document.getElementById('btn-new-mico');
     const btn  = document.getElementById('btn-new-system');
     if(lbl)  lbl.textContent  = 'ENTER SYNCED SESSION';
-    if(mico) mico.textContent = '⇄';
+    if(mico) mico.innerHTML = '<svg class="icon"><use href="#icon-repeat"></use></svg>';
     if(btn){ btn.style.borderColor = 'rgba(48,224,144,.45)'; btn.style.color = 'var(--jade)'; }
   }
 

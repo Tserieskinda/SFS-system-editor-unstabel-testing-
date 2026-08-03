@@ -171,10 +171,48 @@ const MP = (() => {
   let roster = {}; // peerId -> {name, color}
 
   function _peerChipHtml(pid, info){
-    const isMe = pid === Collab.getMyInfo().peerId;
-    return `<div class="mp-peer-chip"><span class="mp-peer-dot" style="background:${info.color || '#888'}"></span>${_esc(info.name || 'Peer')}${isMe ? '<span class="mp-peer-you">(you)</span>' : ''}</div>`;
+    const me = Collab.getMyInfo();
+    const isMe = pid === me.peerId;
+    const role = info.role || 'member';
+    const roleLabel = { manager: 'MANAGER', member: 'MEMBER', visitor: 'VISITOR' }[role] || role.toUpperCase();
+    const roleColor = { manager: 'var(--jade, #30e090)', member: 'var(--sky2)', visitor: 'var(--ink4)' }[role] || 'var(--ink4)';
+
+    let rightSide;
+    if(me.isHost && !isMe){
+      rightSide = `
+        <select onchange="MP.setPeerRole('${pid}', this.value)" title="Change role"
+          style="margin-left:auto;background:var(--dp2,#151515);color:var(--ink2);border:1px solid var(--ac22);border-radius:4px;font-family:inherit;font-size:.6rem;padding:2px 4px">
+          <option value="manager" ${role === 'manager' ? 'selected' : ''}>Manager</option>
+          <option value="member" ${role === 'member' ? 'selected' : ''}>Member</option>
+          <option value="visitor" ${role === 'visitor' ? 'selected' : ''}>Visitor</option>
+        </select>
+        <button onclick="MP.kickPeerUI('${pid}', ${JSON.stringify(info.name || 'Peer')})" title="Kick from session"
+          style="background:none;border:1px solid var(--ac22);border-radius:4px;color:var(--ink4);font-size:.62rem;padding:2px 6px;cursor:pointer"><svg class="icon"><use href="#icon-user-x"></use></svg></button>
+        <button onclick="MP.banPeerUI('${pid}', ${JSON.stringify(info.name || 'Peer')})" title="Ban from this session"
+          style="background:none;border:1px solid rgba(220,80,80,.35);border-radius:4px;color:var(--rose);font-size:.62rem;padding:2px 6px;cursor:pointer"><svg class="icon"><use href="#icon-ban"></use></svg></button>`;
+    } else {
+      rightSide = `<span style="margin-left:auto;font-size:.56rem;letter-spacing:.05em;color:${roleColor}">${roleLabel}</span>`;
+    }
+
+    return `<div class="mp-peer-chip">
+      <span class="mp-peer-dot" style="background:${info.color || '#888'}"></span>
+      <span>${_esc(info.name || 'Peer')}${isMe ? '<span class="mp-peer-you">(you)</span>' : ''}</span>
+      ${rightSide}
+    </div>`;
   }
   function _esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function setPeerRole(peerId, role){
+    Collab.setRole(peerId, role);
+  }
+  function kickPeerUI(peerId, name){
+    if(!confirm(`Kick ${name || 'this peer'} from the session? They can rejoin unless you also ban them.`)) return;
+    Collab.kickPeer(peerId, 'Removed by host');
+  }
+  function banPeerUI(peerId, name){
+    if(!confirm(`Ban ${name || 'this peer'}? They won't be able to rejoin this session (this doesn't survive them reconnecting under a fresh connection in a new tab — it's not persistent identity tracking, just blocks the current one).`)) return;
+    Collab.banPeer(peerId, 'Banned by host');
+  }
 
   function _renderPeerList(){
     const html = Object.keys(roster).length
@@ -306,7 +344,7 @@ const MP = (() => {
     chatBubbleEl.style.top = pos.top + 'px';
     chatBubbleEl.style.left = pos.left + 'px';
     chatBubbleEl.title = 'Session chat — tap to open, drag to move';
-    chatBubbleEl.innerHTML = `💬<span id="mpc-badge" class="hidden">0</span>`;
+    chatBubbleEl.innerHTML = `<svg class="icon"><use href="#icon-message-circle"></use></svg><span id="mpc-badge" class="hidden">0</span>`;
     _makeDraggable(chatBubbleEl, (top, left) => _saveChatPos(top, left));
     chatBubbleEl.addEventListener('click', () => {
       // Pointer up after an actual drag shouldn't also toggle the panel —
@@ -320,7 +358,7 @@ const MP = (() => {
     chatPanelEl.id = 'mpc-panel';
     chatPanelEl.classList.add('hidden');
     chatPanelEl.innerHTML = `
-      <div id="mpc-head"><span>💬 SESSION CHAT</span><button id="mpc-close-btn" title="Close">✕</button></div>
+      <div id="mpc-head"><span><svg class="icon"><use href="#icon-message-circle"></use></svg> SESSION CHAT</span><button id="mpc-close-btn" title="Close">✕</button></div>
       <div id="mpc-list"></div>
       <div id="mpc-inputrow">
         <input id="mpc-input" maxlength="240" placeholder="Message…" autocomplete="off">
@@ -442,7 +480,7 @@ const MP = (() => {
     });
     Collab.on('hosted', () => {
       const me = Collab.getMyInfo();
-      roster = { [me.peerId]: { name: me.name, color: me.color } };
+      roster = { [me.peerId]: { name: me.name, color: me.color, role: me.role } };
       _renderPeerList();
     });
     Collab.on('peer-joined', d => {
@@ -455,6 +493,21 @@ const MP = (() => {
       delete roster[d.peerId];
       _renderPeerList();
       if(chatBubbleEl) _pushChatMsg({ system: true, text: `${name} left the session` });
+    });
+    Collab.on('role-changed', d => {
+      const isMe = d.peerId === Collab.getMyInfo().peerId;
+      if(roster[d.peerId]) roster[d.peerId].role = d.role;
+      _renderPeerList();
+      const name = isMe ? 'Your' : (roster[d.peerId]?.name || 'A peer') + "'s";
+      if(chatBubbleEl) _pushChatMsg({ system: true, text: `${name} role changed to ${d.role}` });
+    });
+    Collab.on('permission-denied', d => {
+      if(chatBubbleEl) _pushChatMsg({ system: true, text: `⚠ ${d.reason || "That action isn't allowed."}` });
+    });
+    Collab.on('kicked', d => {
+      alert(d.banned ? `You were banned from this session.\n\n${d.reason || ''}` : `You were removed from this session.\n\n${d.reason || ''}`);
+      _resetModalToIdle();
+      _hideChatWidget();
     });
     Collab.on('chat', d => {
       // Sender already sees their own message locally on send (see
@@ -473,5 +526,5 @@ const MP = (() => {
     });
   }
 
-  return { openModal, closeModal, switchTab, startHost, startJoin, leave, copyCode };
+  return { openModal, closeModal, switchTab, startHost, startJoin, leave, copyCode, setPeerRole, kickPeerUI, banPeerUI };
 })();

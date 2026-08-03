@@ -89,11 +89,31 @@ const Collab = (() => {
   let myPeerId = null;
   let myName = null;
   let myColor = null;
+  let myRole = 'manager'; // host is always effectively 'manager'; peers get their assigned role via state-sync/role-changed
 
   // Host-only:
   const hostConns = new Map();      // peerId -> DataConnection (host's view of all peers)
   const locks = new Map();          // bodyName -> { peerId, ts }
   const roster = new Map();         // peerId -> { name, color }
+  const peerRoles = new Map();      // peerId -> 'manager' | 'member' | 'visitor' — default assigned on join is 'member'
+  const bannedPeerIds = new Set();  // peerId -> banned for the remainder of THIS hosting session (see setRole/kickPeer/banPeer for the honest caveat: peer IDs aren't a persistent identity, so this doesn't survive the banned person just reconnecting under a fresh ID)
+
+  const ROLE_RANK = { visitor: 0, member: 1, manager: 2 };
+  // The host's own self-relayed messages (requestLock/broadcastEdit calling
+  // _hostOnMessage({peer: myPeerId}, ...) directly) always resolve to
+  // 'manager' here, regardless of what's in peerRoles — the host can't lock
+  // themselves out of their own session.
+  function _roleOf(peerId){
+    if(peerId === myPeerId) return 'manager';
+    return peerRoles.get(peerId) || 'member';
+  }
+  function _roleAtLeast(peerId, min){
+    return ROLE_RANK[_roleOf(peerId)] >= ROLE_RANK[min];
+  }
+  function _rosterEntry(pid){
+    const base = roster.get(pid) || { name: 'Peer', color: '#888' };
+    return { ...base, role: _roleOf(pid) };
+  }
 
   // Peer(non-host)-only:
   let hostConn = null;              // DataConnection to the host
@@ -105,6 +125,7 @@ const Collab = (() => {
   // failure (wrong code, host not there) — only for a connection that WAS
   // open and then died.
   let _explicitLeave = false;   // true while leaveSession() itself is tearing things down — skips auto-reconnect
+  let _wasKicked = false;       // true once a 'kicked' message arrives — being removed shouldn't trigger an auto-reconnect retry loop back into the same host
   let _lastJoinCode = null;
   let _lastJoinName = null;
   let _reconnectAttempt = 0;
@@ -353,6 +374,11 @@ const Collab = (() => {
     dwarn('[Collab:HOST] _hostDropPeer —', peerId, '(was in hostConns?', hostConns.has(peerId), ')');
     hostConns.delete(peerId);
     roster.delete(peerId);
+    // peerRoles/bannedPeerIds are deliberately NOT cleared here — a peer
+    // whose connection drops and later reconnects (see reconnection logic
+    // below) keeps whatever role they had rather than resetting to the
+    // 'member' default, and a ban needs to survive the connection actually
+    // closing (that's the whole point of kicking someone as part of a ban).
     // Release any locks that peer held
     let releasedAny = false;
     for(const [body, lock] of locks){
@@ -365,6 +391,70 @@ const Collab = (() => {
     _hostBroadcast({ type: 'peer-leave', peerId });
     emit('peer-left', { peerId });
     if(releasedAny) emit('locks-changed', _locksSnapshot());
+  }
+
+  // ── Host-only: peer management (kick/ban/roles) ──
+  function kickPeer(peerId, reason){
+    if(!isHost) return;
+    const conn = hostConns.get(peerId);
+    console.warn('[Collab:HOST] kicking', peerId, '—', reason || '(no reason given)');
+    if(conn && conn.open) conn.send({ type: 'kicked', reason: reason || 'Removed by host' });
+    // Give the message a moment to actually go out over the wire before we
+    // tear the connection down — same reasoning as the graceful-leave 'bye'
+    // flow: closing immediately risks cutting the send off entirely.
+    setTimeout(() => {
+      _hostDropPeer(peerId);
+      if(conn){ try { conn.close(); } catch(e){} }
+    }, 150);
+  }
+
+  // Honest limitation: PeerJS peer IDs aren't a persistent identity — they're
+  // regenerated on a fresh page load/new tab, so this only blocks the
+  // specific connection/ID being banned from reconnecting for the rest of
+  // THIS hosting session. It does not, and can't by itself, stop the same
+  // person from coming back under a new ID in a new tab. Good enough to
+  // stop a disruptive peer from immediately rejoining; not real identity
+  // moderation.
+  function banPeer(peerId, reason){
+    if(!isHost) return;
+    bannedPeerIds.add(peerId);
+    kickPeer(peerId, reason || 'Banned from this session');
+  }
+  function unbanPeer(peerId){
+    if(!isHost) return;
+    bannedPeerIds.delete(peerId);
+  }
+  function isBanned(peerId){
+    return bannedPeerIds.has(peerId);
+  }
+
+  function setRole(peerId, role){
+    if(!isHost || !ROLE_RANK.hasOwnProperty(role)) return;
+    if(peerId === myPeerId) return; // the host is always 'manager' — not a settable/demotable role
+    peerRoles.set(peerId, role);
+    console.log('[Collab:HOST] role changed —', peerId, '->', role);
+
+    // Demoted to visitor while holding a lock: they can no longer act on it
+    // (further edit messages already get rejected by the real-time role
+    // check in the 'edit' handler), but the lock itself would otherwise sit
+    // there inert until the idle sweep eventually clears it — release it now.
+    if(role === 'visitor'){
+      let releasedAny = false;
+      for(const [body, lock] of locks){
+        if(lock.peerId === peerId){
+          locks.delete(body);
+          releasedAny = true;
+          _hostBroadcast({ type: 'unlock', body });
+        }
+      }
+      if(releasedAny) emit('locks-changed', _locksSnapshot());
+    }
+
+    _hostBroadcast({ type: 'role-changed', peerId, role }); // tell everyone, not just the affected peer, so all clients' peer lists stay in sync
+    emit('role-changed', { peerId, role });
+  }
+  function getPeerRole(peerId){
+    return _roleOf(peerId);
   }
 
   function _hostBroadcast(msg, excludePeerId){
@@ -463,7 +553,7 @@ const Collab = (() => {
 
   function _rosterSnapshot(){
     const out = {};
-    for(const [pid, info] of roster) out[pid] = info;
+    for(const pid of roster.keys()) out[pid] = _rosterEntry(pid);
     return out;
   }
 
@@ -472,9 +562,16 @@ const Collab = (() => {
     dlog('[Collab:HOST] _hostOnMessage — type:', msg.type, 'from:', fromId);
     switch(msg.type){
       case 'hello': {
+        if(bannedPeerIds.has(fromId)){
+          console.warn('[Collab:HOST] rejecting hello from banned peer', fromId);
+          _hostSendTo(fromId, { type: 'kicked', reason: 'You are banned from this session.', banned: true });
+          setTimeout(() => { const c = hostConns.get(fromId); if(c){ try { c.close(); } catch(e){} } }, 150);
+          break;
+        }
         dlog('[Collab:HOST] hello from', fromId, '- name:', msg.name, 'color:', msg.color);
         // New peer introducing itself with a display name/color choice.
         roster.set(fromId, { name: msg.name || 'Peer', color: msg.color || nextColor() });
+        if(!peerRoles.has(fromId)) peerRoles.set(fromId, 'member'); // default role — not full trust (manager), not read-only (visitor)
         dlog('[Collab:HOST] roster updated:', _rosterSnapshot());
         // Send the newcomer the core system snapshot first — small and
         // fast, so they're not stuck on a loading screen waiting for
@@ -495,12 +592,16 @@ const Collab = (() => {
           syncMsg.settings ? 'settings included' : 'no settings provider set');
         _hostSendTo(fromId, syncMsg);
         _hostSendAssetPresetCatchup(fromId);
-        _hostBroadcast({ type: 'peer-join', peerId: fromId, info: roster.get(fromId) }, fromId);
-        emit('peer-joined', { peerId: fromId, info: roster.get(fromId) });
+        _hostBroadcast({ type: 'peer-join', peerId: fromId, info: _rosterEntry(fromId) }, fromId);
+        emit('peer-joined', { peerId: fromId, info: _rosterEntry(fromId) });
         break;
       }
 
       case 'select': {
+        if(!_roleAtLeast(fromId, 'member')){
+          _hostSendTo(fromId, { type: 'permission-denied', action: 'select', reason: 'Visitors cannot edit bodies.' });
+          break;
+        }
         const existing = locks.get(msg.body);
         if(!existing || existing.peerId === fromId){
           locks.set(msg.body, { peerId: fromId, ts: Date.now() });
@@ -523,6 +624,7 @@ const Collab = (() => {
       }
 
       case 'edit': {
+        if(!_roleAtLeast(fromId, 'member')) break; // shouldn't have a lock to begin with if visitor — defense in depth
         const existing = locks.get(msg.body);
         // Only the current lock owner's edits are relayed — silently drop
         // anything else (e.g. a stale in-flight patch after a lock changed
@@ -549,6 +651,30 @@ const Collab = (() => {
       }
 
       case 'full-sync': {
+        if(!_roleAtLeast(fromId, 'member')){
+          _hostSendTo(fromId, { type: 'permission-denied', action: 'full-sync', reason: 'Visitors cannot modify the system.' });
+          break;
+        }
+        if(_roleOf(fromId) === 'member'){
+          // Members get "basic editing" but not destructive structural
+          // changes. There's no separate message type for "this is a
+          // delete" vs "this is an add" — full-sync just carries the
+          // resulting `bodies` shape — so this is verified host-side by
+          // diffing the incoming set against what the host currently has:
+          // if any key that existed disappears, something got deleted,
+          // cleared, or replaced by a different loaded system. All three
+          // are the same shape of change from the host's perspective, so
+          // one check covers all of them. (Known nuance: a rename also
+          // removes the old key, so this incidentally blocks members from
+          // renaming too — not just delete/clear/load specifically.)
+          const currentBodies = stateProvider ? stateProvider() : {};
+          const deletedKeys = Object.keys(currentBodies).filter(k => !msg.bodies || !msg.bodies[k]);
+          if(deletedKeys.length > 0){
+            console.warn('[Collab:HOST] blocked full-sync from member', fromId, '— would remove:', deletedKeys);
+            _hostSendTo(fromId, { type: 'permission-denied', action: 'full-sync', reason: `Members can't delete, clear, or replace bodies (blocked: ${deletedKeys.slice(0, 5).join(', ')}${deletedKeys.length > 5 ? '…' : ''}). Ask a manager.` });
+            break;
+          }
+        }
         // A peer's whole `bodies` shape changed (add/delete/rename/import/
         // etc.) — relay to everyone else, and emit locally too so the
         // host's own app-level state gets updated the same way a peer's
@@ -564,12 +690,21 @@ const Collab = (() => {
       }
 
       case 'asset-sync': {
+        if(!_roleAtLeast(fromId, 'member')){
+          _hostSendTo(fromId, { type: 'permission-denied', action: 'asset-sync', reason: 'Visitors cannot modify assets.' });
+          break;
+        }
+        const removedCount = Object.values(msg.removed || {}).reduce((n, l) => n + (l?.length || 0), 0);
+        if(_roleOf(fromId) === 'member' && removedCount > 0){
+          console.warn('[Collab:HOST] blocked asset removal from member', fromId);
+          _hostSendTo(fromId, { type: 'permission-denied', action: 'asset-sync', reason: "Members can't delete assets. Ask a manager." });
+          break;
+        }
         // Delta only (added entries + removed names), not the whole asset
         // library — asset payloads carry real image data, unlike bodies'
         // small JSON, so re-sending everything on every change would be
         // wasteful. Same relay-then-emit-locally pattern as full-sync.
         const addedCount = Object.values(msg.added || {}).reduce((n, l) => n + (l?.length || 0), 0);
-        const removedCount = Object.values(msg.removed || {}).reduce((n, l) => n + (l?.length || 0), 0);
         console.log('[Collab:HOST] asset-sync received from peer', fromId, '—', addedCount, 'added,', removedCount, 'removed');
         _hostBroadcast({ type: 'asset-sync', added: msg.added, removed: msg.removed, peerId: fromId }, fromId);
         emit('asset-sync', { added: msg.added, removed: msg.removed, peerId: fromId });
@@ -577,12 +712,21 @@ const Collab = (() => {
       }
 
       case 'preset-sync': {
+        if(!_roleAtLeast(fromId, 'member')){
+          _hostSendTo(fromId, { type: 'permission-denied', action: 'preset-sync', reason: 'Visitors cannot modify presets.' });
+          break;
+        }
+        const removedCount = (msg.removed || []).length;
+        if(_roleOf(fromId) === 'member' && removedCount > 0){
+          console.warn('[Collab:HOST] blocked preset removal from member', fromId);
+          _hostSendTo(fromId, { type: 'permission-denied', action: 'preset-sync', reason: "Members can't delete presets. Ask a manager." });
+          break;
+        }
         // Same delta pattern as asset-sync, for custom procgen presets
         // (_pgUserPresets) — small JSON, no binary payload concerns, but
         // still additive-merge rather than a destructive full replace since
         // a peer's own unrelated saved presets shouldn't get wiped out.
         const addedCount = Object.keys(msg.added || {}).length;
-        const removedCount = (msg.removed || []).length;
         console.log('[Collab:HOST] preset-sync received from peer', fromId, '—', addedCount, 'added,', removedCount, 'removed');
         _hostBroadcast({ type: 'preset-sync', added: msg.added, removed: msg.removed, peerId: fromId }, fromId);
         emit('preset-sync', { added: msg.added, removed: msg.removed, peerId: fromId });
@@ -619,6 +763,7 @@ const Collab = (() => {
     return new Promise((resolve, reject) => {
       if(peer){ reject(new Error('Already in a session — leave first.')); return; }
       _explicitLeave = false;
+      _wasKicked = false;
       _lastJoinCode = code;
       _lastJoinName = name;
       myName = name || 'Peer';
@@ -691,6 +836,21 @@ const Collab = (() => {
   // infinite retry loop.
   function _attemptReconnect(){
     if(_explicitLeave || !_lastJoinCode) return;
+    if(_wasKicked){
+      // Being kicked already means the connection is going/gone — clean up
+      // local state properly here (mirroring the retry path's own cleanup
+      // below) rather than leaving stale peer/hostConn references around,
+      // which would otherwise make Collab.isActive() incorrectly keep
+      // reporting true after being kicked. Reuses the existing 'left'
+      // event's cleanup listeners (lockOwners, peerInfo, status pill, undo
+      // stack, reconnect banner) instead of duplicating that logic — 'left'
+      // has no alert anywhere, so this doesn't double up with the
+      // kick-specific alert already shown from the 'kicked' event itself.
+      try { if(peer) peer.destroy(); } catch(e){ /* already dead — fine */ }
+      peer = null; hostConn = null; myPeerId = null;
+      emit('left');
+      return;
+    }
     if(_reconnectAttempt >= RECONNECT_MAX_ATTEMPTS){
       console.warn('[Collab:PEER] reconnect — giving up after', _reconnectAttempt, 'attempt(s)');
       emit('host-disconnected');
@@ -723,6 +883,7 @@ const Collab = (() => {
         dlog('[Collab:PEER] state-sync received — resolving joinSession promise. bodies keys:', Object.keys(msg.bodies || {}).length, 'roster:', msg.roster);
         peerLockMirror.clear();
         for(const [body, lock] of Object.entries(msg.locks || {})) peerLockMirror.set(body, lock.peerId);
+        if(msg.roster && msg.roster[myPeerId] && msg.roster[myPeerId].role) myRole = msg.roster[myPeerId].role;
         emit('state-sync', { bodies: msg.bodies, assets: msg.assets, settings: msg.settings, presets: msg.presets, locks: msg.locks, roster: msg.roster });
         if(joinResolve){ joinResolve({ peerId: myPeerId }); joinResolve = null; }
         break;
@@ -770,6 +931,20 @@ const Collab = (() => {
       case 'catchup-complete':
         console.log('[Collab:PEER] catchup-complete received — join sequence fully done');
         emit('catchup-complete');
+        break;
+      case 'role-changed':
+        console.log('[Collab:PEER] role-changed —', msg.peerId, '->', msg.role, msg.peerId === myPeerId ? '(me)' : '');
+        if(msg.peerId === myPeerId) myRole = msg.role;
+        emit('role-changed', { peerId: msg.peerId, role: msg.role });
+        break;
+      case 'permission-denied':
+        console.warn('[Collab:PEER] permission-denied —', msg.action, ':', msg.reason);
+        emit('permission-denied', { action: msg.action, reason: msg.reason });
+        break;
+      case 'kicked':
+        console.warn('[Collab:PEER] kicked —', msg.reason, msg.banned ? '(banned)' : '');
+        _wasKicked = true; // suppress auto-reconnect — being removed shouldn't trigger an immediate retry loop
+        emit('kicked', { reason: msg.reason, banned: !!msg.banned });
         break;
       default:
         dwarn('[Collab:PEER] unrecognized message type from host:', msg.type, msg);
@@ -983,7 +1158,7 @@ const Collab = (() => {
   }
 
   function getMyInfo(){
-    return { peerId: myPeerId, name: myName, color: myColor, isHost, hostPeerId: isHost ? myPeerId : (hostConn?.peer || null) };
+    return { peerId: myPeerId, name: myName, color: myColor, isHost, hostPeerId: isHost ? myPeerId : (hostConn?.peer || null), role: isHost ? 'manager' : myRole };
   }
 
   function isActive(){
@@ -1017,6 +1192,7 @@ const Collab = (() => {
     broadcastEdit, broadcastFullSync, broadcastAssetSync, broadcastPresetSync, sendChat,
     setStateProvider, setAssetsProvider, setSettingsProvider, setPresetsProvider,
     getMyInfo, isActive,
+    kickPeer, banPeer, unbanPeer, isBanned, setRole, getPeerRole,
     setDebug
   };
 })();

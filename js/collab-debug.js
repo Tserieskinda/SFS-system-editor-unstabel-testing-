@@ -57,7 +57,7 @@ const CollabDebug = (() => {
 
     panelEl.innerHTML = `
       <div class="cd-head">
-        <span>🌐 Collab Debug</span>
+        <span><svg class="icon"><use href="#icon-globe"></use></svg> Collab Debug</span>
         <button class="cd-x" onclick="CollabDebug.hide()">✕</button>
       </div>
       <div class="cd-status">${statusHtml}</div>
@@ -215,7 +215,7 @@ const CollabDebug = (() => {
 
     tabEl = document.createElement('div');
     tabEl.id = 'cd-tab';
-    tabEl.textContent = '🌐';
+    tabEl.innerHTML = '<svg class="icon"><use href="#icon-globe"></use></svg>';
     tabEl.title = 'Multiplayer debug panel';
     tabEl.onclick = toggle;
     document.body.appendChild(tabEl);

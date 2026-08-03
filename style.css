@@ -81,6 +81,19 @@
 .icon:last-child { margin-right: 0; }
 .mico .icon, .dico .icon { margin-right: 0; }
 
+.beta-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: .55rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: #4fc3f7;
+  background: rgba(79,195,247,.12);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
   background: var(--void);
@@ -302,6 +315,21 @@ body {
 }
 .menu-cog-btn:hover { background: var(--ac30); box-shadow: 0 0 18px var(--ac40); transform: scale(1.06); }
 
+.menu-fs-btn { right: 76px; font-size: 1.25rem; }
+.menu-fs-btn.is-active { color: var(--sky); border-color: var(--sky); box-shadow: 0 0 12px var(--sky40, var(--ac20)); }
+
+/* Pseudo-fullscreen fallback (iOS Safari has no element/document Fullscreen API).
+   Pins the whole app to the viewport and pads a bit extra height so scrolling
+   to hide the address bar doesn't reveal blank space beneath the content. */
+body.pseudo-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 120%;
+  overflow: hidden;
+}
+
 /* ═══════════════════════════ NEW SYSTEM SCREEN ═══════════════════════════ */
 #s-new { flex-direction: column; align-items: stretch; }
 
@@ -367,6 +395,22 @@ body {
   opacity: 0; pointer-events: none; transition: opacity .25s;
 }
 #modal-appsettings.open { opacity: 1; pointer-events: all; }
+#modal-multiplayer {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(10,10,12,.88);
+  backdrop-filter: blur(12px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+#modal-multiplayer.open { opacity: 1; pointer-events: all; }
+.mp-peer-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; margin-bottom: 4px;
+  background: var(--dp3); border: 1px solid var(--ac18); border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace; font-size: .68rem; color: var(--ink3);
+}
+.mp-peer-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.mp-peer-you { opacity: .6; font-size: .58rem; margin-left: auto; }
 #modal-clear, #modal-delete, #modal-replace {
   background: rgba(10,10,12,.88);
   display: flex; align-items: center; justify-content: center;
@@ -1616,6 +1660,11 @@ body {
   /* ── Body search modal: full-screen on mobile ── */
   #modal-body-search .mpanel { width: 100% !important; max-width: 100% !important; min-width: 0 !important; max-height: 92vh; }
 
+  /* ── Multiplayer modal: full-width, roomy tap targets, big code text stays legible ── */
+  #modal-multiplayer .mpanel { width: 92% !important; max-width: 400px !important; max-height: 92vh; }
+  #mp-code-display { font-size: 1.5rem !important; letter-spacing: .12em !important; }
+  #mp-tab-host, #mp-tab-join { padding: 12px 0 !important; font-size: .68rem !important; }
+
   /* ── Preset modal overlay: full height, aligned to top ── */
   #modal-preset { align-items: stretch; padding: 0; }
   #modal-preset .mpanel {
@@ -2817,6 +2866,7 @@ body {
   /* Logo: tighter on mobile */
   .logo-wrap {
     margin-bottom: 28px;
+    padding-right: 112px; /* clears the settings + fullscreen buttons (42px each, positioned from right:14px/64px) regardless of exact title width or device font rendering */
   }
   .logo-eyebrow {
     margin-top: 6px;
@@ -2829,6 +2879,7 @@ body {
     width: 42px; height: 42px;
     font-size: 1.35rem;
   }
+  .menu-fs-btn { right: 64px; font-size: 1.15rem; }
 
   /* Menu buttons: full width, good tap height */
   .menu-btn {
