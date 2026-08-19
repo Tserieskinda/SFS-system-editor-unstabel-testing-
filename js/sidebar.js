@@ -424,7 +424,11 @@ function confirmDeleteBody(){
   if(!confirm(msg)) return;
   pushUndo();
   const toDelete = [selectedBody, ...sats];
+  const texturesToCheck = toDelete
+    .map(n => bodies[n]?.data?.FRONT_CLOUDS_DATA?.cloudsTexture)
+    .filter(Boolean);
   toDelete.forEach(n => delete bodies[n]);
+  texturesToCheck.forEach(tex => _dncCleanupOrphanTexture(tex, null));
   closeSidebar();
   drawViewport();
   syncAddBodyBtn();
@@ -1627,12 +1631,12 @@ function makePPKey(k,i){
   const hex = rgbToHex(k.red||1, k.green||1, k.blue||1);
   const d=document.createElement('div'); d.className='pp-key'; d.id='ppk-'+i;
   d.innerHTML=`<div class="pp-key-header"><span class="pp-key-title">KEY ${i+1}</span><button class="pp-key-del" onclick="delPPKey(${i})">✕</button></div>
-  <div class="frow"><span class="flabel">Height</span><input class="finput" id="ppk-${i}-h" type="text" inputmode="decimal" step="100" value="${k.height||0}"></div>
-  <div class="frow"><span class="flabel">Shadow Intens.</span><input class="finput" id="ppk-${i}-si" type="text" inputmode="decimal" step="0.05" value="${k.shadowIntensity||1}"></div>
-  <div class="frow"><span class="flabel">Star Intens.</span><input class="finput" id="ppk-${i}-sti" type="text" inputmode="decimal" step="0.1" value="${k.starIntensity||0}"></div>
-  <div class="frow"><span class="flabel">Hue Shift</span><input class="finput" id="ppk-${i}-hs" type="text" inputmode="decimal" step="0.1" value="${k.hueShift||0}"></div>
-  <div class="frow"><span class="flabel">Saturation</span><input class="finput" id="ppk-${i}-sat" type="text" inputmode="decimal" step="0.01" value="${k.saturation||1}"></div>
-  <div class="frow"><span class="flabel">Contrast</span><input class="finput" id="ppk-${i}-con" type="text" inputmode="decimal" step="0.01" value="${k.contrast||1}"></div>
+  <div class="frow"><span class="flabel">Height</span><input class="finput" id="ppk-${i}-h" type="text" inputmode="decimal" step="100" value="${k.height||0}" oninput="liveSync()"></div>
+  <div class="frow"><span class="flabel">Shadow Intens.</span><input class="finput" id="ppk-${i}-si" type="text" inputmode="decimal" step="0.05" value="${k.shadowIntensity||1}" oninput="liveSync()"></div>
+  <div class="frow"><span class="flabel">Star Intens.</span><input class="finput" id="ppk-${i}-sti" type="text" inputmode="decimal" step="0.1" value="${k.starIntensity||0}" oninput="liveSync()"></div>
+  <div class="frow"><span class="flabel">Hue Shift</span><input class="finput" id="ppk-${i}-hs" type="text" inputmode="decimal" step="0.1" value="${k.hueShift||0}" oninput="liveSync()"></div>
+  <div class="frow"><span class="flabel">Saturation</span><input class="finput" id="ppk-${i}-sat" type="text" inputmode="decimal" step="0.01" value="${k.saturation||1}" oninput="liveSync()"></div>
+  <div class="frow"><span class="flabel">Contrast</span><input class="finput" id="ppk-${i}-con" type="text" inputmode="decimal" step="0.01" value="${k.contrast||1}" oninput="liveSync()"></div>
   <div class="cpick-wrap"><span class="flabel">RGB Tint</span>
     <input type="color" class="cpick-swatch" id="ppk-${i}-pick" value="${hex}"
       oninput="onCpick('ppk-${i}-pick','ppk-${i}-hex','ppk-${i}-r','ppk-${i}-g','ppk-${i}-b');liveSync()">
@@ -3026,7 +3030,9 @@ function updateDayNightCycle(name, opts){
   const d = b.data;
 
   if(o.darkness != null){
+    const oldTex = d.FRONT_CLOUDS_DATA.cloudsTexture;
     d.FRONT_CLOUDS_DATA.cloudsTexture = _dncGenerateTexture(o.darkness);
+    _dncCleanupOrphanTexture(oldTex, d.FRONT_CLOUDS_DATA.cloudsTexture);
   }
   if(o.fadeZoneKm != null) d.FRONT_CLOUDS_DATA.fadeZoneHeight = o.fadeZoneKm * 1000;
   if(o.positionZ != null) d.FRONT_CLOUDS_DATA.positionZ = o.positionZ;
@@ -3047,6 +3053,16 @@ function updateDayNightCycle(name, opts){
 
   if(selectedBody === name) fillSidebar(name);
   drawViewport();
+}
+
+function _dncCleanupOrphanTexture(oldTexName, newTexName){
+  if(!oldTexName || oldTexName === newTexName) return;
+  if(!/^DayNightCycle_\d+$/.test(oldTexName)) return;
+  const stillUsed = Object.values(bodies).some(bb => bb.data?.FRONT_CLOUDS_DATA?.cloudsTexture === oldTexName);
+  if(stillUsed) return;
+  if(typeof assets === 'undefined') return;
+  const entry = assets.textures.find(t => t.name.replace(/\.[^.]+$/, '') === oldTexName);
+  if(entry && typeof removeAsset === 'function') removeAsset(sanitize(entry.name), 'textures');
 }
 
 // ── Day/Night Cycle panel wiring ──

@@ -1306,6 +1306,25 @@ function _drawViewportNow(){
       const _ringRatio = b.data.RINGS_DATA.endRadius / ((b.data.BASE_DATA||{}).radius || 1);
       _cullR = Math.max(_cullR, r * _ringRatio);
     }
+    // Extend for FRONT_CLOUDS_DATA too — same reasoning as atmosphere above, but this
+    // one matters far more in practice: the "invisible carrier" pattern (a near-zero-
+    // radius dummy body whose entire visual footprint is a huge FRONT_CLOUDS_DATA.height,
+    // e.g. a shadow/terminator disc orbiting the real planet) makes `r` here collapse to
+    // just the tiny icon floor, since physR_px is sub-pixel for a radius~1 body and no
+    // atmosphere/rings data exists to widen _cullR either. That tiny _cullR then culls the
+    // ENTIRE body — cloud disc included — the instant the carrier's own (practically
+    // meaningless) icon position drifts off-canvas, even though the disc itself, sized off
+    // FRONT_CLOUDS_DATA.height rather than the carrier's own radius, can be huge enough to
+    // still cover visible screen area from off-screen. Mirrors the same fcR_px math used
+    // in the actual front-cloud draw below: (R_eff_px_fc + fcHeight_m) * scale * vpZ.
+    if(b.data.FRONT_CLOUDS_DATA && b.data.FRONT_CLOUDS_DATA.cloudsTexture &&
+       b.data.FRONT_CLOUDS_DATA.cloudsTexture !== 'None'){
+      const _fcAtmoMult  = getAtmoDifficultyMult(b.data);
+      const _fcR_eff_px   = bodyRadius_m * radiusMult;
+      const _fcHeight_m   = Math.max(-_fcR_eff_px * 0.99, (b.data.FRONT_CLOUDS_DATA.height || 0) * _fcAtmoMult);
+      const _fcCullR_px   = (_fcR_eff_px + _fcHeight_m) * scale * vpZ;
+      _cullR = Math.max(_cullR, _fcCullR_px);
+    }
     if(sp.x + _cullR < 0 || sp.x - _cullR > W || sp.y + _cullR < 0 || sp.y - _cullR > H) return;
 
     // ── Icon-overlap cull ────────────────────────────────────────────────────
@@ -1343,7 +1362,13 @@ function _drawViewportNow(){
     ctx2.save();
     ctx2.globalAlpha = bodyFadeA;
 
-    // ── Barycentre: just a small cross marker ──
+    // ── Barycentre: small cross marker ──
+    // Only short-circuits the rest of the per-body pipeline when the body has
+    // no visual data of its own. A body carrying real FRONT_CLOUDS_DATA/
+    // ATMOSPHERE/RINGS/TERRAIN (e.g. the "invisible carrier" pattern — a
+    // near-zero-radius, terrain-less body used purely to host a huge
+    // FRONT_CLOUDS_DATA overlay) still needs to reach that code below, so it
+    // falls through instead of being discarded here.
     if(b.preset === 'barycentre'){
       ctx2.strokeStyle = 'rgba(180,180,255,0.5)';
       ctx2.lineWidth = 1;
@@ -1355,8 +1380,15 @@ function _drawViewportNow(){
       if(typeof groupSelectMode !== 'undefined' && groupSelectMode && typeof groupSelected !== 'undefined' && groupSelected.has(name)){ ctx2.beginPath(); polygonCircle(ctx2,sp.x,sp.y,11,64); ctx2.closePath(); ctx2.strokeStyle='rgba(255,155,40,0.9)'; ctx2.lineWidth=2; ctx2.setLineDash([3,3]); ctx2.stroke(); ctx2.setLineDash([]); }
       ctx2.fillStyle='rgba(150,200,240,0.7)'; ctx2.font='9px "JetBrains Mono",monospace'; ctx2.textAlign='center';
       ctx2.fillText(name, sp.x, sp.y+18);
-      ctx2.restore(); // must restore before early return
-      return;
+      const _hasOwnVisuals = !!(b.data.FRONT_CLOUDS_DATA || b.data.ATMOSPHERE_PHYSICS_DATA ||
+                                 b.data.RINGS_DATA || b.data.TERRAIN_DATA);
+      if(!_hasOwnVisuals){
+        ctx2.restore(); // must restore before early return
+        return;
+      }
+      // fall through, deliberately NOT restoring — the rest of the per-body
+      // pipeline expects ctx2 to still be in the bodyFadeA-applied save state
+      // (it's balanced by the "end bodyFadeA globalAlpha" restore further down).
     }
 
     // ── Star / black hole glow ──
@@ -1846,7 +1878,18 @@ function _drawViewportNow(){
     // is cheap and arc-culling artifacts are visually prominent.
     const _canArcCull = envFlags.heightmaps && physR_px > 200 && (bodyRadius_m * radiusMult) >= 15000;
     const _arcInfo = _canArcCull
-      ? _computeVisibleArc(sp, Math.max(r, physR_px), W, H)
+      ? (() => {
+          const _dispR_px = Math.max(r, physR_px);
+          const _r_m = Math.max(1, bodyRadius_m * radiusMult);
+          // Pad the bounding circle by max terrain height so irregular bodies
+          // (large asteroids etc.) don't get their bumps wrongly culled —
+          // same reasoning as the game's own Radius+maxTerrainHeight bounding
+          // in DynamicChunk. Without this, arc culling assumes a perfect
+          // circle and can clip terrain that actually pokes onto screen.
+          const _maxH_m = _getMaxTerrainHeight(name, b, _r_m);
+          const _paddedR_px = _dispR_px * (_r_m + _maxH_m) / _r_m;
+          return _computeVisibleArc(sp, _paddedR_px, W, H);
+        })()
       : null;
 
     // ── Step 1: Base fill — terrain polygon or icon gradient ─────────────────
@@ -2697,7 +2740,7 @@ function _drawViewportNow(){
     // Soft edge fade: the game's FrontClouds shader uses a _FadeZoneM that fades
     // alpha toward zero at the disc edge. We replicate this with a destination-out
     // radial mask applied after drawing the image.
-    if(envFlags.fclouds && !envFlags.heightmaps && atmoFade > 0 && b.data.FRONT_CLOUDS_DATA){
+    if(envFlags.fclouds && !envFlags.heightmaps && b.data.FRONT_CLOUDS_DATA){
       const FCD = b.data.FRONT_CLOUDS_DATA;
       const fcTex = FCD.cloudsTexture;
       const fcImg = fcTex && fcTex !== 'None' && textureCache[fcTex];
@@ -2715,31 +2758,55 @@ function _drawViewportNow(){
         // _TextureCutout never re-enters as an overall opacity multiplier. Previously fcAlpha
         // multiplied fcCutClamped in here too, silently dimming/fading front-cloud discs whose
         // texture is deliberately cropped tight (cutout < 1) with no basis in the real shader.
-        const fcAlpha = atmoFade;
+        //
+        // fcAlpha's LOD fade used to just be `atmoFade` — computed from the CARRIER body's
+        // own on-screen radius (physR_px), not from the cloud disc it actually draws. That's
+        // fine when the body and its clouds are comparable sizes, but it breaks the common
+        // "invisible carrier" pattern: a near-zero-radius dummy body (BASE_DATA.radius ~1,
+        // e.g. a moving shadow/terminator layer orbiting the real planet) whose entire visual
+        // footprint comes from a huge FRONT_CLOUDS_DATA.height. physR_px for a radius-1 body
+        // is always sub-pixel, so atmoFade permanently clamped to 0 (see its formula above:
+        // (physR_px - _atmoLod)/_atmoLod, floor _atmoLod=2px) and the disc never drew, no
+        // matter the zoom or the disc's own actual on-screen size. Fix: compute fcR_px (the
+        // disc's real screen radius) first, then derive ITS OWN LOD fade from that, mirroring
+        // the atmoFade formula above but keyed to the cloud disc's own physical outer size
+        // instead of the carrier body's.
+        //
+        // Difficulty.ScalePlanetData: frontClouds.height *= atmoMult;
+        // frontClouds.fadeZoneHeight *= atmoMult; — both were being read raw here,
+        // so front-cloud discs (shadow terminators, city lights, etc.) sat at the
+        // wrong altitude on anything but Normal difficulty. Apply atmoMult, and
+        // — same fix as the atmosphere halo above — use the radiusMult-scaled
+        // body radius (R_eff_px) as the ratio denominator, not raw bodyRadius_m,
+        // since physR_px already has radiusMult baked in and the two multipliers
+        // (radiusMult, atmoMult) are independent in-game.
+        const fcAtmoMult  = getAtmoDifficultyMult(b.data);
+        const R_eff_px_fc = bodyRadius_m * radiusMult;
+        // Clamp so a negative FRONT_CLOUDS_DATA.height (now reachable via the
+        // day/night SMA-offset slider) can never push the effective disc
+        // radius (R_eff_px_fc + fcHeight_m) to zero/negative — that would
+        // flip fcR_px negative and corrupt all the downstream circle math.
+        const fcHeight_m  = Math.max(-R_eff_px_fc * 0.99, (FCD.height || 0) * fcAtmoMult);
+        // Screen radius of the cloud disc. Built from `scale * vpZ` (px-per-metre,
+        // same factors physR_px itself is built from — see its definition above)
+        // rather than "physR_px * ratio", so it stays correct even when the carrier
+        // body's own radius is ~0 (the ratio form divided by R_eff_px_fc and
+        // produced 0/0 = NaN for a true zero-radius carrier).
+        const fcR_px      = (R_eff_px_fc + fcHeight_m) * scale * vpZ;
+        // Same LOD-fade shape as atmoFade (see _atmoLod/_atmoPhysOuter_m above), but
+        // driven by the cloud disc's own physical outer size, not the carrier body's.
+        const fcPhysOuter_m = R_eff_px_fc + fcHeight_m; // metres, unscaled
+        const fcLod = fcPhysOuter_m > 0
+          ? Math.min(32, Math.max(2, 2 * Math.log10(Math.max(1, fcPhysOuter_m / 1e5))))
+          : 2;
+        const fcAlpha = Math.max(0, Math.min(1, (fcR_px - fcLod) / Math.max(fcLod, 0.01)));
         if(fcAlpha > 0.01){
-          // Difficulty.ScalePlanetData: frontClouds.height *= atmoMult;
-          // frontClouds.fadeZoneHeight *= atmoMult; — both were being read raw here,
-          // so front-cloud discs (shadow terminators, city lights, etc.) sat at the
-          // wrong altitude on anything but Normal difficulty. Apply atmoMult, and
-          // — same fix as the atmosphere halo above — use the radiusMult-scaled
-          // body radius (R_eff_px) as the ratio denominator, not raw bodyRadius_m,
-          // since physR_px already has radiusMult baked in and the two multipliers
-          // (radiusMult, atmoMult) are independent in-game.
-          const fcAtmoMult  = getAtmoDifficultyMult(b.data);
-          const R_eff_px_fc = bodyRadius_m * radiusMult;
-          // Clamp so a negative FRONT_CLOUDS_DATA.height (now reachable via the
-          // day/night SMA-offset slider) can never push the effective disc
-          // radius (R_eff_px_fc + fcHeight_m) to zero/negative — that would
-          // flip fcR_px negative and corrupt all the downstream circle math.
-          const fcHeight_m  = Math.max(-R_eff_px_fc * 0.99, (FCD.height || 0) * fcAtmoMult);
           // Distinguish "explicitly set to 0" (true hard edge) from "field never
           // set" (older planet files without this key at all) — both used to
           // collapse to the same fcFadeZone_m===0 value below, which silently
           // forced every hard-edge request into an 8% fallback fade instead.
           const fcFadeZoneSpecified = FCD.fadeZoneHeight != null;
           const fcFadeZone_m = (FCD.fadeZoneHeight || 0) * fcAtmoMult;
-
-          const fcR_px      = physR_px * (R_eff_px_fc + fcHeight_m) / R_eff_px_fc;
 
           // fadeZoneHeight is world-space — convert to a fraction of the cloud radius
           // so it's zoom-independent (used in cache key and for rendering).
@@ -3707,7 +3774,13 @@ function _evalTerrainFormula(formulaLines, angles_rad, radius_m) {
 
         for (let i = 0; i < N; i++) {
           let v = _hmEval(pts, angles_rad[i] * num);
-          if (curvePts) v = _hmEval(curvePts, Math.max(0, Math.min(1, v)));
+          // C# AddHeightMap applies the curve via EvaluateDoubleOut (wraps via
+          // modulo), NOT EvaluateClamped (hard clamp) — those are deliberately
+          // different methods in the source, used in different places. _hmEval
+          // already replicates EvaluateDoubleOut's wrap-around exactly, so pass
+          // v straight through; clamping here would silently change the curve
+          // shape for any heightmap sample that lands outside [0,1].
+          if (curvePts) v = _hmEval(curvePts, v);
           if (multArr)  v *= multArr[i];
           target[i] += v * hmHeight;
         }
@@ -3991,6 +4064,51 @@ function _computeVisibleArc(sp, physR_px, vpW, vpH) {
 
 // ── Terrain sample cache ──────────────────────────────────────────────────────
 const _terrainSampleCache = {};
+
+// ── Max terrain height (mirrors Planet.cs: maxTerrainHeight = TerrainModule.
+//    GetMaxTerrainHeight(planet) + 200) ─────────────────────────────────────
+// The game brute-forces this once per planet at load: 1001 evenly-spaced
+// samples around the FULL circle (through the whole pipeline — heightmap
+// formula, water depression, flatzones — not just the raw formula), takes
+// the max, adds a fixed 200m safety pad. We need the same number for the
+// same reason the game does: bounding how far actual terrain can stick out
+// past the nominal radius, so visibility/culling math doesn't assume a
+// perfect circle when the real silhouette isn't one (see _computeVisibleArc).
+// Cheap enough to brute-force fresh each call (1001 formula evaluations),
+// but cached anyway since it's asked for every frame while zoomed in.
+const _maxTerrainHeightCache = {};
+function _getMaxTerrainHeight(bodyName, b, radius_m) {
+  const TD = b.data.TERRAIN_DATA;
+  if (!TD) return 0;
+  const tfd = TD.terrainFormulaDifficulties;
+  const formula = (tfd && (tfd[viewDiffKey] || tfd[viewDifficulty] || tfd['Normal'] || tfd['normal'])) || TD.terrainFormula;
+  if (!formula || !formula.length) return 0;
+
+  const fHash = formula.join('§');
+  const key = `${bodyName}|${radius_m.toFixed(0)}|${viewDiffKey}|${fHash}`;
+  if (_maxTerrainHeightCache[key] != null) return _maxTerrainHeightCache[key];
+
+  const N = 1001;
+  const angles = new Float64Array(N);
+  for (let i = 0; i < N; i++) angles[i] = (Math.PI / 500) * i; // matches game exactly: covers full 2π over 1001 points
+  const heights = _evalTerrainFormula(formula, angles, radius_m);
+  if (!heights) return 0; // heightmap(s) still loading — caller falls back to unpadded radius for now
+
+  _applyWaterDepressionIfNeeded(b, TD, heights, angles);
+  const fzd = TD.flatZonesDifficulties;
+  const flatZones = (fzd && (fzd[viewDiffKey] || fzd['Normal'])) || TD.flatZones || [];
+  _applyFlatZones(heights, angles, flatZones, radius_m);
+
+  let maxH = 0;
+  for (let i = 0; i < N; i++) if (heights[i] > maxH) maxH = heights[i];
+  const result = maxH + 200; // game's fixed safety margin
+
+  const keys = Object.keys(_maxTerrainHeightCache);
+  if (keys.length >= 100) delete _maxTerrainHeightCache[keys[0]];
+  _maxTerrainHeightCache[key] = result;
+  return result;
+}
+
 // Per-frame clip path cache — keyed by "bodyName|N|spx|spy|physR_px" so it's
 // reused when drawTerrainBody and _terrainClipPath request the same shape in
 // the same frame without recomputing the Path2D.

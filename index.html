@@ -402,6 +402,11 @@
   <symbol id="icon-zap" viewBox="0 0 24 24">
     <path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" />
   </symbol>
+  <symbol id="icon-help" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" />
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+  </symbol>
 </svg>
 
 
@@ -432,11 +437,11 @@
       <span class="mico"><svg class="icon"><use href="#icon-palette"></use></svg></span>CREATE TEXTURES
       <span class="arr">›</span>
     </button>
-    <button class="menu-btn" style="border-color:var(--sky)" onclick="goFeatured()">
+    <button class="menu-btn" onclick="goFeatured()">
       <span class="mico">⭐</span>FEATURED SYSTEMS
       <span class="arr">›</span>
     </button>
-    <button class="menu-btn" id="btn-multiplayer" style="border-color:#4fc3f7" onclick="MP.openModal()">
+    <button class="menu-btn" id="btn-multiplayer" onclick="MP.openModal()">
       <span class="mico"><svg class="icon"><use href="#icon-globe"></use></svg></span>MULTIPLAYER<span class="beta-tag">BETA</span>
       <span class="arr">›</span>
     </button>
@@ -444,6 +449,8 @@
 
   <!-- ── Settings: small cog icon box, pinned top-right ── -->
   <button class="menu-cog-btn" onclick="openAppSettings()" title="Settings"><svg class="icon"><use href="#icon-settings"></use></svg></button>
+  <!-- ── Help: question mark icon, pinned top-right next to settings ── -->
+  <button class="menu-cog-btn" id="btn-help" onclick="openHelpModal()" title="Help"><svg class="icon"><use href="#icon-help"></use></svg></button>
   <!-- ── Fullscreen toggle, pinned top-right next to settings ── -->
   <button class="menu-cog-btn menu-fs-btn" id="btn-fullscreen" onclick="toggleAppFullscreen()" title="Fullscreen"><svg class="icon"><use href="#icon-expand"></use></svg></button>
 
@@ -500,34 +507,34 @@
       <!-- ── Environment dropdown ── -->
       <div id="env-dropdown-wrap" style="position:relative;display:inline-block">
         <button class="tb-btn" id="btn-env" onclick="toggleEnvDropdown()" title="Environment render toggles"
-          style="border-color:rgba(64,200,255,.3);color:var(--sky2);font-size:.88rem;padding:7px 11px"><svg class="icon"><use href="#icon-globe"></use></svg></button>
+          style="font-size:.88rem;padding:7px 11px"><svg class="icon"><use href="#icon-globe"></use></svg></button>
       </div>
       <div style="position:relative;display:inline-flex;align-items:stretch">
         <button class="tb-btn env-off" id="env-btn-heightmaps" onclick="toggleEnvFlag('heightmaps')" title="Toggle terrain heightmap rendering"
-          style="border-color:rgba(180,140,255,.35);color:#b48cff;font-size:.78rem;letter-spacing:.06em;padding:7px 10px;border-right:none;border-radius:4px 0 0 4px">▲ LAND</button>
+          style="font-size:.78rem;letter-spacing:.06em;padding:7px 10px;border-right:none;border-radius:4px 0 0 4px">▲ LAND</button>
         <button id="btn-terrain-detail" onclick="toggleTerrainDetailDrop()" title="Terrain detail level"
-          style="border:1px solid rgba(180,140,255,.35);border-left:1px solid rgba(180,140,255,.15);color:#b48cff;background:rgba(180,140,255,.07);cursor:pointer;padding:0 7px;border-radius:0 4px 4px 0;font-family:'JetBrains Mono',monospace;font-size:.58rem;letter-spacing:.04em;display:flex;align-items:center;gap:4px;white-space:nowrap">
+          style="border:1px solid var(--ac25);border-left:1px solid var(--ac15);color:var(--sky2);background:var(--ac08);cursor:pointer;padding:0 7px;border-radius:0 4px 4px 0;font-family:'JetBrains Mono',monospace;font-size:.58rem;letter-spacing:.04em;display:flex;align-items:center;gap:4px;white-space:nowrap">
           <span id="terrain-detail-label">30%</span><span style="font-size:.6rem;opacity:.6">&#9662;</span>
         </button>
       </div>
-      <button class="tb-btn" onclick="openBodySearch()" title="Search bodies in system" style="border-color:rgba(64,200,255,.3);color:var(--sky2);font-size:.85rem;padding:7px 10px"><svg class="icon"><use href="#icon-search"></use></svg></button>
-      <button class="tb-btn" id="btn-difficulty" onclick="cycleDifficulty()" title="Switch orbit display difficulty" style="border-color:rgba(255,200,64,.3);color:#ffd060;min-width:96px"><svg class="icon"><use href="#icon-scale"></use></svg> NORMAL</button>
-      <button class="tb-btn" id="btn-dist-rings" onclick="toggleDistRings()" title="Toggle AU distance rings around selected body" style="border-color:rgba(120,200,255,.3);color:rgba(120,200,255,.75);font-size:.75rem;letter-spacing:.05em;padding:7px 10px">⊙ AU</button><button class="tb-btn" onclick="openDistRingsMenu()" title="Configure ring distances" style="border-color:rgba(120,200,255,.2);color:rgba(120,200,255,.5);font-size:.7rem;padding:7px 7px;margin-left:-6px;border-left:none;border-radius:0 5px 5px 0"><svg class="icon"><use href="#icon-settings"></use></svg></button>
-      <button class="tb-btn" id="btn-add-body" onclick="addBodyPrompt()" title="Add a body to the system (requires a system center first)" style="border-color:rgba(100,220,120,.6);color:#7defa0;font-weight:700;background:rgba(100,220,120,.12);letter-spacing:.08em">＋ ADD</button>
+      <button class="tb-btn" onclick="openBodySearch()" title="Search bodies in system" style="font-size:.85rem;padding:7px 10px"><svg class="icon"><use href="#icon-search"></use></svg></button>
+      <button class="tb-btn" id="btn-difficulty" onclick="cycleDifficulty()" title="Switch orbit display difficulty" style="min-width:96px"><svg class="icon"><use href="#icon-scale"></use></svg> NORMAL</button>
+      <button class="tb-btn" id="btn-dist-rings" onclick="toggleDistRings()" title="Toggle AU distance rings around selected body" style="font-size:.75rem;letter-spacing:.05em;padding:7px 10px">⊙ AU</button><button class="tb-btn" onclick="openDistRingsMenu()" title="Configure ring distances" style="font-size:.7rem;padding:7px 7px;margin-left:-6px;border-left:none;border-radius:0 5px 5px 0"><svg class="icon"><use href="#icon-settings"></use></svg></button>
+      <button class="tb-btn" id="btn-add-body" onclick="addBodyPrompt()" title="Add a body to the system (requires a system center first)" style="font-weight:700;letter-spacing:.08em">＋ ADD</button>
       <!-- ── Tag dropdown ── -->
       <div id="tag-dropdown-wrap" style="position:relative;display:inline-block">
         <button class="tb-btn" id="btn-tag" onclick="toggleTagDropdown()" title="Tag bodies"
-          style="border-color:rgba(255,220,80,.35);color:#ffd050;font-size:.72rem;letter-spacing:.06em;padding:7px 11px"><svg class="icon"><use href="#icon-tag"></use></svg> TAG</button>
+          style="font-size:.72rem;letter-spacing:.06em;padding:7px 11px"><svg class="icon"><use href="#icon-tag"></use></svg> TAG</button>
       </div>
       <!-- ── Tools dropdown ── -->
       <div id="tools-dropdown-wrap" style="position:relative;display:inline-block">
         <button class="tb-btn" id="btn-tools" onclick="toggleToolsDropdown()" title="Tools"
-          style="border-color:rgba(255,180,80,.35);color:#ffb850;font-size:.88rem;padding:7px 11px"><svg class="icon"><use href="#icon-wrench"></use></svg></button>
+          style="font-size:.88rem;padding:7px 11px"><svg class="icon"><use href="#icon-wrench"></use></svg></button>
       </div>
       <!-- ── Utils dropdown ── -->
       <div id="utils-dropdown-wrap" style="position:relative;display:inline-block">
         <button class="tb-btn" id="btn-utils" onclick="toggleUtilsDropdown()" title="Utilities"
-          style="border-color:rgba(100,220,180,.35);color:#64dcb4;font-size:.78rem;letter-spacing:.06em;padding:7px 11px">⊞ UTILS</button>
+          style="font-size:.78rem;letter-spacing:.06em;padding:7px 11px">⊞ UTILS</button>
       </div>
       <button class="tb-btn" onclick="openAssets()" title="Assets"><svg class="icon"><use href="#icon-folder"></use></svg> ASSETS</button>
       <button class="tb-btn" onclick="openSysSettings()" title="System settings" style="font-size:.88rem;padding:7px 11px"><svg class="icon"><use href="#icon-settings"></use></svg></button>
@@ -823,6 +830,21 @@
   </div>
 </div>
 
+<!-- ══════════════ SPACE CENTRE PICKER (forced, no dismiss) ══════════════ -->
+<div id="modal-sc-picker">
+  <div class="mpanel" id="mpanel-sc-picker" style="max-width:480px;width:92vw;max-height:82vh;display:flex;flex-direction:column">
+    <h2 style="font-family:'Orbitron',sans-serif;font-size:.85rem;color:var(--sky2);letter-spacing:.15em;margin-bottom:6px"><svg class="icon"><use href="#icon-map-pin"></use></svg> SELECT SPACE CENTRE</h2>
+    <p style="font-size:.66rem;color:var(--ink4);margin-bottom:10px;line-height:1.5">
+      This system's launch body ("<span id="sc-picker-missing-addr" style="color:var(--rose)"></span>") doesn't exist here.
+      Pick which body the space centre sits on before exporting, or players won't be able to launch.
+    </p>
+    <div style="position:relative;margin-bottom:8px">
+      <input id="sc-picker-input" class="prs-search" placeholder="Search bodies…" autocomplete="off" oninput="scPickerRebuild()" style="width:100%;box-sizing:border-box">
+    </div>
+    <div id="sc-picker-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;min-height:0;max-height:52vh"></div>
+  </div>
+</div>
+
 <div id="modal-preset">
   <div class="mpanel" id="mpanel-preset" style="padding:22px 28px 20px;max-width:780px;width:92vw">
     <!-- Header row: title + orbit controls -->
@@ -936,8 +958,8 @@
       <!-- chips injected by fillTagRow() -->
       <button id="sbb-tag-add-btn" onclick="sbTagOpenPicker()" title="Add tag"
         style="font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.06em;
-          padding:3px 10px;border:1px dashed rgba(120,160,255,.3);border-radius:10px;
-          background:none;color:rgba(120,160,255,.45);cursor:pointer;white-space:nowrap">
+          padding:3px 10px;border:1px dashed var(--ac30);border-radius:10px;
+          background:none;color:var(--sky2);cursor:pointer;white-space:nowrap">
         + TAG
       </button>
     </div>
@@ -973,9 +995,9 @@
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
       <button class="sb-close" onclick="closeSidebar()">✕</button>
       <div style="display:flex;gap:5px">
-        <button onclick="if(selectedBody) zoomToBody(selectedBody)" title="Zoom viewport to this body" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(64,200,255,.5);border-radius:2px;background:rgba(64,200,255,.12);color:#60d8ff;cursor:pointer">⊕ ZOOM</button>
-        <button onclick="addBodyPrompt()" title="Add a body orbiting this one" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(100,220,120,.4);border-radius:2px;background:rgba(100,220,120,.07);color:#7defa0;cursor:pointer">+ ADD</button>
-        <button onclick="replaceBodyPrompt()" title="Replace this body with a different preset" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(255,200,64,.35);border-radius:2px;background:rgba(255,200,64,.07);color:#ffd060;cursor:pointer"><svg class="icon"><use href="#icon-repeat"></use></svg> REPLACE</button>
+        <button onclick="if(selectedBody) zoomToBody(selectedBody)" title="Zoom viewport to this body" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid var(--ac45);border-radius:2px;background:var(--ac12);color:var(--sky2);cursor:pointer">⊕ ZOOM</button>
+        <button onclick="addBodyPrompt()" title="Add a body orbiting this one" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid var(--ac45);border-radius:2px;background:var(--ac12);color:var(--sky2);cursor:pointer">+ ADD</button>
+        <button onclick="replaceBodyPrompt()" title="Replace this body with a different preset" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid var(--ac45);border-radius:2px;background:var(--ac12);color:var(--sky2);cursor:pointer"><svg class="icon"><use href="#icon-repeat"></use></svg> REPLACE</button>
         <button onclick="confirmDeleteBody()" title="Delete this body and all its satellites" style="font-family:'Orbitron',sans-serif;font-size:.52rem;letter-spacing:.05em;padding:3px 7px;border:1px solid rgba(255,64,96,.35);border-radius:2px;background:rgba(255,64,96,.07);color:var(--rose);cursor:pointer">✕ DELETE</button>
       </div>
     </div>
@@ -1889,6 +1911,12 @@
           <div style="color:var(--sky2)">Tserieskinda</div>
         </div>
 
+        <div style="margin-bottom:14px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">TOOLS & LIBRARIES</div>
+          <div>Claude AI · Gemini AI</div>
+          <div>Lucide Icons (SVG)</div>
+        </div>
+
         <div style="border-top:1px solid var(--ac13);padding-top:14px;display:flex;flex-direction:column;gap:8px">
           <a href="https://github.com/Tserieskinda/Sfs-System-Editor/blob/main/README.md" target="_blank" style="color:var(--sky2);text-decoration:none;font-size:.62rem;display:flex;align-items:center;gap:8px">
             <span style="opacity:.5">⬡</span> GitHub Page
@@ -1897,7 +1925,7 @@
             <span style="opacity:.5">⬡</span> SFS Forums Page
           </a>
           <div style="color:var(--ink4);font-size:.62rem;display:flex;align-items:center;gap:8px">
-            <span style="opacity:.5">⬡</span> Discord: <span style="color:var(--ink2)">@tserieskinda.</span>
+            <span style="opacity:.5">⬡</span> Discord: <span style="color:var(--ink2)">@tserieskinda</span>
           </div>
         </div>
       </div>
@@ -2089,10 +2117,15 @@
           <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">BROUGHT TOGETHER BY</div>
           <div style="color:var(--sky2)">Tserieskinda</div>
         </div>
+        <div style="margin-bottom:14px">
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">TOOLS & LIBRARIES</div>
+          <div>Claude AI · Gemini AI</div>
+          <div>Lucide Icons (SVG)</div>
+        </div>
         <div style="border-top:1px solid var(--ac13);padding-top:14px;display:flex;flex-direction:column;gap:8px">
           <a href="https://github.com/Tserieskinda/Sfs-System-Editor/blob/main/README.md" target="_blank" style="color:var(--sky2);text-decoration:none;font-size:.62rem;display:flex;align-items:center;gap:8px"><span style="opacity:.5">⬡</span> GitHub Page</a>
           <a href="https://sfsforum.com/index.php?threads/sfs-system-editor-beta.18444/" target="_blank" style="color:var(--sky2);text-decoration:none;font-size:.62rem;display:flex;align-items:center;gap:8px"><span style="opacity:.5">⬡</span> SFS Forums Page</a>
-          <div style="color:var(--ink4);font-size:.62rem;display:flex;align-items:center;gap:8px"><span style="opacity:.5">⬡</span> Discord: <span style="color:var(--ink2)">@tserieskinda.</span></div>
+          <div style="color:var(--ink4);font-size:.62rem;display:flex;align-items:center;gap:8px"><span style="opacity:.5">⬡</span> Discord: <span style="color:var(--ink2)">@tserieskinda</span></div>
         </div>
       </div>
     </div><!-- end apptab-appcredits-content -->
@@ -2173,7 +2206,7 @@
     <p style="margin-bottom:24px;line-height:1.7">This will remove every body from the system.<br>This action <strong style="color:var(--rose)">cannot be undone</strong>.</p>
     <div class="modal-footer" style="justify-content:center;gap:12px">
       <button class="mf-btn" style="min-width:100px" onclick="closeClearAll()">CANCEL</button>
-      <button class="mf-btn" style="min-width:100px;border-color:rgba(255,64,96,.5);color:var(--rose);background:rgba(255,64,96,.08)" onclick="clearAll()">CLEAR ALL</button>
+      <button class="mf-btn" style="min-width:100px;border-color:var(--rose);color:var(--rose);background:rgba(204,68,85,.08)" onclick="clearAll()">CLEAR ALL</button>
     </div>
   </div>
 </div>
@@ -2330,7 +2363,7 @@
 <script src="js/idb-cache.js?v=5.13"></script>
 <script src="js/assets.js?v=5.13"></script>
 <script src="js/io.js?v=5.14"></script>
-<script src="js/presets.js?v=5.13"></script>
+<script src="js/presets.js?v=5.14"></script>
 <script src="js/state.js?v=5.13"></script>
 <script src="js/collab.js?v=1.0"></script>
 <script src="js/collab-ui.js?v=1.0"></script>
@@ -2339,12 +2372,14 @@
 <script src="js/autosave.js?v=5.13"></script>
 <script src="js/settings.js?v=5.13"></script>
 <script src="js/preset-modal.js?v=5.13"></script>
-<script src="js/viewport.js?v=5.15"></script>
+<script src="js/viewport.js?v=5.19"></script>
+<script src="js/help-modal.js?v=1.0"></script>
 <script src="js/tools.js?v=5.13"></script>
 <script src="js/units.js?v=5.13"></script>
 <script src="js/sidebar.js?v=5.15"></script>
 <script src="js/export.js?v=5.13"></script>
 <script src="js/body-search.js?v=5.13"></script>
+<script src="js/sc-picker.js?v=5.13"></script>
 <script src="js/namegen.js?v=5.13"></script>
 <script src="js/tex-creator.js?v=5.13"></script>
 <script src="js/planet-tex-creator.js?v=1.0"></script>
@@ -2355,6 +2390,7 @@
 <script src="js/placer.js?v=1.0"></script>
 <script src="js/procgen.js?v=1.0"></script>
 <script src="js/landmark-features.js?v=1.1"></script>
+<script src="js/habitability-visualizer.js?v=1.1"></script>
 <!-- ══ TERRAIN DETAIL DROPDOWN (body-level to escape topbar stacking context) ══ -->
 <div id="terrain-detail-dropdown" style="display:none;position:fixed;
   min-width:200px;background:rgba(6,10,22,.97);border:1px solid rgba(180,140,255,.25);
@@ -4479,7 +4515,102 @@ document.addEventListener('keydown', function(e){
     <span><span style="display:block;color:var(--sky2)">PRECISE OBJECT PLACER</span>
     <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Click viewport to place bodies at exact positions</span></span>
   </button>
+  <button onclick="openHabitabilityVisualizer()" style="display:flex;align-items:center;gap:10px;
+    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
+    letter-spacing:.05em;transition:background .12s;text-align:left"
+    onmouseover="this.style.background='var(--ac12)'" onmouseout="this.style.background='none'">
+    <span style="font-size:1rem"><svg class="icon"><use href="#icon-globe"></use></svg></span>
+    <span><span style="display:block;color:var(--sky2)">HABITABILITY VISUALIZER</span>
+    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Calculate habitable zones for any star type</span></span>
+  </button>
 </div>
+
+<!-- ══════════════ HELP MODAL ══════════════ -->
+<div id="modal-help">
+  <div class="mpanel" style="width:min(90vw,540px);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">
+    <h2><svg class="icon" style="width:1.2em;height:1.2em;margin-right:8px"><use href="#icon-help"></use></svg>HELP</h2>
+    
+    <div id="help-content" style="flex:1;overflow-y:auto;font-size:.7rem;line-height:1.6;color:var(--ink3);font-family:'JetBrains Mono',monospace">
+      <!-- Help content will be populated by JavaScript -->
+    </div>
+
+    <div class="modal-footer" style="justify-content:center;margin-top:16px">
+      <button class="mf-btn ok" onclick="closeHelpModal()" ontouchend="event.stopPropagation();closeHelpModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ HABITABILITY VISUALIZER MODAL ══════════════ -->
+<div id="modal-habitability" style="
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(10,10,12,.88); backdrop-filter: blur(12px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .25s; padding: 16px;
+">
+  <div class="mpanel" style="width:min(90vw,620px);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0;font-size:1.3rem">Habitability Visualizer</h2>
+      <button id="hab-close-btn" onclick="closeHabitabilityVisualizer()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--ink3)">✕</button>
+    </div>
+    <div id="hab-step-body">
+      <div style="color:var(--sky2);font-size:.85rem;margin-bottom:8px">STEP 1: Select a Star or Body</div>
+      <div id="hab-body-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;max-height:200px;overflow-y:auto;padding:8px;background:rgba(0,0,0,.15);border-radius:6px;border:1px solid var(--rim2)"></div>
+    </div>
+    <div id="hab-step-type" style="display:none;gap:12px;flex-direction:column">
+      <div>
+        <div style="color:var(--sky2);font-size:.85rem;margin-bottom:8px">STEP 2: Select Star Type for <span id="hab-selected-body" style="color:var(--ac1)"></span></div>
+        <div id="hab-type-list" style="display:flex;flex-direction:column;gap:1px;max-height:280px;overflow-y:auto;background:rgba(0,0,0,.15);border-radius:6px;border:1px solid var(--rim2)"></div>
+      </div>
+      <button onclick="document.getElementById('hab-step-type').style.display='none';document.getElementById('hab-step-body').style.display='block'" style="padding:8px;background:var(--panel2);border:1px solid var(--rim2);border-radius:4px;cursor:pointer;color:var(--ink2);transition:all .15s">← Back to Body Selection</button>
+    </div>
+    <div id="hab-step-results" style="display:none;gap:12px;flex-direction:column">
+      <div style="background:rgba(0,0,0,.15);border-radius:6px;padding:12px;border-left:3px solid var(--ac1)">
+        <div style="font-size:.85rem;color:var(--sky2);margin-bottom:6px">STAR</div>
+        <div id="hab-star-type" style="font-weight:bold;margin-bottom:4px"></div>
+        <div style="font-size:.9rem;display:flex;justify-content:space-between;gap:16px;margin:8px 0">
+          <div>Temp: <span id="hab-star-temp" style="color:var(--ac1)"></span></div>
+          <div>Luminosity: <span id="hab-star-lum" style="color:var(--ac1)"></span></div>
+        </div>
+        <div id="hab-star-desc" style="font-size:.85rem;color:var(--ink3);margin-top:6px"></div>
+        <div id="hab-difficulty-note" style="font-size:.8rem;color:var(--sky2);margin-top:8px;font-style:italic;display:none"></div>
+      </div>
+      <div style="background:rgba(100,200,100,.1);border-radius:6px;padding:12px;border-left:3px solid #66ff66">
+        <div style="font-size:.85rem;color:var(--sky2);margin-bottom:8px">HABITABLE ZONE</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:.9rem">
+          <div><div style="color:var(--ink4);font-size:.8rem;margin-bottom:2px">Inner Edge</div><div style="color:var(--ac1);font-weight:bold" id="hab-hz-inner"></div></div>
+          <div><div style="color:var(--ink4);font-size:.8rem;margin-bottom:2px">Center</div><div style="color:var(--sky);font-weight:bold" id="hab-hz-center"></div></div>
+          <div><div style="color:var(--ink4);font-size:.8rem;margin-bottom:2px">Outer Edge</div><div style="color:var(--ac1);font-weight:bold" id="hab-hz-outer"></div></div>
+        </div>
+      </div>
+      <div style="background:rgba(0,0,0,.15);border-radius:6px;padding:12px;border-left:3px solid var(--sky)">
+        <div style="font-size:.85rem;color:var(--sky2);margin-bottom:6px">BODY</div>
+        <div style="font-weight:bold;margin-bottom:4px"><span id="hab-body-name"></span></div>
+        <div style="font-size:.9rem">Semi-Major Axis: <span id="hab-body-sma" style="color:var(--sky)"></span></div>
+      </div>
+      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:16px;text-align:center;border:1px solid var(--rim2)">
+        <div style="font-size:.85rem;color:var(--ink4);margin-bottom:8px">HABITABILITY ASSESSMENT</div>
+        <div id="hab-assessment" style="font-size:1.1rem;font-weight:bold;padding:8px;border-radius:4px;background:rgba(100,100,100,.2)"></div>
+      </div>
+      <div style="background:rgba(0,0,0,.15);border-radius:6px;padding:8px;border:1px solid var(--rim2);text-align:center">
+        <canvas id="hab-canvas" width="500" height="300" style="max-width:100%;border-radius:4px;background:rgba(0,0,0,.3)"></canvas>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('hab-step-results').style.display='none';document.getElementById('hab-step-type').style.display='block'" style="flex:1;padding:10px;background:var(--panel2);border:1px solid var(--rim2);border-radius:4px;cursor:pointer;color:var(--ink2);transition:all .15s">← Back to Star Selection</button>
+        <button onclick="closeHabitabilityVisualizer()" style="flex:1;padding:10px;background:var(--ac15);border:1px solid var(--ac1);border-radius:4px;cursor:pointer;color:var(--ac1);font-weight:bold;transition:all .15s">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+#modal-habitability.open { opacity: 1; pointer-events: all; }
+.hab-body-btn { padding:8px 12px; background:var(--panel3); border:1px solid var(--rim2); border-radius:4px; color:var(--ink2); cursor:pointer; transition:all 0.15s; font-size:0.9rem; }
+.hab-body-btn:hover { background:var(--ac15); border-color:var(--ac1); color:var(--ac1); transform:scale(1.02); }
+.hab-type-btn { padding:10px 12px; background:var(--panel3); border:1px solid var(--rim2); border-left:3px solid; color:var(--ink2); cursor:pointer; transition:all 0.15s; text-align:left; font-size:0.95rem; width:100%; }
+.hab-type-btn:hover { background:var(--ac15); border-color:var(--ac1); color:var(--ac1); transform:translateX(4px); }
+</style>
+
 <input type="file" id="img-file-input" accept="image/*" multiple style="display:none">
 
 <!-- ══════════════ IMAGE OVERLAY PANEL ══════════════ -->

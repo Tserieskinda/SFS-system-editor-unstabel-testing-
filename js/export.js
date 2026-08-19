@@ -90,38 +90,45 @@ function exportSystem(){
   if(bodyEntries.length === 0){ alert('No bodies to export!'); return; }
 
   // ── Space Centre validation ──
+  // Any body in the system is an acceptable launch site — the only failure
+  // case is the configured address not existing in this system at all
+  // (e.g. still defaulted to "Earth" in a system that has no Earth).
   const scAddr = systemSettings.spaceCenterData?.address;
   const scBodyExists = scAddr && bodies[scAddr];
-  const scBodyHasSurface = scBodyExists && bodies[scAddr].data.TERRAIN_DATA?.TERRAIN_TEXTURE_DATA?.collider !== false;
   if(!scBodyExists){
-    const go = confirm(
-      `⚠️ Space Centre Warning\n\n` +
-      `Launch body "${scAddr||'(none)'}" is not in this system.\n` +
-      `Players won't be able to launch from a planet.\n\n` +
-      `Set a valid launch body in ⚙ SYSTEM settings, or tap OK to export anyway.`
-    );
-    if(!go) return;
-  } else if(bodies[scAddr].data.BASE_DATA?.collider === false || bodies[scAddr].preset === 'star' || bodies[scAddr].preset === 'blackhole'){
-    const go = confirm(
-      `⚠️ Space Centre Warning\n\n` +
-      `"${scAddr}" may not be a valid launch pad (star, black hole, or no collider).\n` +
-      `Players may be unable to launch.\n\n` +
-      `Tap OK to export anyway.`
-    );
-    if(!go) return;
+    scPickerOpen(scAddr, () => exportSystem());
+    return;
   }
 
+  _exportSystemProceed();
+}
+
+function _exportSystemProceed(){
+  const bodyEntries = Object.entries(bodies);
   const centerName = Object.keys(bodies).find(n => bodies[n].isCenter) || 'System';
   const customFolder = (document.getElementById('sys-foldername')?.value || '').trim().replace(/[\\/:*?"<>|]/g,'');
   const sysName = customFolder || centerName;
   const enc = str => new TextEncoder().encode(str);
 
   function dataUrlToBytes(dataUrl){
-    const b64 = dataUrl.split(',')[1];
-    const bin = atob(b64);
-    const out = new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
-    return out;
+    if(!dataUrl || typeof dataUrl !== 'string'){
+      console.warn('[SFS|EXPORT] Invalid data URL');
+      return new Uint8Array(0);
+    }
+    try {
+      const b64 = dataUrl.split(',')[1];
+      if(!b64){
+        console.warn('[SFS|EXPORT] Could not extract base64 from data URL');
+        return new Uint8Array(0);
+      }
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+      return out;
+    } catch(e) {
+      console.error('[SFS|EXPORT] Failed to convert data URL to bytes:', e.message);
+      return new Uint8Array(0);
+    }
   }
 
   const zipFiles = {};
@@ -266,17 +273,53 @@ function exportSystem(){
   // Build and download
   try{
     const zipped = buildZip(zipFiles);
-    const blob = new Blob([zipped], {type:'application/zip'});
+    console.log(`[SFS|EXPORT] ZIP built successfully: ${zipped.length} bytes`);
+    
+    let blob, objectUrl;
+    try {
+      blob = new Blob([zipped], {type:'application/zip'});
+      objectUrl = URL.createObjectURL(blob);
+    } catch(blobErr) {
+      console.error('[SFS|EXPORT] Failed to create Blob/ObjectURL:', blobErr.message);
+      alert('Export failed: Browser cannot create download (storage quota or permission issue).\n\nTry clearing browser cache or use a different browser.');
+      return;
+    }
+    
+    // Create download link
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = objectUrl;
     a.download = sysName + '.zip';
+    
+    // Append to body — required for some browsers (Safari, iOS)
     document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
+    
+    // Trigger download with error handling
+    try {
+      a.click();
+      console.log(`[SFS|EXPORT] System exported successfully: ${sysName}.zip (${blob.size} bytes)`);
+    } catch(clickErr) {
+      console.error('[SFS|EXPORT] Click failed:', clickErr.message);
+      alert('Export click failed. Your browser may not support programmatic downloads.\n\nTry using a different browser or check if downloads are blocked.');
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+    
+    // Delay cleanup to ensure browser processes the download
+    // Some browsers (iOS Safari, older Edge) need time after click before element removal
+    setTimeout(() => {
+      try {
+        if(a.parentNode === document.body) document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
+      } catch(cleanupErr) {
+        // Silent fail on cleanup — download already initiated
+        console.warn('[SFS|EXPORT] Cleanup warning (download likely succeeded):', cleanupErr.message);
+      }
+    }, 100);
+    
   } catch(err){
-    console.error('Export error:', err);
-    alert('Export failed: ' + err.message);
+    console.error('[SFS|EXPORT] Export error:', err);
+    alert('Export failed: ' + err.message + '\n\nTry another browser or check console for details.');
   }
 }
 

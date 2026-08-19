@@ -191,8 +191,8 @@ function exitDragOrbitMode(){
   const btn = document.getElementById('btn-tools');
   if(btn){
     btn.innerHTML = '<svg class="icon"><use href="#icon-wrench"></use></svg>';
-    btn.style.borderColor = 'rgba(255,180,80,.35)';
-    btn.style.color = '#ffb850';
+    btn.style.borderColor = '';
+    btn.style.color = '';
     btn.style.background = '';
     btn.onclick = toggleToolsDropdown;
     btn.title = 'Tools';
@@ -1815,7 +1815,13 @@ function groupSelDeleteAll(){
   const total = toDelete.size;
   if(!confirm(`Delete ${total} bod${total===1?'y':'ies'}?`)) return;
   pushUndo();
+  const texturesToCheck = [...toDelete]
+    .map(n => bodies[n]?.data?.FRONT_CLOUDS_DATA?.cloudsTexture)
+    .filter(Boolean);
   toDelete.forEach(n => delete bodies[n]);
+  if(typeof _dncCleanupOrphanTexture === 'function'){
+    texturesToCheck.forEach(tex => _dncCleanupOrphanTexture(tex, null));
+  }
   exitGroupSelect();
   drawViewport();
   if(typeof updateStatusBar === 'function') updateStatusBar();
