@@ -1853,7 +1853,43 @@ function _drawViewportNow(){
     // This prevents over-sampling small bodies beyond the game's own resolution.
     const _vsRaw = b.data.TERRAIN_DATA?.verticeSize;
     const _vs = (_vsRaw > 0) ? _vsRaw : 2.0; // default 2m matches game default
-    const _vsMaxN = Math.max(90, Math.floor(2 * Math.PI * (bodyRadius_m * radiusMult) / _vs));
+
+    // ── Visible arc — computed once, shared by all terrain draw calls for this body ──
+    // Only meaningful when the planet is large on screen (physR_px > 200); below that
+    // the overhead of arc computation exceeds the savings from culling.
+    // Disabled for small bodies (radius < 15000m) — at that scale the full circle
+    // is cheap and arc-culling artifacts are visually prominent.
+    // Computed BEFORE the vertex cap below so a tight arc can also tighten that cap
+    // (see _vsMaxN comment) — moved up from its previous spot after terrN.
+    const _canArcCull = envFlags.heightmaps && physR_px > 200 && (bodyRadius_m * radiusMult) >= 15000;
+    const _arcInfo = _canArcCull
+      ? (() => {
+          const _dispR_px = Math.max(r, physR_px);
+          const _r_m = Math.max(1, bodyRadius_m * radiusMult);
+          // Pad the bounding circle by max terrain height so irregular bodies
+          // (large asteroids etc.) don't get their bumps wrongly culled —
+          // same reasoning as the game's own Radius+maxTerrainHeight bounding
+          // in DynamicChunk. Without this, arc culling assumes a perfect
+          // circle and can clip terrain that actually pokes onto screen.
+          const _maxH_m = _getMaxTerrainHeight(name, b, _r_m);
+          const _paddedR_px = _dispR_px * (_r_m + _maxH_m) / _r_m;
+          return _computeVisibleArc(sp, _paddedR_px, W, H);
+        })()
+      : null;
+
+    // Hard physics cap: game never places vertices closer than verticeSize metres apart.
+    //   maxN = floor(2π × radius_m / verticeSize)
+    // This prevents over-sampling small bodies beyond the game's own resolution.
+    //
+    // BUT: for a large body with only a small arc visible (deeply zoomed in), capping
+    // by the FULL circumference is nearly meaningless — e.g. a 500km-radius asteroid
+    // at the default 2m verticeSize gives a ~1.57M vertex ceiling regardless of how
+    // much is actually on screen, doing nothing to bound the real worst case. When
+    // arc-culled, cap by the VISIBLE ARC's own physical length instead — that's the
+    // actual amount of terrain the game would ever need this much detail for at once.
+    const _vsMaxN = (_arcInfo && !_arcInfo.fullCircle)
+      ? Math.max(90, Math.floor((_arcInfo.arcEnd - _arcInfo.arcStart) * (bodyRadius_m * radiusMult) / _vs))
+      : Math.max(90, Math.floor(2 * Math.PI * (bodyRadius_m * radiusMult) / _vs));
     // Screen-based N: 2 vertices per pixel around the circumference.
     // Quantise to multiples of 360 at high zoom (stable cache keys, divisible by common angles),
     // multiples of 90 at low zoom (small bodies where cache thrash matters more than precision).
@@ -1870,27 +1906,6 @@ function _drawViewportNow(){
     const hasWater = !!(b.data.WATER_DATA?.lowerTerrain && b.data.WATER_DATA?.oceanMaskTexture
                         && b.data.WATER_DATA.oceanMaskTexture !== 'None');
     const terrainDrawThreshold = hasWater ? 80 : 6;
-
-    // ── Visible arc — computed once, shared by all terrain draw calls for this body ──
-    // Only meaningful when the planet is large on screen (physR_px > 200); below that
-    // the overhead of arc computation exceeds the savings from culling.
-    // Disabled for small bodies (radius < 15000m) — at that scale the full circle
-    // is cheap and arc-culling artifacts are visually prominent.
-    const _canArcCull = envFlags.heightmaps && physR_px > 200 && (bodyRadius_m * radiusMult) >= 15000;
-    const _arcInfo = _canArcCull
-      ? (() => {
-          const _dispR_px = Math.max(r, physR_px);
-          const _r_m = Math.max(1, bodyRadius_m * radiusMult);
-          // Pad the bounding circle by max terrain height so irregular bodies
-          // (large asteroids etc.) don't get their bumps wrongly culled —
-          // same reasoning as the game's own Radius+maxTerrainHeight bounding
-          // in DynamicChunk. Without this, arc culling assumes a perfect
-          // circle and can clip terrain that actually pokes onto screen.
-          const _maxH_m = _getMaxTerrainHeight(name, b, _r_m);
-          const _paddedR_px = _dispR_px * (_r_m + _maxH_m) / _r_m;
-          return _computeVisibleArc(sp, _paddedR_px, W, H);
-        })()
-      : null;
 
     // ── Step 1: Base fill — terrain polygon or icon gradient ─────────────────
     {
@@ -4208,13 +4223,20 @@ function _getTerrainSamples(bodyName, b, radius_m, N, arcInfo) {
   const arcKey = `${bodyName}|${radius_m.toFixed(0)}|${viewDiffKey}|arc|${N}|${snapS.toFixed(4)}|${snapE.toFixed(4)}|${fHash}`;
   if (_terrainSampleCache[arcKey]) return _terrainSampleCache[arcKey];
 
-  // Determine which of the N full-circle indices fall inside the visible arc
+  // Determine which of the N full-circle indices fall inside the visible arc.
+  // Generated directly at the arc's own vertex count rather than iterating
+  // all N full-circle angles and filtering — when zoomed in close on a large
+  // body, N (the full-circle count) can be enormous even though the visible
+  // arc fraction is tiny, making the filter-from-N approach the dominant
+  // cost. Same resulting density: arcVertexCount ≈ N·(arcSpan/2π), so
+  // spacing between consecutive arc angles works out to ≈2π/N either way —
+  // this only skips generating and testing the ~N - arcVertexCount angles
+  // that would've been thrown away.
   const arcSpan = snapE - snapS; // > 0, < 2π
-  const arcAngles = [];
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * TWO_PI;
-    const d = ((a - snapS) % TWO_PI + TWO_PI) % TWO_PI;
-    if (d <= arcSpan) arcAngles.push(a);
+  const arcVertexCount = Math.max(1, Math.ceil(N * arcSpan / TWO_PI));
+  const arcAngles = new Array(arcVertexCount);
+  for (let i = 0; i < arcVertexCount; i++) {
+    arcAngles[i] = snapS + (i / arcVertexCount) * arcSpan;
   }
 
   if (arcAngles.length === 0) {
