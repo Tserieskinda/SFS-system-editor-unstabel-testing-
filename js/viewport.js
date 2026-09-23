@@ -132,6 +132,29 @@ function _syncDistRingsBtn(){
   btn.style.background = on ? 'rgba(120,200,255,.1)' : '';
 }
 
+// ── Habitable-zone viewport overlay ─────────────────────────────────────────
+// Toggled independently of the HZ Visualizer modal — the modal is the control
+// panel (pick star / spectral type / luminosity override), this is the
+// always-on-canvas gradient rendering of whatever the modal last computed.
+// Reading from localStorage (rather than requiring the modal to be open)
+// means the band persists across sessions and doesn't depend on the modal's
+// DOM existing, since drawViewport can run before the user ever opens Utils.
+function toggleHZBand(){
+  const on = localStorage.getItem('sfs_hz_band') === '1';
+  localStorage.setItem('sfs_hz_band', on ? '0' : '1');
+  _syncHZBandBtn();
+  drawViewport();
+}
+
+function _syncHZBandBtn(){
+  const btn = document.getElementById('btn-hz-band');
+  if(!btn) return;
+  const on = localStorage.getItem('sfs_hz_band') === '1';
+  btn.style.opacity    = on ? '1' : '0.4';
+  btn.style.background = on ? 'rgba(255,140,90,.1)' : '';
+}
+document.addEventListener('DOMContentLoaded', _syncHZBandBtn);
+
 // ── Distance ring scale presets ────────────────────────────────────────────────
 // Each preset defines a named scale and its ring values in AU.
 // LY values are stored as AU (1 LY = 63241 AU) so the renderer is unchanged.
@@ -739,6 +762,17 @@ function drawViewport(){
   _drawPending = true;
   requestAnimationFrame(() => { _drawPending = false; _drawViewportNow(); });
 }
+
+// Terrain rendering: arc culling (only evaluate/build the visible slice of
+// terrain) is now always on — it was previously an opt-in "Optimized" mode
+// behind a quality toggle while a close-zoom silhouette bug was tracked
+// down (see _getTerrainSamples' arcVertexCount history). That bug is fixed;
+// arc culling is the only mode now, so the quality toggle, the vertex-
+// density (%) slider, and the dev diagnostics overlay have been removed.
+// A known rare edge case remains (extreme radius + shallow local terrain +
+// deep zoom can hit float32 precision limits in the canvas transform,
+// producing blocky terrain) — accepted for now, not fixed.
+
 // ── Post-processing helpers (mirrors SFS PostProcessingModule.Evaluate + SetAmbient) ──
 function _lerpPPKey(a, b, t){
   const L = (x,y) => x + (y-x)*t;
@@ -885,10 +919,117 @@ function _applyPostProcessingOverlay(ctx, w, h, key){
 function _clearPostProcessingFilter(){
   if(vp) vp.style.filter = '';
 }
+// Day/night carrier detection — shared with tools.js hit-testing (selectBody/
+// zoomToBody click paths) so these physically-tiny invisible carrier bodies
+// (named e.g. "DN", "DayNightCycle", "Day and Night", or auto-named
+// "<parent>_DayNight" by the DN tool) are never the thing a click/double-click
+// resolves to instead of the real planet they orbit. Kept at module scope
+// (not inside _drawViewportNow) precisely so it's one definition used
+// everywhere this needs to be checked, rather than drifting copies.
+const DN_CARRIER_NAME_RE = /(?:^|[^a-z0-9])(d[\s_-]?n|day[\s_-]?(?:and[\s_-]?)?night(?:[\s_-]?cycle)?)(?:[^a-z0-9]|$)/i;
+function isDayNightCarrier(n){
+  if(bodies[n]?.preset === 'dayNightCycle') return true;
+  return DN_CARRIER_NAME_RE.test(n);
+}
+
+// Per-body effective detail fraction (0-1), combining three independent
+// inputs into the one number every terrain/texture-resolution read below
+// actually uses:
+//   1. window.terrainDetail — the user's own manual baseline slider (0-100)
+//   2. drawViewport._adaptiveDetail — the FPS-driven multiplier computed at
+//      the top of _drawViewportNow (backs off automatically when frames are
+//      coming in slow, recovers when they're fast again)
+//   3. Selected-body priority — the currently selected body always renders
+//      at full detail (both 1 and 2 above are bypassed for it entirely) so
+//      the one body the user is actually looking at/editing never degrades,
+//      even while every other visible body is being scaled back to keep
+//      the frame rate up.
+// Called once per body per detail-consuming site, so it stays cheap (a
+// couple of property reads and a comparison) rather than doing anything
+// expensive here.
+function _effectiveDetailFrac(name){
+  // Priority applies to whichever body the user is actually focused on right
+  // now: the sidebar-selected body normally, or — during a double-click zoom
+  // transition specifically — the zoom target, even before selectBody() (if
+  // ever) catches up to it. Both cases mean "this is the one body the user
+  // is looking at/about to look at", so both get full detail.
+  if(typeof selectedBody !== 'undefined' && name === selectedBody) return 1;
+  if(window._zoomTransitionFocus === name) return 1;
+  const manual = (typeof window !== 'undefined' && window.terrainDetail != null)
+    ? window.terrainDetail / 100 : 1;
+  const adaptive = (drawViewport._adaptiveDetail != null) ? drawViewport._adaptiveDetail : 1;
+  return manual * adaptive;
+}
+
+// -- Large-scene fast paths ---------------------------------------------------
+// Once more than this many bodies are being drawn in one frame, plain icon-only
+// bodies switch to a cheaper (flat-fill) icon, labels are thinned so they don't
+// pile up, and tiny SOI circles use fewer segments. Scenes at or below the
+// threshold render exactly as before.
+const FAST_ICON_BODY_THRESHOLD = 200;
+
+// A "plain icon" carries none of the per-body data that the full draw pipeline
+// exists to render (terrain, atmosphere, clouds, rings, water, landmarks) and is
+// not a star/black hole/barycentre, so the only thing the full pipeline would
+// draw for it is the icon disc, selection rings and label.
+function _isPlainIconBody(b){
+  if(b.isCenter) return false;
+  const p = b.preset;
+  if(p === 'star' || p === 'blackhole' || p === 'barycentre') return false;
+  const d = b.data;
+  return !(d.TERRAIN_DATA || d.ATMOSPHERE_PHYSICS_DATA || d.ATMOSPHERE_VISUALS_DATA ||
+           d.FRONT_CLOUDS_DATA || d.RINGS_DATA || d.WATER_DATA ||
+           (d.LANDMARKS && d.LANDMARKS.length));
+}
+
 function _drawViewportNow(){
-  // Per-frame terrain clip path cache — cleared each frame so stale Path2D
-  // objects from previous zoom/pan positions don't leak across frames.
-  for (const k of Object.keys(_terrainClipCache)) delete _terrainClipCache[k];
+  // ── Adaptive detail: measure real frame-to-frame time and back off the
+  // shared detail baseline when frames are coming in slow, recover when
+  // they're fast again. Only samples while draws are actually happening
+  // (pan/zoom/animation) — idle periods between draws don't fire this and
+  // the last resolved value just holds, which is the right behavior since
+  // there's no rendering work to be slow at when nothing's being drawn.
+  (function _sampleAdaptiveDetail(){
+    const now = performance.now();
+    const last = drawViewport._lastFrameT;
+    drawViewport._lastFrameT = now;
+    if(last == null) return; // first frame this session — nothing to compare yet
+    const dt = now - last;
+    // Ignore gaps that are clearly "was idle, not actually slow" — e.g. the
+    // first frame after minutes of no interaction shouldn't read as a stall.
+    if(dt <= 0 || dt > 500) return;
+    const fps = 1000 / dt;
+    if(!drawViewport._fpsHistory) drawViewport._fpsHistory = [];
+    const hist = drawViewport._fpsHistory;
+    hist.push(fps);
+    if(hist.length > 20) hist.shift(); // ~last 20 drawn frames, not wall-clock time
+    const avgFps = hist.reduce((a,b)=>a+b, 0) / hist.length;
+
+    // Target window: above 50fps we're comfortable and drift detail back up;
+    // below 30fps we're visibly stuttering and back detail off. Between the
+    // two, hold steady rather than hunting — avoids oscillating every frame
+    // right at the boundary.
+    if(drawViewport._adaptiveDetail == null) drawViewport._adaptiveDetail = 1;
+    const FPS_LOW = 30, FPS_HIGH = 50;
+    const STEP = 0.03; // per-frame nudge — reaches full range over ~1-2s of sustained low/high fps, not an instant jump
+    if(avgFps < FPS_LOW){
+      drawViewport._adaptiveDetail = Math.max(0.2, drawViewport._adaptiveDetail - STEP);
+    } else if(avgFps > FPS_HIGH){
+      drawViewport._adaptiveDetail = Math.min(1, drawViewport._adaptiveDetail + STEP);
+    }
+  })();
+
+  // NOTE: _terrainClipCache is intentionally NOT cleared here. Its cache key
+  // (bodyName|N|radius_m|arcKey — see _getUnitTerrainPath) already excludes
+  // screen position and zoom level by design: paths are built in unit-radius
+  // space and placed via translate+scale at draw time, so a cached Path2D
+  // stays valid across camera movement and only needs rebuilding when N or
+  // the visible arc genuinely changes. Wiping the whole cache every frame
+  // defeated that entirely — every visible terrain body's Path2D (often
+  // thousands of lineTo calls for a large planet) was being rebuilt from
+  // scratch on every single frame, which was the dominant cost of the
+  // zoom/pan stutter. The cache is still bounded (300-entry eviction) and
+  // still explicitly invalidated on real changes via invalidateTerrainCache().
   // Self-heal: if canvas has no size, set it now
   if(!vp.width || !vp.height){
     vp.width  = window.innerWidth;
@@ -923,11 +1064,20 @@ function _drawViewportNow(){
 
   const names = Object.keys(bodies);
   if(names.length === 0) return;
+  // Computed once and reused everywhere below — was a separate names.find()
+  // linear scan in 3 different places every frame (distance rings, the
+  // habitable-zone band, and the post-processing pass).
+  const _centerBodyName = names.find(n => bodies[n].isCenter);
 
   // ── STEP 1: compute all world positions (centre = origin) ──
   // Multi-pass so moons (children of planets) resolve correctly
   // Reset the module-level position map for this frame
-  Object.keys(bodyWorldPos).forEach(k => delete bodyWorldPos[k]);
+  // Reassigning a fresh object is faster than deleting keys one at a time
+  // (delete-heavy mutation forces V8 to de-optimize the object's hidden
+  // class every frame). Safe because every reader (sidebar.js, tools.js,
+  // and the rest of this file) reads the current value of the module-level
+  // `bodyWorldPos` binding, not a captured reference to the old object.
+  bodyWorldPos = {};
   // Seed center at origin; bodies with no orbit data also sit at origin
   names.forEach(n => { if(bodies[n].isCenter || !bodies[n].data.ORBIT_DATA) bodyWorldPos[n] = {x:0, y:0}; });
   // Also seed any parent name that's referenced but not in bodies (e.g. 'Sun' fallback)
@@ -974,7 +1124,9 @@ function _drawViewportNow(){
     const b = bodies[name];
     const od = b.data.ORBIT_DATA;
 
-    // Center: always fully visible
+    // Center: always fully visible (also exempt from zoom-transition culling
+    // below — keeping the star/anchor visible during a zoom avoids a
+    // disorienting "everything but the sun vanished" flash)
     if(b.isCenter || !od){
       bodyVisible[name]=true; bodyFadeVal[name]=1; labelFadeVal[name]=1; return;
     }
@@ -988,6 +1140,20 @@ function _drawViewportNow(){
     bodyVisible[name]  = f > 0;
     bodyFadeVal[name]  = f;
     labelFadeVal[name] = lf;
+
+    // During a zoomToBody() pan/zoom transition, cull every body except the
+    // one being zoomed to. This avoids repeatedly rebuilding per-body caches
+    // (atmosphere polar disc, water overlay, surface pixel samples) for every
+    // OTHER visible body on every animation frame while vpZ sweeps through
+    // multiple cache-bucket boundaries — that repeated rebuild across many
+    // bodies, every frame, for ~300ms is what caused the double-click-to-zoom
+    // stutter on large systems. Only the target body still needs to render at
+    // full fidelity throughout the transition; everything else reappears
+    // instantly once _zoomTransitionFocus is cleared at animation end.
+    if(window._zoomTransitionFocus && name !== window._zoomTransitionFocus){
+      bodyVisible[name] = false;
+      return;
+    }
 
     // Front-cloud decorator exemption: bodies whose only job is to paint a
     // FRONT_CLOUDS_DATA disc over their parent (day/night terminators, city
@@ -1024,7 +1190,7 @@ function _drawViewportNow(){
     // Only create the temp canvas when there's a cache miss
     let tmp = null, tc = null;
     names.forEach(name => {
-      const colorStr = bodies[name].color.split(',')[0].trim();
+      const colorStr = (bodies[name].color || '#aaaaaa,#555555').split(',')[0].trim();
       if(!drawViewport._orbitRGBCache[colorStr]){
         if(!tmp){ tmp = document.createElement('canvas'); tmp.width=1; tmp.height=1; tc = tmp.getContext('2d'); }
         tc.clearRect(0,0,1,1); tc.fillStyle = colorStr; tc.fillRect(0,0,1,1);
@@ -1038,6 +1204,17 @@ function _drawViewportNow(){
   // Additive compositing — overlapping orbits brighten naturally
   ctx2.save();
   ctx2.globalCompositeOperation = 'lighter';
+
+  // Batch orbit lines that share the same stroke style (color + line width +
+  // quantized alpha) into one Path2D, stroked once per bucket instead of
+  // once per body. Canvas draw-call overhead (state changes + submission)
+  // dominates over raw path cost once there are many bodies — asteroid
+  // belts especially, where most bodies already share the exact same preset
+  // color, collapsing hundreds of stroke() calls into a handful of buckets.
+  // Alpha is quantized to steps of 1/48 (~0.021) — far finer than
+  // perceptible for a translucent orbit line — so bodies at slightly
+  // different fade levels still land in the same bucket.
+  const _orbitBuckets = new Map(); // "cr,cg,cb|lineWidth|quantizedAlpha" -> {path, rgb, lineWidth, alpha}
 
   names.forEach(name => {
     const b = bodies[name];
@@ -1066,16 +1243,23 @@ function _drawViewportNow(){
     const isSelected = selectedBody === name;
     const [cr,cg,cb] = orbitRGB[name];
     const alpha = isSelected ? Math.min(1, 0.8 * fade) : Math.min(1, 0.22 * fade);
+    const lineWidth = isSelected ? 2 : 1;
 
-    ctx2.save();
-    ctx2.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-    ctx2.lineWidth = isSelected ? 2 : 1;
-    ctx2.beginPath();
+    const qa = Math.round(alpha * 48) / 48;
+    const key = cr+','+cg+','+cb+'|'+lineWidth+'|'+qa;
+    let bucket = _orbitBuckets.get(key);
+    if(!bucket){
+      bucket = { path: new Path2D(), cr, cg, cb, lineWidth, alpha: qa };
+      _orbitBuckets.set(key, bucket);
+    }
+    const path = bucket.path;
 
     if(rxS > diagPx * 0.5) {
       // Zoomed in: ellipse is larger than viewport.
-      // ctx2.ellipse() on a giant arc is slow because the browser bezier-approximates
+      // A giant-arc ellipse() is slow because the browser bezier-approximates
       // the full curve. Instead: manually tessellate ONLY the visible arc window.
+      // Computed in absolute screen coordinates so it drops straight into a
+      // shared batched path regardless of which body it belongs to.
 
       // Direction from ellipse centre toward viewport centre, in ellipse-local space
       const cosRot = Math.cos(-g.angle), sinRot = Math.sin(-g.angle);
@@ -1099,18 +1283,23 @@ function _drawViewportNow(){
         const ey = ryS * Math.sin(t);
         const sx = sc.x + ex * cosG - ey * sinG;
         const sy = sc.y + ex * sinG + ey * cosG;
-        i === 0 ? ctx2.moveTo(sx, sy) : ctx2.lineTo(sx, sy);
+        i === 0 ? path.moveTo(sx, sy) : path.lineTo(sx, sy);
       }
     } else {
-      // Small enough — native ellipse is fast and smooth
-      ctx2.translate(sc.x, sc.y);
-      ctx2.rotate(g.angle);
-      ctx2.ellipse(0, 0, rxS, ryS, 0, 0, Math.PI * 2);
+      // Small enough — native ellipse() is fast and smooth. Its own rotation
+      // parameter replaces the old per-body translate+rotate+ellipse(0,0,...),
+      // since a shared batched path can't carry a per-body context transform —
+      // each body's ellipse must already be positioned/rotated in absolute
+      // coordinates when added to the path.
+      path.ellipse(sc.x, sc.y, rxS, ryS, g.angle, 0, Math.PI * 2);
     }
-
-    ctx2.stroke();
-    ctx2.restore();
   });
+
+  for(const {path, cr, cg, cb, lineWidth, alpha} of _orbitBuckets.values()){
+    ctx2.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+    ctx2.lineWidth = lineWidth;
+    ctx2.stroke(path);
+  }
 
   ctx2.restore(); // end lighter composite
 
@@ -1121,7 +1310,7 @@ function _drawViewportNow(){
     // Determine ring centre: prefer selected body, fall back to system centre
     const _ringBodyName = (typeof selectedBody !== 'undefined' && selectedBody && bodies[selectedBody])
       ? selectedBody
-      : names.find(n => bodies[n].isCenter);
+      : _centerBodyName;
     if(_ringBodyName){
       const _rWP = bodyWorldPos[_ringBodyName] || {x:0, y:0};
       const _cSP = worldToScreen(_rWP.x, _rWP.y);
@@ -1175,8 +1364,94 @@ function _drawViewportNow(){
   }
   // ── End distance rings ────────────────────────────────────────────────────
 
+  // ── Habitable-zone gradient band (Universe Sandbox style) ───────────────
+  // Draws concentric red→green→blue color bands around the star, using the
+  // same inverse-square-law HZ math as the Habitability Visualizer modal
+  // (js/utils.js: _hzGetViewportZone / HZ_FLUX_INNER / HZ_FLUX_OUTER).
+  // Rendered as three overlapping radial gradients rather than hard-edged
+  // rings so the transition reads as a continuous temperature gradient
+  // (too-hot → habitable → too-cold), matching the "soft glow" look of
+  // Universe Sandbox's HZ overlay rather than a technical diagram ring.
+  if(localStorage.getItem('sfs_hz_band') === '1' && typeof _hzGetViewportZone === 'function'){
+    const _hz = _hzGetViewportZone();
+    if(_hz && bodyWorldPos[_hz.starName]){
+      const _hzWP  = bodyWorldPos[_hz.starName];
+      const _hzSP  = worldToScreen(_hzWP.x, _hzWP.y);
+      // _hz.inner_m/outer_m are TRUE physical AU distances (inverse-square-law
+      // from the star's real luminosity) — i.e. they're already in "Realistic
+      // difficulty" terms, since Realistic scales the file's Normal-mode SMA
+      // up by the default 20x to approximate real-world distances (see
+      // _DEF_SMA_SCALE / effectiveSMA above). getSMAScale() converts
+      // *difficulty-scaled* (effectiveSMA) metres to px, matching where bodies
+      // actually render — so a physically-real HZ radius has to be brought
+      // into the current difficulty's terms first (i.e. divided back down out
+      // of the 20x Realistic scaling, then scaled up by whatever the current
+      // difficulty's own default multiplier is) before that conversion is
+      // valid. Without this, the band only lined up in Realistic mode (where
+      // this ratio is 1) and was oversized relative to actual planet
+      // positions in Normal/Hard. This only matches the *default* per-body
+      // scale, not a custom smaDifficultyScale override on a particular body.
+      const _hzDiffAdjust = (_DEF_SMA_SCALE[viewDiffKey] ?? 1) / _DEF_SMA_SCALE.Realistic;
+      const _hzScl = getSMAScale() * vpZ;
+      const _innerPx = _hz.inner_m * _hzDiffAdjust * _hzScl;
+      const _outerPx = _hz.outer_m * _hzDiffAdjust * _hzScl;
+      // Inner/outer glow radii — extend a bit past the HZ edges themselves so
+      // the red (too-hot) and blue (too-cold) zones are visually legible
+      // rather than clipping exactly at the boundary. Scaled relative to the
+      // band width so it looks proportional whether the HZ is a tight ring
+      // (hot O/B star) or a huge span (dim M dwarf).
+      const _bandWidth = Math.max(1, _outerPx - _innerPx);
+      const _hotEdgePx  = Math.max(1, _innerPx - _bandWidth * 0.6);
+      const _coldEdgePx = _outerPx + _bandWidth * 1.4;
 
-  const centerName2 = names.find(n => bodies[n].isCenter);
+      const _diagPx3 = Math.hypot(vp.width, vp.height);
+      if(_coldEdgePx > 8 && _hotEdgePx < _diagPx3 * 3){
+        ctx2.save();
+        // Fade the whole overlay in as it grows on-screen, same shape as the
+        // distance-rings fade, so it doesn't pop in harshly when zooming.
+        const _hzFadeIn = Math.min(1, Math.max(0, (_outerPx - 8) / 24));
+        ctx2.globalAlpha = _hzFadeIn * 0.55;
+        ctx2.globalCompositeOperation = 'screen'; // additive-ish glow over dark space bg
+
+        const grad = ctx2.createRadialGradient(_hzSP.x, _hzSP.y, 0, _hzSP.x, _hzSP.y, _coldEdgePx);
+        // Stops expressed as fractions of _coldEdgePx (the gradient's outer radius).
+        const _fracHot   = Math.min(0.98, _hotEdgePx  / _coldEdgePx);
+        const _fracInner = Math.min(0.98, _innerPx    / _coldEdgePx);
+        const _fracOuter = Math.min(0.99, _outerPx    / _coldEdgePx);
+        grad.addColorStop(0,                          'rgba(255,70,40,0.85)');   // near star: scorching red
+        grad.addColorStop(Math.max(0.001,_fracHot),   'rgba(255,140,40,0.35)'); // warming toward HZ
+        grad.addColorStop(Math.max(_fracHot+0.001,_fracInner), 'rgba(90,230,110,0.55)'); // HZ inner edge: green
+        grad.addColorStop((_fracInner+_fracOuter)/2,  'rgba(70,210,160,0.55)'); // HZ midpoint
+        grad.addColorStop(Math.max(_fracInner+0.001,_fracOuter), 'rgba(80,160,255,0.30)'); // HZ outer edge: cooling to blue
+        grad.addColorStop(1,                          'rgba(60,90,220,0)');     // fades to transparent
+
+        ctx2.fillStyle = grad;
+        ctx2.beginPath();
+        ctx2.arc(_hzSP.x, _hzSP.y, _coldEdgePx, 0, Math.PI * 2);
+        ctx2.fill();
+
+        ctx2.restore();
+
+        // Crisp boundary lines at the true inner/outer HZ edges — helps
+        // precisely place a planet even though the fill itself is a soft
+        // gradient. Faint, dashed, same visual language as distance rings.
+        if(_innerPx > 8){
+          ctx2.save();
+          ctx2.globalAlpha = _hzFadeIn * 0.5;
+          ctx2.strokeStyle = 'rgba(120,255,150,0.8)';
+          ctx2.setLineDash([3,5]);
+          ctx2.lineWidth = 1;
+          ctx2.beginPath(); ctx2.arc(_hzSP.x, _hzSP.y, _innerPx, 0, Math.PI*2); ctx2.stroke();
+          ctx2.beginPath(); ctx2.arc(_hzSP.x, _hzSP.y, _outerPx, 0, Math.PI*2); ctx2.stroke();
+          ctx2.restore();
+        }
+      }
+    }
+  }
+  // ── End habitable-zone band ──────────────────────────────────────────────
+
+
+  const centerName2 = _centerBodyName;
   const centerR_m = centerName2 ? ((bodies[centerName2].data.BASE_DATA||{}).radius || 1) : 1;
   const CENTER_PX = BODY_PX['star'];
 
@@ -1223,9 +1498,20 @@ function _drawViewportNow(){
     const fcd = bodies[n]?.data?.FRONT_CLOUDS_DATA;
     _bodyFcZ[n] = (fcd && typeof fcd.positionZ === 'number') ? fcd.positionZ : 0;
   });
-  const drawOrder = names.slice().sort((a, b) =>
-    (_bodyDepth[a] - _bodyDepth[b]) || (_bodyFcZ[b] - _bodyFcZ[a])
-  );
+  // This ONLY reorders which body's ICON draws first in this same pass — it
+  // does not touch _bodyFcZ or the separate _fcDeferred front-cloud disc pass
+  // below, which is what actually renders the day/night terminator effect and
+  // must keep sorting purely by positionZ regardless of hierarchy depth.
+  // Forcing these bodies to draw_order-first means every other body (their
+  // parent/grandparent included) naturally paints over their icon afterward,
+  // via ordinary painter's-algorithm — no cull, no special-case skip, just
+  // correct back-to-front order for the icon specifically. (isDayNightCarrier
+  // is defined at module scope above, shared with tools.js hit-testing.)
+  const drawOrder = names.slice().sort((a, b) => {
+    const dnA = isDayNightCarrier(a), dnB = isDayNightCarrier(b);
+    if(dnA !== dnB) return dnA ? -1 : 1; // DN carriers always draw first (furthest back)
+    return (_bodyDepth[a] - _bodyDepth[b]) || (_bodyFcZ[b] - _bodyFcZ[a]);
+  });
 
   bodyScreenPos = {};
   // Front-cloud composites are collected here instead of drawn immediately.
@@ -1253,6 +1539,14 @@ function _drawViewportNow(){
   // Screen-space discs drawn so far this frame, used by the icon-overlap cull
   // below to keep bigger bodies visually on top of smaller ones.
   const _drawnDiscs = [];
+  // Large-scene mode is decided once per frame from the number of bodies that
+  // survived LOD culling, so it can't flip mid-frame.
+  let _visCount = 0;
+  for(let _vi = 0; _vi < names.length; _vi++) if(bodyVisible[names[_vi]]) _visCount++;
+  const _fastMode = _visCount > FAST_ICON_BODY_THRESHOLD;
+  // Coarse spatial hash of label anchor points already placed this frame.
+  const _labelGrid = new Set();
+  const _LABEL_CELL_W = 64, _LABEL_CELL_H = 14;
   drawOrder.forEach(name => {
     try {
     const b = bodies[name];
@@ -1355,9 +1649,52 @@ function _drawViewportNow(){
     }
     _drawnDiscs.push({x: sp.x, y: sp.y, r, name});
 
+    // -- Fast path for plain icon bodies in large scenes --------------------------
+    // Draws exactly what the full pipeline would for such a body (disc, then label)
+    // but with a flat fill and without walking the atmosphere/cloud/terrain code.
+    if(_fastMode && r <= iconR && physR_px <= iconR && selectedBody !== name &&
+       !(typeof groupSelectMode !== 'undefined' && groupSelectMode &&
+         typeof groupSelected !== 'undefined' && groupSelected.has(name)) &&
+       _isPlainIconBody(b)){
+      const _fA = bodyFadeVal[name] ?? 1;
+      const _mc = b.data.BASE_DATA?.mapColor;
+      // The shaded icon's area-weighted average colour is ~20 levels below its mid
+      // stop (most of the disc is the darker outer half), so use that for the flat
+      // fill -- otherwise icons visibly brighten when crossing the large-scene threshold.
+      const _fr = Math.max(0, (_mc ? Math.min(255, Math.round(_mc.r * 255)) : 170) - 20);
+      const _fg = Math.max(0, (_mc ? Math.min(255, Math.round(_mc.g * 255)) : 170) - 20);
+      const _fb = Math.max(0, (_mc ? Math.min(255, Math.round(_mc.b * 255)) : 204) - 20);
+      const _iconFade = Math.max(0, Math.min(1, 1 - (physR_px - 8) / 22));
+      if(_iconFade > 0){
+        ctx2.globalAlpha = _fA * _iconFade;
+        ctx2.fillStyle = `rgb(${_fr},${_fg},${_fb})`;
+        ctx2.beginPath(); ctx2.arc(sp.x, sp.y, r, 0, Math.PI*2); ctx2.fill();
+      }
+      const _lA = labelFadeVal[name] ?? 1;
+      if(_lA > 0.01){
+        // Skip this label if another one has already claimed this screen cell.
+        const _gx = Math.floor(sp.x / _LABEL_CELL_W), _gy = Math.floor(sp.y / _LABEL_CELL_H);
+        const _gk = _gx * 100003 + _gy;
+        if(!_labelGrid.has(_gk)){
+          _labelGrid.add(_gk);
+          const _fs = Math.round(9 * iconScale);
+          ctx2.globalAlpha = _lA;
+          ctx2.font = `${_fs}px "JetBrains Mono",monospace`;
+          ctx2.textAlign = 'center';
+          const _ly = sp.y + r + _fs + 2;
+          ctx2.fillStyle = 'rgba(0,0,0,0.65)';
+          ctx2.fillText(name, sp.x+1, _ly+1);
+          ctx2.fillStyle = 'rgba(160,210,255,0.85)';
+          ctx2.fillText(name, sp.x, _ly);
+        }
+      }
+      ctx2.globalAlpha = 1;
+      return;
+    }
+
     const bodyFadeA  = bodyFadeVal[name]  ?? 1;
     const labelFadeA = labelFadeVal[name] ?? 1;
-    const [c1, c2] = b.color.split(',');
+    const [c1, c2] = (b.color || '#aaaaaa,#555555').split(',');
 
     ctx2.save();
     ctx2.globalAlpha = bodyFadeA;
@@ -1854,51 +2191,98 @@ function _drawViewportNow(){
     const _vsRaw = b.data.TERRAIN_DATA?.verticeSize;
     const _vs = (_vsRaw > 0) ? _vsRaw : 2.0; // default 2m matches game default
 
-    // ── Visible arc — computed once, shared by all terrain draw calls for this body ──
-    // Only meaningful when the planet is large on screen (physR_px > 200); below that
-    // the overhead of arc computation exceeds the savings from culling.
-    // Disabled for small bodies (radius < 15000m) — at that scale the full circle
-    // is cheap and arc-culling artifacts are visually prominent.
-    // Computed BEFORE the vertex cap below so a tight arc can also tighten that cap
-    // (see _vsMaxN comment) — moved up from its previous spot after terrN.
+    // ── Arc culling ──────────────────────────────────────────────────────────
+    // Only evaluate/build terrain for the visible slice of the planet, rather
+    // than the full 360°. Always on (previously an opt-in "Optimized" mode
+    // while a close-zoom silhouette bug was tracked down — see the
+    // arcVertexCount fix history in _getTerrainSamples). A rare remaining
+    // edge case (extreme radius + shallow local terrain + deep zoom hitting
+    // float32 precision limits in the canvas transform) is accepted for now.
     const _canArcCull = envFlags.heightmaps && physR_px > 200 && (bodyRadius_m * radiusMult) >= 15000;
     const _arcInfo = _canArcCull
       ? (() => {
           const _dispR_px = Math.max(r, physR_px);
           const _r_m = Math.max(1, bodyRadius_m * radiusMult);
-          // Pad the bounding circle by max terrain height so irregular bodies
-          // (large asteroids etc.) don't get their bumps wrongly culled —
-          // same reasoning as the game's own Radius+maxTerrainHeight bounding
-          // in DynamicChunk. Without this, arc culling assumes a perfect
-          // circle and can clip terrain that actually pokes onto screen.
           const _maxH_m = _getMaxTerrainHeight(name, b, _r_m);
           const _paddedR_px = _dispR_px * (_r_m + _maxH_m) / _r_m;
           return _computeVisibleArc(sp, _paddedR_px, W, H);
         })()
       : null;
 
-    // Hard physics cap: game never places vertices closer than verticeSize metres apart.
-    //   maxN = floor(2π × radius_m / verticeSize)
-    // This prevents over-sampling small bodies beyond the game's own resolution.
-    //
-    // BUT: for a large body with only a small arc visible (deeply zoomed in), capping
-    // by the FULL circumference is nearly meaningless — e.g. a 500km-radius asteroid
-    // at the default 2m verticeSize gives a ~1.57M vertex ceiling regardless of how
-    // much is actually on screen, doing nothing to bound the real worst case. When
-    // arc-culled, cap by the VISIBLE ARC's own physical length instead — that's the
-    // actual amount of terrain the game would ever need this much detail for at once.
     const _vsMaxN = (_arcInfo && !_arcInfo.fullCircle)
       ? Math.max(90, Math.floor((_arcInfo.arcEnd - _arcInfo.arcStart) * (bodyRadius_m * radiusMult) / _vs))
       : Math.max(90, Math.floor(2 * Math.PI * (bodyRadius_m * radiusMult) / _vs));
     // Screen-based N: 2 vertices per pixel around the circumference.
     // Quantise to multiples of 360 at high zoom (stable cache keys, divisible by common angles),
     // multiples of 90 at low zoom (small bodies where cache thrash matters more than precision).
+    //
+    // ── Zoom-gesture stabilisation ──────────────────────────────────────────
+    // physR_px changes on nearly every frame while the user is actively
+    // zooming, which used to make terrN cross a quantisation boundary most
+    // frames too — each crossing is a full cache miss on both
+    // _terrainSampleCache (re-runs the formula: heightmaps, curves, flat
+    // zones, water depression) AND _terrainClipCache (rebuilds the Path2D).
+    // That's the dominant cost of "lag while zooming", independent of how
+    // low the terrain-detail/LOD setting is set, since a fresh N still means
+    // a fresh cache miss even at reduced vertex counts.
+    //
+    // Approach: use a settle TIMER, not a per-frame delta check. A sustained
+    // zoom/pinch moves physR_px on nearly every frame for its whole duration
+    // — comparing consecutive frames alone means "still moving" is true for
+    // the entire gesture, so N would stay frozen at whatever it was when the
+    // gesture STARTED and never reach full LOD even once you stop, if any
+    // residual per-frame jitter kept re-triggering the freeze.
+    //
+    // Instead: track when physR_px last changed meaningfully. While that was
+    // very recently (<120ms ago), draw at a fast, capped "interactive" N so
+    // frames stay cheap and responsive during the gesture. Once physR_px has
+    // been stable for >120ms, resolve to the FULL precise N — this fires
+    // once, reliably, shortly after the gesture ends, rather than depending
+    // on hitting an exact single quiet frame.
     const _rawScreenN = Math.ceil(2 * Math.PI * physR_px);
-    const _qStep = physR_px > 500 ? 360 : 90;
-    const _detailMult = (typeof window !== 'undefined' && window.terrainDetail != null)
-      ? Math.max(0.01, window.terrainDetail / 100) : 1;
-    const _screenN = Math.max(90, Math.ceil((_rawScreenN * _detailMult) / _qStep) * _qStep);
-    const terrN = LOD === 0 ? 0 : Math.min(_vsMaxN, _screenN);
+    const _qStep = physR_px > 500 ? 720 : 180; // widened from 360/90 — fewer boundaries crossed per zoom
+    const _detailMult = Math.max(0.01, _effectiveDetailFrac(name));
+
+    if (!drawViewport._lastPhysR) drawViewport._lastPhysR = {};
+    if (!drawViewport._lastMoveT) drawViewport._lastMoveT = {};
+    const _now = performance.now();
+    const _prevPhysR = drawViewport._lastPhysR[name];
+    const _movedNow = _prevPhysR != null && Math.abs(physR_px - _prevPhysR) > _prevPhysR * 0.015;
+    if (_movedNow || _prevPhysR == null) drawViewport._lastMoveT[name] = _now;
+    drawViewport._lastPhysR[name] = physR_px;
+
+    const SETTLE_MS = 120;
+    const _settled = (_now - (drawViewport._lastMoveT[name] || 0)) > SETTLE_MS;
+    // drawViewport() is event-driven (called from pan/zoom input handlers
+    // elsewhere) — nothing else guarantees a frame fires ~120ms after the
+    // LAST zoom tick to actually cross the settle threshold and resolve full
+    // LOD. Schedule that follow-up frame ourselves so max detail reliably
+    // arrives shortly after the gesture ends instead of only whenever the
+    // next unrelated redraw happens to occur (which may be never).
+    if (!_settled) {
+      clearTimeout(drawViewport._settleTimer);
+      drawViewport._settleTimer = setTimeout(() => {
+        if (typeof drawViewport === 'function') drawViewport();
+      }, SETTLE_MS + 20);
+    }
+
+    // Fixed interactive cap: while actively zooming, never build more than
+    // this many vertices regardless of how large physR_px gets — this is
+    // the "fixed number of vertices so it never overloads" ceiling. Full
+    // precision (up to _vsMaxN / the screen-density target) only applies
+    // once settled.
+    const INTERACTIVE_N_CAP = 2400;
+
+    let terrN;
+    if (LOD === 0) {
+      terrN = 0;
+    } else if (!_settled) {
+      const _fastScreenN = Math.max(90, Math.ceil((_rawScreenN * _detailMult) / _qStep) * _qStep);
+      terrN = Math.min(_vsMaxN, _fastScreenN, INTERACTIVE_N_CAP);
+    } else {
+      const _screenN = Math.max(90, Math.ceil((_rawScreenN * _detailMult) / _qStep) * _qStep);
+      terrN = Math.min(_vsMaxN, _screenN);
+    }
 
     // Minimum physR_px to draw terrain polygon. Water depression (up to ~3% of radius)
     // needs sufficient pixel resolution to look smooth rather than jagged.
@@ -2023,7 +2407,7 @@ function _drawViewportNow(){
 
       ctx2.save();
       if (_tcp) {
-        _applyTerrainClip(ctx2, _tcp, sp);
+        _applyTerrainClip(ctx2, _tcp, sp, _displayR);
       } else {
         ctx2.beginPath(); ctx2.arc(sp.x, sp.y, _displayR, 0, Math.PI*2); ctx2.clip();
       }
@@ -2103,8 +2487,7 @@ function _drawViewportNow(){
           const radius_m = bodyRadius_m * radiusMult;
           // N: strips per revolution — derived from LOD tier, then scaled by terrain detail.
           // LOD 2 (mid) = 90 strips, LOD 3 (near) = 180. Each strip is one drawImage call.
-          const _detailFracSurf = (typeof window !== 'undefined' && window.terrainDetail != null)
-            ? Math.max(0.05, window.terrainDetail / 100) : 1;
+          const _detailFracSurf = Math.max(0.05, _effectiveDetailFrac(name));
           const N = Math.max(12, Math.round((LOD >= 3 ? 180 : 90) * _detailFracSurf));
 
           // GetRepeat: SurfaceArea = 2π*radius_m, factor = 4.712389 = 3π/2
@@ -2160,8 +2543,44 @@ function _drawViewportNow(){
           const _surfCx = _surfSZ / 2, _surfCy = _surfSZ / 2;
           const _pxPerM  = discR_px / radius_m; // screen pixels per metre
 
-          const cKey = `sAB3|${name}|${radius_m.toFixed(0)}|${saName}|${sbName}|${layerM}|${maxFadeV}|${minFadeV}|${N}|${TEX_SZ}|${blendArr?1:0}|${terrRes?1:0}|${saAbsX}|${saAbsY}|${sbAbsX}|${sbAbsY}|${_lodA}|${_lodB}|${_surfSZ}`;
+          // NOTE: cKey previously only recorded terrRes?1:0 (just "do we have
+          // terrain data") rather than which ARC that data covers. Since
+          // surfOff is a persistent offscreen canvas cached across frames,
+          // that meant once built for one visible arc (e.g. while looking at
+          // one part of the planet), it was reused UNCHANGED for every later
+          // frame at the same zoom/N/texture settings — even after panning
+          // to a completely different arc of the same planet. The canvas
+          // just kept showing its original baked-in crater/hill pattern
+          // pasted at the new screen position, which reads as "detail looks
+          // flat/static regardless of panning" even though the underlying
+          // per-pixel sampling math (see the arcCulled branch above) is
+          // correct for whichever single build actually ran.
+          //
+          // Fix: key on the actual arc range so a genuine pan/zoom that
+          // changes what's visible invalidates and rebuilds this canvas.
+          // Rounded to ~0.01 rad (~0.6°) so we don't rebuild on meaningless
+          // sub-degree jitter — still far finer than any visible seam.
+          //
+          // This canvas can be up to 1024×1024 pixels, each doing trig +
+          // texture sampling — genuinely expensive to rebuild, which is
+          // exactly the kind of per-frame cost the terrN settle-timer above
+          // was built to avoid during active pan/zoom. So reuse the same
+          // _settled flag here: keep showing the last-built (possibly
+          // slightly stale/offset) canvas while the gesture is still moving,
+          // and only let the arc key advance — triggering a real rebuild —
+          // once the view has settled. The scheduled settle-timer redraw
+          // above already guarantees a follow-up frame fires shortly after
+          // motion stops, so this reliably catches up within ~150ms.
+          const _liveArcKeyPart = (terrRes && terrRes.arcCulled)
+            ? `${terrRes.arcStart.toFixed(2)},${terrRes.arcEnd.toFixed(2)}`
+            : (terrRes ? 'full' : 'none');
+          if (!drawViewport._lastArcKey) drawViewport._lastArcKey = {};
+          const _arcKeyPart = _settled
+            ? (drawViewport._lastArcKey[name] = _liveArcKeyPart)
+            : (drawViewport._lastArcKey[name] || _liveArcKeyPart);
+          const cKey = `sAB3|${name}|${radius_m.toFixed(0)}|${saName}|${sbName}|${layerM}|${maxFadeV}|${minFadeV}|${N}|${TEX_SZ}|${blendArr?1:0}|${_arcKeyPart}|${saAbsX}|${saAbsY}|${sbAbsX}|${sbAbsY}|${_lodA}|${_lodB}|${_surfSZ}`;
           if(!drawViewport._surfCache) drawViewport._surfCache = {};
+          if(!drawViewport._surfCacheOrder) drawViewport._surfCacheOrder = [];
           let surfOff = drawViewport._surfCache[cKey];
 
           if(!surfOff){
@@ -2177,18 +2596,55 @@ function _drawViewportNow(){
                 const distPx = Math.sqrt(dx*dx + dy*dy);
 
                 // Terrain radius at this angle (pixels)
-                const rawAngle = Math.atan2(-dy, dx); // trig angle
+                const rawAngle = Math.atan2(-dy, dx); // trig angle, always 0..2π
                 const angle01  = ((rawAngle / (Math.PI*2)) + 1) % 1;
                 let surfR_px = discR_px;
                 if(terrRes && terrRes.heights){
                   // interpolate height at this angle
+                  //
+                  // BUG (fixed): terrRes.heights may be ARC-CULLED — i.e. it only
+                  // covers a narrow visible slice [arcStart, arcEnd], not the full
+                  // 0..2π circle, whenever _arcInfo was passed non-null and non-
+                  // fullCircle to _getTerrainSamples above. angle01 is always a
+                  // full-circle 0..1 fraction though (rawAngle covers every pixel
+                  // around the centre). Indexing terrRes.heights directly by
+                  // angle01*hN silently wrapped that narrow arc's data across the
+                  // WHOLE circle — sampling essentially uncorrelated/averaged
+                  // points for almost every pixel, which is why real height
+                  // variation (small craters, Perlin hills) visually flattened
+                  // out once arc culling started actually returning a real arc
+                  // instead of always falling back to fullCircle.
                   const hN = terrRes.heights.length;
-                  const hIdx = angle01 * hN;
-                  const hLo  = Math.floor(hIdx) % hN;
-                  const hHi  = (hLo + 1) % hN;
-                  const hFrac = hIdx - Math.floor(hIdx);
-                  const h = terrRes.heights[hLo] * (1-hFrac) + terrRes.heights[hHi] * hFrac;
-                  surfR_px = discR_px * (1 + h / radius_m);
+                  let hIdx;
+                  if (terrRes.arcCulled) {
+                    const TWO_PI = Math.PI * 2;
+                    // Map rawAngle into the SAME angle space arcStart/arcEnd were
+                    // computed in (see _computeVisibleArc / _getTerrainSamples),
+                    // unwrapping across the 0/2π boundary as needed.
+                    let a = rawAngle;
+                    while (a < terrRes.arcStart) a += TWO_PI;
+                    while (a > terrRes.arcEnd) a -= TWO_PI;
+                    if (a < terrRes.arcStart || a > terrRes.arcEnd) {
+                      // Genuinely outside the culled arc (shouldn't normally happen
+                      // for on-screen pixels, but guard anyway) — use bare disc
+                      // radius rather than an out-of-range/garbage sample.
+                      surfR_px = discR_px;
+                      hIdx = null;
+                    } else {
+                      const arcSpanLocal = terrRes.arcEnd - terrRes.arcStart;
+                      const tLocal = arcSpanLocal > 0 ? (a - terrRes.arcStart) / arcSpanLocal : 0;
+                      hIdx = tLocal * (hN - 1);
+                    }
+                  } else {
+                    hIdx = angle01 * hN;
+                  }
+                  if (hIdx != null) {
+                    const hLo  = Math.max(0, Math.min(hN - 1, Math.floor(hIdx)));
+                    const hHi  = terrRes.arcCulled ? Math.min(hN - 1, hLo + 1) : (hLo + 1) % hN;
+                    const hFrac = hIdx - Math.floor(hIdx);
+                    const h = terrRes.heights[hLo] * (1-hFrac) + terrRes.heights[hHi] * hFrac;
+                    surfR_px = discR_px * (1 + h / radius_m);
+                  }
                 }
                 const outerR_px = surfR_px + layerPx;
 
@@ -2225,6 +2681,17 @@ function _drawViewportNow(){
             }
             sc.putImageData(imgData, 0, 0);
             drawViewport._surfCache[cKey] = surfOff;
+            // Bounded LRU-ish eviction — this cache previously had none at
+            // all, and now grows faster since the cache key includes arc
+            // position (a new entry per distinct settled viewing angle, not
+            // just once per body). Cap at 40 entries; each can be up to
+            // 1024×1024, so unbounded growth over a long panning session
+            // could otherwise leak real memory.
+            drawViewport._surfCacheOrder.push(cKey);
+            if (drawViewport._surfCacheOrder.length > 40) {
+              const evict = drawViewport._surfCacheOrder.shift();
+              delete drawViewport._surfCache[evict];
+            }
           }
 
           // Single drawImage — pixel loop already paints only in the surface layer band,
@@ -2381,15 +2848,14 @@ function _drawViewportNow(){
           ctx2.save();
           // Clip to terrain shape (or disc fallback)
           const _tccp = envFlags.heightmaps && physR_px > terrainDrawThreshold && _terrainClipPath(b, name, sp, Math.max(r, physR_px), bodyRadius_m * radiusMult, terrN, _arcInfo);
-          if(_tccp){ _applyTerrainClip(ctx2, _tccp, sp); }
+          if(_tccp){ _applyTerrainClip(ctx2, _tccp, sp, Math.max(r, physR_px)); }
           else { ctx2.beginPath(); ctx2.arc(sp.x, sp.y, Math.max(r, physR_px), 0, Math.PI*2); ctx2.clip(); }
           // Tile the texture in a pattern centred on the body
           ctx2.globalAlpha *= tcAlpha;
           ctx2.globalCompositeOperation = 'multiply';
           // Scale down the source image for texture C when detail < 100 —
           // lower detail → smaller internal canvas → coarser tiling quality.
-          const _detailFracC = (typeof window !== 'undefined' && window.terrainDetail != null)
-            ? Math.max(0.05, window.terrainDetail / 100) : 1;
+          const _detailFracC = Math.max(0.05, _effectiveDetailFrac(name));
           const _tcSrc = (() => {
             if(_detailFracC >= 1) return tcImg;
             const _tcSz = Math.max(4, Math.round(tcImg.naturalWidth * _detailFracC));
@@ -2543,6 +3009,22 @@ function _drawViewportNow(){
                       //   cloudV = _CloudSizeY * ( v1.y*(_CloudStartY+1) - _CloudStartY )
                       // — not a simple offset+scale. That's now the default ('real' mode
                       // below). 'legacy' (the old shape) stays selectable for comparison.
+                      // Earth_Clouds exception: this is the vanilla, hardcoded texture —
+                      // in-game it is fixed/authored to always render as a single
+                      // non-repeating pass, unlike a custom CLOUDS texture where the
+                      // (R+gradH)/cloudH ratio genuinely does tile the texture radially
+                      // (that's real engine behavior, faithfully reproduced above).
+                      // NOTE: cloudH_m/cloudSizeY must NOT be overridden to force this —
+                      // setting cloudH_mEff = (R+gradH) forces cloudSizeY to exactly 1,
+                      // which maps the full v_disc [0,1] range to one whole texture pass —
+                      // i.e. it stretches the single layer across the ENTIRE gradient disc
+                      // (planet surface to atmo outer edge), regardless of the texture's
+                      // real authored height. That's wrong: keep the real physical
+                      // cloudH_m/cloudSizeY (below) so the pass keeps its natural radial
+                      // size, and instead suppress repetition by clamping v_frac instead
+                      // of wrapping it (see wrapMode override a few lines down).
+                      const _isEarthCloudsExempt = (CLD.texture === 'Earth_Clouds');
+                      const cloudH_mEff = cloudH_m;
                       const cloudSizeYEff = cloudSizeY;
                       // Everything below reads from window._cldDebug, wired to the live
                       // cloud debug panel (window.showCloudDebugPanel()) so these can be
@@ -2600,7 +3082,7 @@ function _drawViewportNow(){
                         // show bright content near the planet fading to black outward.
                         const csY = dbg.scaleY;
                         const num = (R_eff_px + gradH_cld) - v_disc * (R_eff_px + startH_m + gradH_cld);
-                        v_raw = dbg.offsetY + (1 - csY * (num / cloudH_m));
+                        v_raw = dbg.offsetY + (1 - csY * (num / cloudH_mEff));
                       } else if(dbg.formulaMode === 'real'){
                       // v_disc_input: which physical end feeds the formula as "0". The
                       // real formula is NOT symmetric (it's not simply mirrored by
@@ -2619,7 +3101,7 @@ function _drawViewportNow(){
                         const v_disc_input = dbg.vInputFlip ? (1 - v_disc) : v_disc;
                         v_raw = dbg.offsetY + v_disc_input * cloudSizeYEff * dbg.scaleY;
                       }
-                      let v_frac = (dbg.wrapMode === 'clamp')
+                      let v_frac = (_isEarthCloudsExempt || dbg.wrapMode === 'clamp')
                         ? Math.max(0, Math.min(1, v_raw))
                         : v_raw - Math.floor(v_raw);
                       if(dbg.radialFlip) v_frac = 1 - v_frac;
@@ -3069,7 +3551,14 @@ function _drawViewportNow(){
     ctx2.restore(); // end bodyFadeA globalAlpha
 
     // ── Label — fades out earlier than the body ──
-    if(labelFadeA > 0.01){
+    // In large scenes, thin labels that would land in an already-claimed screen
+    // cell. The selected body's label is always drawn.
+    let _labelOk = true;
+    if(_fastMode && selectedBody !== name){
+      const _gk2 = Math.floor(sp.x / _LABEL_CELL_W) * 100003 + Math.floor(sp.y / _LABEL_CELL_H);
+      if(_labelGrid.has(_gk2)) _labelOk = false; else _labelGrid.add(_gk2);
+    }
+    if(labelFadeA > 0.01 && _labelOk){
       const fontSize = Math.round(9 * iconScale);
       ctx2.globalAlpha = labelFadeA;
       ctx2.font = `${fontSize}px "JetBrains Mono",monospace`;
@@ -3372,7 +3861,7 @@ function _drawViewportNow(){
   // ── Post-processing: find the relevant body's PP key once ──
   // Prefer system center PP keys; fall back to any body that has keys.
   let _ppBody = null;
-  const _cname = Object.keys(bodies).find(n => bodies[n].isCenter);
+  const _cname = _centerBodyName;
   if(_cname && bodies[_cname].data?.POST_PROCESSING?.keys?.length) _ppBody = bodies[_cname];
   if(!_ppBody){
     const _fallback = Object.keys(bodies).find(n => bodies[n].data?.POST_PROCESSING?.keys?.length);
@@ -3400,6 +3889,48 @@ function _drawViewportNow(){
   // ── SOI pass — drawn on top of everything else ──
   if(envFlags.soi){
     ctx2.save();
+
+    // Batch unselected SOI circles (usually the vast majority — e.g. hundreds
+    // of asteroids) into alpha-quantized Path2D buckets, stroked once per
+    // bucket instead of once per body. They all share the same dash pattern
+    // and line width, so only strokeStyle differs between buckets. The
+    // selected body (at most one) keeps its own draw — a different dash
+    // pattern/line width anyway, and there's no batching benefit for one shape.
+    // Alpha quantized to steps of 1/48 (~0.021) — imperceptibly fine for a
+    // translucent dashed circle.
+    const _soiFast = _fastMode; // same per-frame decision as the icon fast path
+    const _soiBuckets = new Map(); // quantizedAlpha -> Path2D
+    const _soiLabels  = [];        // deferred — only selected/large-on-screen SOIs get one
+
+    function _buildSoiPath(path, sp, soiR_px, W2, H2){
+      if(soiR_px > diagPx * 0.5) {
+        const toVX = W2 * 0.5 - sp.x;
+        const toVY = H2 * 0.5 - sp.y;
+        const baseAngle = Math.atan2(toVY, toVX);
+        const halfAngle = Math.min(Math.PI, (diagPx * 2.4) / soiR_px);
+        const segs = 48;
+        const startA = baseAngle - halfAngle;
+        const arcStep = (halfAngle * 2) / segs;
+        for(let i = 0; i <= segs; i++){
+          const a = startA + i * arcStep;
+          const px = sp.x + soiR_px * Math.cos(a);
+          const py = sp.y + soiR_px * Math.sin(a);
+          i === 0 ? path.moveTo(px, py) : path.lineTo(px, py);
+        }
+        // open arc — no closePath
+      } else {
+        const sides = (_soiFast && soiR_px < 40) ? 16 : Math.max(32, Math.min(96, Math.ceil(soiR_px * 0.5)));
+        const step  = (Math.PI * 2) / sides;
+        for(let i = 0; i <= sides; i++){
+          const a = i * step;
+          const px = sp.x + soiR_px * Math.cos(a);
+          const py = sp.y + soiR_px * Math.sin(a);
+          i === 0 ? path.moveTo(px, py) : path.lineTo(px, py);
+        }
+        path.closePath();
+      }
+    }
+
     names.forEach(name => {
       const b = bodies[name];
       if(b.isCenter || !b.data.ORBIT_DATA) return;
@@ -3417,6 +3948,9 @@ function _drawViewportNow(){
       if(sp.x + soiR_px < 0 || sp.x - soiR_px > W2 ||
          sp.y + soiR_px < 0 || sp.y - soiR_px > H2) return;
 
+      // Large scenes: a circle under 8px is already fading to invisible -- skip building it.
+      if(_soiFast && soiR_px < 8 && selectedBody !== name) return;
+
       // Fade-out when the SOI circle is very small on screen (< 10px = almost invisible)
       // Fade-out also when very far away — use body's own LOD fade value.
       const bodyF   = bodyFadeVal[name] ?? 1;
@@ -3430,52 +3964,46 @@ function _drawViewportNow(){
 
       const isSelected = selectedBody === name;
 
-      // ── Draw SOI circle ──
-      // When the SOI is larger than the viewport we are inside it — only a small
-      // arc is visible. Draw only that arc with a fixed segment count so cost is
-      // O(1) regardless of how large soiR_px grows.
-      ctx2.beginPath();
-      if(soiR_px > diagPx * 0.5) {
-        const toVX = W2 * 0.5 - sp.x;
-        const toVY = H2 * 0.5 - sp.y;
-        const baseAngle = Math.atan2(toVY, toVX);
-        const halfAngle = Math.min(Math.PI, (diagPx * 2.4) / soiR_px);
-        const segs = 48;
-        const startA = baseAngle - halfAngle;
-        const arcStep = (halfAngle * 2) / segs;
-        for(let i = 0; i <= segs; i++){
-          const a = startA + i * arcStep;
-          const px = sp.x + soiR_px * Math.cos(a);
-          const py = sp.y + soiR_px * Math.sin(a);
-          i === 0 ? ctx2.moveTo(px, py) : ctx2.lineTo(px, py);
-        }
-        // open arc — no closePath
-      } else {
-        const sides = Math.max(32, Math.min(96, Math.ceil(soiR_px * 0.5)));
-        const step  = (Math.PI * 2) / sides;
-        for(let i = 0; i <= sides; i++){
-          const a = i * step;
-          const px = sp.x + soiR_px * Math.cos(a);
-          const py = sp.y + soiR_px * Math.sin(a);
-          i === 0 ? ctx2.moveTo(px, py) : ctx2.lineTo(px, py);
-        }
-        ctx2.closePath();
-      }
-
       if(isSelected){
+        // Drawn immediately — different dash/width, and batching a single
+        // shape has no benefit.
+        const path = new Path2D();
+        _buildSoiPath(path, sp, soiR_px, W2, H2);
         ctx2.setLineDash([8, 5]);
         ctx2.strokeStyle = `rgba(192,128,255,${(alpha * 0.9).toFixed(3)})`;
         ctx2.lineWidth = 1.5;
+        ctx2.stroke(path);
+        ctx2.setLineDash([]);
       } else {
-        ctx2.setLineDash([4, 6]);
-        ctx2.strokeStyle = `rgba(160,100,255,${(alpha * 0.55).toFixed(3)})`;
-        ctx2.lineWidth = 1;
+        const qa = Math.round((alpha * 0.55) * 48) / 48;
+        let path = _soiBuckets.get(qa);
+        if(!path){ path = new Path2D(); _soiBuckets.set(qa, path); }
+        _buildSoiPath(path, sp, soiR_px, W2, H2);
       }
-      ctx2.stroke();
-      ctx2.setLineDash([]);
 
       // Small label showing SOI radius when body is selected or SOI > 40px
       if((isSelected || soiR_px > 40) && alpha > 0.2){
+        _soiLabels.push({sp, soiR_px, soiR_m, isSelected, alpha});
+      }
+    });
+
+    // Stroke each unselected alpha bucket once — dash pattern and line width
+    // are identical across the whole group, so only strokeStyle changes.
+    if(_soiBuckets.size){
+      ctx2.setLineDash([4, 6]);
+      ctx2.lineWidth = 1;
+      for(const [qa, path] of _soiBuckets){
+        ctx2.strokeStyle = `rgba(160,100,255,${qa})`;
+        ctx2.stroke(path);
+      }
+      ctx2.setLineDash([]);
+    }
+
+    // Labels — rare (only selected or large-on-screen SOIs), drawn individually.
+    if(_soiLabels.length){
+      ctx2.font = '8px "JetBrains Mono",monospace';
+      ctx2.textAlign = 'center';
+      _soiLabels.forEach(({sp, soiR_px, soiR_m, isSelected, alpha}) => {
         const soiKm = soiR_m / 1000;
         const soiLabel = soiKm >= 1e6
           ? (soiKm / 1e6).toFixed(2) + ' Gm'
@@ -3483,13 +4011,12 @@ function _drawViewportNow(){
           ? (soiKm / 1e3).toFixed(1) + ' Mm'
           : soiKm.toFixed(0) + ' km';
         ctx2.globalAlpha = alpha * 0.75;
-        ctx2.font = '8px "JetBrains Mono",monospace';
         ctx2.fillStyle = isSelected ? 'rgba(210,170,255,0.9)' : 'rgba(180,140,255,0.75)';
-        ctx2.textAlign = 'center';
         ctx2.fillText('SOI ' + soiLabel, sp.x, sp.y - soiR_px - 4);
-        ctx2.globalAlpha = 1;
-      }
-    });
+      });
+      ctx2.globalAlpha = 1;
+    }
+
     ctx2.restore();
   }
 
@@ -3667,7 +4194,20 @@ function _getHeightMap(hmName) {
   if (entry.url) {
     _hmCache[hmName] = _parseHmPng(entry.url).then(pts => {
       _hmCache[hmName] = pts;
-      if (typeof invalidateTerrainCache === 'function') invalidateTerrainCache('*');
+      // No cache invalidation needed: bodies whose terrain formula didn't
+      // depend on this heightmap already have valid cached entries (a
+      // pending/null heightmap makes _getTerrainSamples bail out WITHOUT
+      // caching — see the `if (!heights) return fallback;` guard there), so
+      // there's nothing stale to clear. A redraw alone lets any body that
+      // WAS blocked on this specific heightmap retry and cache successfully
+      // now that it's ready — without forcing every other body in the
+      // system to recompute and rebuild its terrain for no reason. (This
+      // used to call invalidateTerrainCache('*') here, which wiped the
+      // whole system's terrain cache on every single heightmap PNG that
+      // finished decoding — the more custom heightmaps a system has, the
+      // more redundant full-system rebuilds happened in the seconds after
+      // load, which is almost certainly the dropped-fps window you're
+      // seeing after loading a system with several custom heightmaps.)
       if (typeof drawViewport === 'function') drawViewport();
     });
     return null;
@@ -3685,19 +4225,19 @@ function _getHeightMap(hmName) {
 //   - Strings in formula lines may be quoted ("name") OR bare identifiers (name)
 //   - OUTPUT is the required output variable name (game checks userVariables["OUTPUT"])
 //
-function _evalTerrainFormula(formulaLines, angles_rad, radius_m) {
-  if (!formulaLines || formulaLines.length === 0) return null;
+// Parsed-formula cache — the terrain formula's TEXT rarely changes, but this
+// function used to be re-parsed character-by-character on every single
+// evaluation (i.e. every time N changed during a smooth zoom). Splitting
+// parse (cached, once per formula text) from execute (still runs per-call,
+// since it depends on the current angle/N/radius) removes that redundant
+// string-parsing work from the hot path.
+const _formulaOpsCache = {};
+function _compileTerrainFormula(formulaLines) {
+  const fKey = formulaLines.join('§');
+  const cached = _formulaOpsCache[fKey];
+  if (cached) return cached;
 
-  const N = angles_rad.length;
-  const userVars = {};
-  // current output target — mirrors sampler.output pointer
-  let outputTarget = new Float64Array(N); // default flat if no OUTPUT assigned
-  let outputName = null;
-
-  function getVar(name) {
-    if (!userVars[name]) userVars[name] = new Float64Array(N);
-    return userVars[name];
-  }
+  const ops = [];
 
   // ── Parser — mirrors game's character-by-character approach ─────────────────
   // Handles: VARNAME = FUNC(args)  and  FUNC(args)
@@ -3762,11 +4302,37 @@ function _evalTerrainFormula(formulaLines, angles_rad, radius_m) {
       }
     }
 
+    ops.push({ fname, varName, isAssign, args });
+  }
+
+  const cacheKeys = Object.keys(_formulaOpsCache);
+  if (cacheKeys.length >= 100) delete _formulaOpsCache[cacheKeys[0]];
+  _formulaOpsCache[fKey] = ops;
+  return ops;
+}
+
+function _evalTerrainFormula(formulaLines, angles_rad, radius_m) {
+  if (!formulaLines || formulaLines.length === 0) return null;
+
+  const N = angles_rad.length;
+  const userVars = {};
+  // current output target — mirrors sampler.output pointer
+  let outputTarget = new Float64Array(N); // default flat if no OUTPUT assigned
+
+  function getVar(name) {
+    if (!userVars[name]) userVars[name] = new Float64Array(N);
+    return userVars[name];
+  }
+
+  const ops = _compileTerrainFormula(formulaLines);
+
+  for (const op of ops) {
+    const { fname, varName, isAssign, args } = op;
+
     // Execute the parsed function call
     const target = isAssign ? getVar(varName) : outputTarget;
     if (isAssign) {
       outputTarget = target;
-      outputName = varName;
     }
 
     switch (fname) {
@@ -3789,13 +4355,7 @@ function _evalTerrainFormula(formulaLines, angles_rad, radius_m) {
 
         for (let i = 0; i < N; i++) {
           let v = _hmEval(pts, angles_rad[i] * num);
-          // C# AddHeightMap applies the curve via EvaluateDoubleOut (wraps via
-          // modulo), NOT EvaluateClamped (hard clamp) — those are deliberately
-          // different methods in the source, used in different places. _hmEval
-          // already replicates EvaluateDoubleOut's wrap-around exactly, so pass
-          // v straight through; clamping here would silently change the curve
-          // shape for any heightmap sample that lands outside [0,1].
-          if (curvePts) v = _hmEval(curvePts, v);
+          if (curvePts) v = _hmEval(curvePts, Math.max(0, Math.min(1, v)));
           if (multArr)  v *= multArr[i];
           target[i] += v * hmHeight;
         }
@@ -3906,7 +4466,7 @@ function char_isDigit(c)  { return c >= '0' && c <= '9'; }
 // where normalPosition is a unit vector (cos,sin).
 // The mask canvas stores the texture occupying the full [0,1] UV space,
 // so we must scale the unit circle by (cutout * 0.5) before mapping to pixels.
-function _applyWaterDepression(heights, angles_rad, maskPixels, maskSZ, oceanDepth, texRotRad, cutout) {
+function _applyWaterDepression(heights, angles_rad, maskPixels, maskSZ, oceanDepth, texRotRad, cutout, depressionOut) {
   if (!maskPixels) return;
   const SZ = maskSZ;
   // cutout scales how far from centre the planet edge sits in UV space.
@@ -3938,7 +4498,12 @@ function _applyWaterDepression(heights, angles_rad, maskPixels, maskSZ, oceanDep
     //       num = GetWaterColor * 2  (ranges -1 land → +1 ocean)
     //       depression = num * oceanDepth + 50
     const num = (0.5 - pixelR) * 2 * oceanDepth + 50;
-    if (num > 0) heights[i] -= num;
+    if (num > 0) {
+      heights[i] -= num;
+      if (depressionOut) depressionOut[i] = num;
+    } else if (depressionOut) {
+      depressionOut[i] = 0;
+    }
   }
 }
 
@@ -3948,7 +4513,7 @@ function _applyWaterDepression(heights, angles_rad, maskPixels, maskSZ, oceanDep
 // InverseLerp directly on the raw angle values.  We replicate that exactly.
 // The editor's angles array runs [0, 2π), and fz.angle is stored in that same
 // space, so no wrapping is needed or correct here.
-function _applyFlatZones(heights, angles_rad, flatZones, radius_m) {
+function _applyFlatZones(heights, angles_rad, flatZones, radius_m, depressions) {
   if (!flatZones || !flatZones.length) return;
   for (const fz of flatZones) {
     // Game: num2 = (width + transition) / radius / 2
@@ -3970,7 +4535,15 @@ function _applyFlatZones(heights, angles_rad, flatZones, radius_m) {
       const tLeft  = halfFull === halfInner ? 0 : (a - zoneMin)  / (innerMin - zoneMin);
       const tRight = halfFull === halfInner ? 0 : (a - zoneMax)  / (innerMax - zoneMax);
       const tc = Math.max(0, Math.min(1, Math.min(tLeft, tRight)));
-      if (tc > 0) heights[i] = heights[i] * (1 - tc) + fz.height * tc;
+      if (tc > 0) {
+        heights[i] = heights[i] * (1 - tc) + fz.height * tc;
+        // Proportionally remove water tint wherever a flatzone raises terrain
+        // that water depression had lowered — matches the game's own order
+        // (flatzones applied AFTER water depression, so they can fully or
+        // partially override it). A fully-flattened point (tc=1) should show
+        // no sand/floor tint at all, since it's no longer underwater.
+        if (depressions) depressions[i] *= (1 - tc);
+      }
     }
   }
 }
@@ -3982,20 +4555,159 @@ function _applyFlatZones(heights, angles_rad, flatZones, radius_m) {
 // { fullCircle: true }.  The arc is expressed in the canvas coordinate system
 // (angles increase clockwise, angle 0 = right) and arcEnd >= arcStart always.
 // If arc spans > 355° we also set fullCircle=true to avoid rounding edge cases.
+// Uses the original edge-intersection method. (A binary-search alternative,
+// _computeVisibleArcBinarySearch below, was built and A/B tested against a
+// close-zoom silhouette bug that has since been fixed elsewhere — edge-
+// intersection remains the one actually used.)
 function _computeVisibleArc(sp, physR_px, vpW, vpH) {
+  return _computeVisibleArcEdgeIntersect(sp, physR_px, vpW, vpH);
+}
+
+// ── NEW: binary-search-based visible-arc computation ───────────────────────
+// The edge-intersection method below computes disc = r^2 - d^2 where r can
+// be in the millions (physR_px at rover-scale close zoom) — subtracting two
+// very large, nearly-equal floats is a textbook catastrophic-cancellation
+// setup, and independently, near-tangent/grazing viewing angles (looking
+// toward the horizon on a huge body) produce candidate angles that cluster
+// within a fraction of a degree of each other, making the min/max selection
+// sensitive to tiny numerical differences. Both effects are plausible
+// contributors to the close-zoom silhouette bug that survived three rounds
+// of fixes to the edge-intersection method's margin/quantization.
+//
+// This method never computes anything at physR_px^2 scale — every check
+// inside onScreenAtAngle() works with screen-scale coordinates only (vpW,
+// vpH, sp.x/y, which are screen positions, not radius-scale numbers), so it
+// sidesteps both issues by construction rather than by patching symptoms.
+//
+// Approach: find a confirmed on-screen seed angle (checking the direction
+// toward the viewport's center and its 4 corners), then binary-search
+// outward from that seed in both directions to find exactly where the
+// circle's silhouette point crosses off-screen. ~80 cos/sin evaluations
+// total per call — benchmarked at under 1 microsecond, negligible next to
+// the terrain sampling/rendering work this result feeds into.
+//
+// Returns null if no seed angle can be confirmed on-screen (the circle may
+// only graze a corner in a way none of the 5 seed directions catch) — the
+// dispatcher above falls back to the edge-intersection method in that case.
+function _computeVisibleArcBinarySearch(sp, physR_px, vpW, vpH) {
+  const onScreenAtAngle = (a) => {
+    const px = sp.x + Math.cos(a) * physR_px;
+    const py = sp.y - Math.sin(a) * physR_px;
+    return px >= 0 && px <= vpW && py >= 0 && py <= vpH;
+  };
+
+  const seedCandidates = [
+    [vpW / 2, vpH / 2], // viewport center — usual case
+    [0, 0], [vpW, 0], [0, vpH], [vpW, vpH], // corners — covers off-center/grazing cases
+  ];
+  let seedAngle = null;
+  for (const [cx, cy] of seedCandidates) {
+    const a = Math.atan2(-(cy - sp.y), cx - sp.x);
+    if (onScreenAtAngle(a)) { seedAngle = a; break; }
+  }
+  if (seedAngle == null) return null;
+
+  const BISECT_ITERS = 40; // more than enough for sub-arcsecond precision
+  let loP = 0, hiP = Math.PI;
+  for (let i = 0; i < BISECT_ITERS; i++) {
+    const mid = (loP + hiP) / 2;
+    if (onScreenAtAngle(seedAngle + mid)) loP = mid; else hiP = mid;
+  }
+  let loN = 0, hiN = Math.PI;
+  for (let i = 0; i < BISECT_ITERS; i++) {
+    const mid = (loN + hiN) / 2;
+    if (onScreenAtAngle(seedAngle - mid)) loN = mid; else hiN = mid;
+  }
+
+  const TWO_PI = Math.PI * 2;
+  const arcSpan = loN + loP;
+  if (arcSpan >= TWO_PI * (355 / 360)) {
+    return { fullCircle: true, arcStart: 0, arcEnd: TWO_PI };
+  }
+
+  // Same proportional margin as the edge-intersection method, for parity.
+  const ANGLE_MARGIN = Math.min(0.05, Math.max(0.002, arcSpan * 0.08));
+  return {
+    fullCircle: false,
+    arcStart: seedAngle - loN - ANGLE_MARGIN,
+    arcEnd:   seedAngle + loP + ANGLE_MARGIN,
+  };
+}
+
+// ── OLD: edge-intersection-based visible-arc computation (untouched, kept
+// as the default and as the binary-search method's fallback) ──────────────
+function _computeVisibleArcEdgeIntersect(sp, physR_px, vpW, vpH) {
   // If the planet is small enough to fit fully on screen → full circle
   if (sp.x - physR_px >= 0 && sp.x + physR_px <= vpW &&
       sp.y - physR_px >= 0 && sp.y + physR_px <= vpH) {
     return { fullCircle: true, arcStart: 0, arcEnd: Math.PI * 2 };
   }
 
-  // If the entire viewport is inside the planet disc → full circle
-  // (planet centre is off-screen but disc covers the whole canvas)
+  // If the entire viewport is inside the planet disc, the disc's silhouette
+  // edge is entirely OFF-screen in every direction — there is no boundary
+  // crossing to find below, so the generic edge-intersection logic falls
+  // through to its own "visible.length < 2" fallback and returns fullCircle.
+  // That was the actual bug: this is the deepest-zoom case (camera essentially
+  // on the surface, planet fills the whole canvas), and it was silently
+  // building and filling the ENTIRE circumference — tens of thousands of
+  // vertices for a large planet — every time the cache rebuilt, instead of
+  // culling to just the small angular patch actually on screen. This was
+  // the dominant cost of "still lags after arc culling", since it's exactly
+  // the zoom level where culling matters most.
+  //
+  // Fix: when fully inside the disc, find the angular range (as seen from
+  // the disc centre, sp) that covers the visible canvas rectangle's corners.
+  // That's the actual visible slice of the sphere's near side.
   const corners = [[0,0],[vpW,0],[0,vpH],[vpW,vpH]];
   const r2 = physR_px * physR_px;
   if (corners.every(([cx,cy]) => (cx-sp.x)**2 + (cy-sp.y)**2 <= r2)) {
-    // Viewport fully inside disc — fall through to arc intersection logic below.
-    // Culling is most valuable here: only a small arc of terrain is near the screen edges.
+    const TWO_PI = Math.PI * 2;
+    const cornerAngles = corners.map(([cx, cy]) =>
+      ((Math.atan2(-(cy - sp.y), cx - sp.x) % TWO_PI) + TWO_PI) % TWO_PI
+    );
+    const sorted = [...cornerAngles].sort((a, b) => a - b);
+    // Smallest arc that contains all 4 corner angles — same "largest gap is
+    // the hidden side" logic used below for the boundary-crossing case.
+    let maxGap = 0, gapAfter = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const next = sorted[(i + 1) % sorted.length];
+      const gap = i + 1 < sorted.length ? next - sorted[i] : sorted[0] + TWO_PI - sorted[i];
+      if (gap > maxGap) { maxGap = gap; gapAfter = i; }
+    }
+    const arcStart = sorted[(gapAfter + 1) % sorted.length];
+    const arcEndRaw = sorted[gapAfter];
+    const arcEnd = arcEndRaw < arcStart ? arcEndRaw + TWO_PI : arcEndRaw;
+    const arcSpan = arcEnd - arcStart;
+
+    // If the 4 corners still span nearly the full circle (camera very close
+    // to the surface, wide FOV relative to radius), culling wouldn't help
+    // much anyway — fall back to full circle rather than risk a degenerate
+    // near-360° "slice".
+    if (arcSpan >= TWO_PI * (355 / 360)) {
+      return { fullCircle: true, arcStart: 0, arcEnd: TWO_PI };
+    }
+
+    // Margin used to be a FIXED 0.05 rad (~2.86°) regardless of arc size.
+    // At rover-scale close zoom the true visible arc can be well under 1°
+    // (a single crater filling the screen) — a fixed ~2.86° margin on each
+    // side there doesn't just pad the edges, it inflates a e.g. 0.5° arc
+    // into ~6.2°, over 12x wider than what's actually visible. The extra
+    // vertex BUDGET that unlocks (since _vsMaxN scales with arc span) is
+    // real, but it's spread across a mostly off-screen range — only a small,
+    // shifting fraction of those vertices ever land in the true visible
+    // window, and which fraction shifts as physR_px/arcSpan change slightly
+    // between frames. That reads exactly as "shape changes as you keep
+    // zooming in" even though nothing about the underlying terrain data
+    // changed — this was the actual cause of the close-zoom crater/hill
+    // flattening-and-shifting bug (confirmed by A/B testing arc culling
+    // on/off). Scale the margin to a fraction of the arc's own span instead,
+    // with a small fixed floor/ceiling so it stays sane at both extremes.
+    const ANGLE_MARGIN = Math.min(0.05, Math.max(0.002, arcSpan * 0.08));
+    return {
+      fullCircle: false,
+      arcStart: arcStart - ANGLE_MARGIN,
+      arcEnd:   arcEnd   + ANGLE_MARGIN,
+    };
   }
 
   // Collect candidate angles: where the planet disc edge intersects each
@@ -4068,8 +4780,12 @@ function _computeVisibleArc(sp, physR_px, vpW, vpH) {
   }
 
 
-  // Add a small angular margin (~3°) so we never clip a vertex right on the edge
-  const ANGLE_MARGIN = 0.05;
+  // Margin used to be a fixed ~3° (0.05 rad) regardless of arc size — same
+  // issue as the fully-inside-disc branch above: at close zoom this can
+  // inflate a small arc many times over, diluting effective on-screen
+  // vertex density right when it matters most. Scale to a fraction of the
+  // arc's own span instead (see full explanation above).
+  const ANGLE_MARGIN = Math.min(0.05, Math.max(0.002, arcSpan * 0.08));
   return {
     fullCircle: false,
     arcStart: arcStart - ANGLE_MARGIN,
@@ -4082,15 +4798,6 @@ const _terrainSampleCache = {};
 
 // ── Max terrain height (mirrors Planet.cs: maxTerrainHeight = TerrainModule.
 //    GetMaxTerrainHeight(planet) + 200) ─────────────────────────────────────
-// The game brute-forces this once per planet at load: 1001 evenly-spaced
-// samples around the FULL circle (through the whole pipeline — heightmap
-// formula, water depression, flatzones — not just the raw formula), takes
-// the max, adds a fixed 200m safety pad. We need the same number for the
-// same reason the game does: bounding how far actual terrain can stick out
-// past the nominal radius, so visibility/culling math doesn't assume a
-// perfect circle when the real silhouette isn't one (see _computeVisibleArc).
-// Cheap enough to brute-force fresh each call (1001 formula evaluations),
-// but cached anyway since it's asked for every frame while zoomed in.
 const _maxTerrainHeightCache = {};
 function _getMaxTerrainHeight(bodyName, b, radius_m) {
   const TD = b.data.TERRAIN_DATA;
@@ -4105,18 +4812,19 @@ function _getMaxTerrainHeight(bodyName, b, radius_m) {
 
   const N = 1001;
   const angles = new Float64Array(N);
-  for (let i = 0; i < N; i++) angles[i] = (Math.PI / 500) * i; // matches game exactly: covers full 2π over 1001 points
+  for (let i = 0; i < N; i++) angles[i] = (Math.PI / 500) * i;
   const heights = _evalTerrainFormula(formula, angles, radius_m);
-  if (!heights) return 0; // heightmap(s) still loading — caller falls back to unpadded radius for now
+  if (!heights) return 0;
 
-  _applyWaterDepressionIfNeeded(b, TD, heights, angles);
+  const depressions = new Float64Array(N);
+  _applyWaterDepressionIfNeeded(b, TD, heights, angles, depressions);
   const fzd = TD.flatZonesDifficulties;
   const flatZones = (fzd && (fzd[viewDiffKey] || fzd['Normal'])) || TD.flatZones || [];
-  _applyFlatZones(heights, angles, flatZones, radius_m);
+  _applyFlatZones(heights, angles, flatZones, radius_m, depressions);
 
   let maxH = 0;
   for (let i = 0; i < N; i++) if (heights[i] > maxH) maxH = heights[i];
-  const result = maxH + 200; // game's fixed safety margin
+  const result = maxH + 200;
 
   const keys = Object.keys(_maxTerrainHeightCache);
   if (keys.length >= 100) delete _maxTerrainHeightCache[keys[0]];
@@ -4124,10 +4832,38 @@ function _getMaxTerrainHeight(bodyName, b, radius_m) {
   return result;
 }
 
-// Per-frame clip path cache — keyed by "bodyName|N|spx|spy|physR_px" so it's
-// reused when drawTerrainBody and _terrainClipPath request the same shape in
-// the same frame without recomputing the Path2D.
+// Terrain silhouette path cache — paths are built in UNIT-RADIUS local space
+// (radius 1 = sea level, centred at origin), so the cached Path2D is valid at
+// ANY zoom level or pan position: only bodyName/N/radius_m/visible-arc affect
+// the shape. Draw time applies translate(sp)+scale(physR_px) to place it
+// (see _applyTerrainClip / _getUnitTerrainPath). This is what makes smooth
+// zoom/pan cheap — geometry work only happens when the LOD-driven vertex
+// count N actually changes, not on every pixel of camera movement.
 const _terrainClipCache = {};
+
+function _getUnitTerrainPath(bodyName, result, N, radius_m) {
+  // arcKey quantization was 0.1 rad (~5.7°) — coarse enough that, before the
+  // proportional-margin fix, arcs were inflated wide enough to usually still
+  // round into overlapping buckets between nearby frames. Now that arcs can
+  // correctly be well under 1° at close zoom, that same 5.7° bucket size can
+  // silently merge two genuinely DIFFERENT, non-overlapping small arcs into
+  // the same cache key — serving a stale wedge from a different angular
+  // position than what's actually visible, which reads as terrain vanishing
+  // or showing wrong/edge-artifact geometry as you pan/zoom slightly.
+  // Quantize far finer (0.002 rad ≈ 0.11°) so distinct small arcs reliably
+  // get distinct keys, while still coalescing true sub-pixel jitter.
+  const arcKey = result.arcCulled ? `a${Math.round(result.arcStart / 0.002)}_${Math.round(result.arcEnd / 0.002)}` : 'full';
+  const key = `${bodyName}|${N}|${radius_m.toFixed(0)}|${arcKey}`;
+  let path = _terrainClipCache[key];
+  if (!path) {
+    path = new Path2D();
+    _buildTerrainPathUnit(path, result, radius_m);
+    const keys = Object.keys(_terrainClipCache);
+    if (keys.length >= 300) delete _terrainClipCache[keys[0]];
+    _terrainClipCache[key] = path;
+  }
+  return path;
+}
 
 function invalidateTerrainCache(bodyName) {
   const all = bodyName === '*';
@@ -4202,12 +4938,13 @@ function _getTerrainSamples(bodyName, b, radius_m, N, arcInfo) {
     const heights = _evalTerrainFormula(formula, angles, radius_m);
     if (!heights) return fallback; // async heightmap — return stale data if available
 
-    _applyWaterDepressionIfNeeded(b, TD, heights, angles);
+    const depressions = new Float64Array(N);
+    _applyWaterDepressionIfNeeded(b, TD, heights, angles, depressions);
     const fzd = TD.flatZonesDifficulties;
     const flatZones = (fzd && (fzd[viewDiffKey] || fzd['Normal'])) || TD.flatZones || [];
-    _applyFlatZones(heights, angles, flatZones, radius_m);
+    _applyFlatZones(heights, angles, flatZones, radius_m, depressions);
 
-    const result = { heights, angles, N, arcCulled: false };
+    const result = { heights, depressions, angles, N, arcCulled: false };
     const keys = Object.keys(_terrainSampleCache);
     if (keys.length >= 50) delete _terrainSampleCache[keys[0]];
     _terrainSampleCache[key] = result;
@@ -4215,28 +4952,54 @@ function _getTerrainSamples(bodyName, b, radius_m, N, arcInfo) {
   }
 
   // ── Arc-culled path ───────────────────────────────────────────────────────
-  // Snap arc bounds to 2° buckets → stable cache key while panning
-  const DEG2 = TWO_PI / 180;
+  // Snap arc bounds to a stable bucket size so panning doesn't thrash the
+  // cache on every frame. This was a FIXED 2° bucket — fine when arcs were
+  // always wide (orbital-scale views, where 2° is a small fraction of the
+  // whole visible arc), but far too coarse now that arc culling correctly
+  // produces sub-1° arcs at rover-scale close zoom: snapping a 0.5° arc to
+  // the nearest 2° can collapse two genuinely different close-up views onto
+  // the same bucket, serving stale height samples for the wrong angle —
+  // showing as terrain vanishing or wrong shape near screen edges. Scale the
+  // bucket size down proportionally to the arc's own span instead (with a
+  // sane floor so we don't over-fragment the cache on tiny sub-pixel jitter).
+  const arcSpanForSnap = arcInfo.arcEnd - arcInfo.arcStart;
+  const DEG2 = Math.min(TWO_PI / 180, Math.max(TWO_PI / 3600, arcSpanForSnap * 0.02));
   const snapS = Math.round(arcInfo.arcStart / DEG2) * DEG2;
   const snapE = Math.round(arcInfo.arcEnd   / DEG2) * DEG2;
 
   const arcKey = `${bodyName}|${radius_m.toFixed(0)}|${viewDiffKey}|arc|${N}|${snapS.toFixed(4)}|${snapE.toFixed(4)}|${fHash}`;
   if (_terrainSampleCache[arcKey]) return _terrainSampleCache[arcKey];
 
-  // Determine which of the N full-circle indices fall inside the visible arc.
-  // Generated directly at the arc's own vertex count rather than iterating
-  // all N full-circle angles and filtering — when zoomed in close on a large
-  // body, N (the full-circle count) can be enormous even though the visible
-  // arc fraction is tiny, making the filter-from-N approach the dominant
-  // cost. Same resulting density: arcVertexCount ≈ N·(arcSpan/2π), so
-  // spacing between consecutive arc angles works out to ≈2π/N either way —
-  // this only skips generating and testing the ~N - arcVertexCount angles
-  // that would've been thrown away.
   const arcSpan = snapE - snapS; // > 0, < 2π
-  const arcVertexCount = Math.max(1, Math.ceil(N * arcSpan / TWO_PI));
+  // BUG (fixed): this used to be Math.max(2, Math.ceil(N * arcSpan / TWO_PI) + 1)
+  // — treating N as a FULL-CIRCLE vertex density and scaling it down by the
+  // arc's fraction of the full circle, e.g. N=445 at arcSpan=0.6° became
+  // ceil(445 * 0.6/360) + 1 = 2 vertices. That formula is only correct for
+  // the (different) full-circle code path above, where angles are generated
+  // as (i/N)*TWO_PI and N genuinely IS a full-circle density.
+  //
+  // N here is _drawTerrainBody's terrN, which is already computed upstream
+  // as "target vertex count for the visible arc" (~2 vertices per screen
+  // pixel around the ACTUAL visible circumference, already arc-scoped — see
+  // the terrN derivation comment: "terrN = 2π × physR_px" using physR_px,
+  // not the body's full circumference). Re-multiplying that already-scoped
+  // count by arcSpan/TWO_PI was applying the same culling twice, collapsing
+  // e.g. 445 requested vertices down to 2 — one straight line segment —
+  // which is exactly the "craters flatten into straight edges at close zoom"
+  // bug reported after switching between the edge-intersection and
+  // binary-search arc methods made no difference (because the actual bug
+  // was here, downstream of both, not in either arc computation).
+  const arcVertexCount = Math.max(2, Math.round(N) + 1);
   const arcAngles = new Array(arcVertexCount);
+  // Sample INCLUSIVE of both snapS and snapE (arcVertexCount-1 steps across
+  // arcVertexCount points), not just up to snapS + (N-1)/N * arcSpan. Used to
+  // stop one step short of snapE — meaning the boundary-following fix in
+  // _buildTerrainPathUnit (which plots the closing point exactly at arcEnd)
+  // still had a small synthetic gap between the last REAL sample and arcEnd
+  // itself. Sampling through the true endpoint removes that residual gap
+  // entirely instead of just shrinking it.
   for (let i = 0; i < arcVertexCount; i++) {
-    arcAngles[i] = snapS + (i / arcVertexCount) * arcSpan;
+    arcAngles[i] = snapS + (i / (arcVertexCount - 1)) * arcSpan;
   }
 
   if (arcAngles.length === 0) {
@@ -4251,13 +5014,15 @@ function _getTerrainSamples(bodyName, b, radius_m, N, arcInfo) {
     return _getTerrainSamples(bodyName, b, radius_m, 360, null);
   }
 
-  _applyWaterDepressionIfNeeded(b, TD, heights, angArr);
+  const depressions = new Float64Array(angArr.length);
+  _applyWaterDepressionIfNeeded(b, TD, heights, angArr, depressions);
   const fzd = TD.flatZonesDifficulties;
   const flatZones = (fzd && (fzd[viewDiffKey] || fzd['Normal'])) || TD.flatZones || [];
-  _applyFlatZones(heights, angArr, flatZones, radius_m);
+  _applyFlatZones(heights, angArr, flatZones, radius_m, depressions);
 
   const result = {
     heights,
+    depressions,
     angles: angArr,
     N: angArr.length,
     arcCulled: true,
@@ -4268,11 +5033,12 @@ function _getTerrainSamples(bodyName, b, radius_m, N, arcInfo) {
   const keys = Object.keys(_terrainSampleCache);
   if (keys.length >= 60) delete _terrainSampleCache[keys[0]];
   _terrainSampleCache[arcKey] = result;
+
   return result;
 }
 
 // ── Water depression helper ───────────────────────────────────────────────────
-function _applyWaterDepressionIfNeeded(b, TD, heights, angles) {
+function _applyWaterDepressionIfNeeded(b, TD, heights, angles, depressionOut) {
   if (!b.data.WATER_DATA?.lowerTerrain) return;
   const WD = b.data.WATER_DATA;
   const maskTex = WD.oceanMaskTexture;
@@ -4297,7 +5063,7 @@ function _applyWaterDepressionIfNeeded(b, TD, heights, angles) {
   if (wmp) {
     const texRotRad = (TD.TERRAIN_TEXTURE_DATA?.planetTextureRotation ?? 0) * Math.PI / 180;
     const cutout = TD.TERRAIN_TEXTURE_DATA?.planetTextureCutout ?? 1.0;
-    _applyWaterDepression(heights, angles, wmp.px, wmp.sz, WD.oceanDepth || 3000, texRotRad, cutout);
+    _applyWaterDepression(heights, angles, wmp.px, wmp.sz, WD.oceanDepth || 3000, texRotRad, cutout, depressionOut);
   }
 }
 
@@ -4314,41 +5080,60 @@ function _applyWaterDepressionIfNeeded(b, TD, heights, angles) {
 //
 // To close the hidden back from arcEnd → arcStart going THROUGH the interior
 // (the short way, not around the visible front), we use anticlockwise=true.
-function _buildTerrainPath(ctx_or_p, result, sp, physR_px, radius_m) {
+// Local-space variant of _buildTerrainPath — builds the path centered at
+// (0,0) instead of baking in sp.x/sp.y, so the resulting Path2D can be
+// cached independent of the body's screen position and reused via
+// ctx.translate(sp.x, sp.y) at draw/clip time. This is what makes
+// _terrainClipCache safe to key WITHOUT sp — previously the cache key
+// included sp.x|sp.y specifically because the path itself was baked in
+// screen space, so any viewport resize (e.g. opening the sidebar, which
+// shifts vp.width/2 and therefore every body's worldToScreen() output)
+// invalidated every cached terrain clip path simultaneously, forcing a
+// full silhouette + Path2D rebuild for every visible body in one frame —
+// this was the actual source of the sidebar-open terrain lag.
+// Builds the terrain silhouette in UNIT-RADIUS space: radius 1.0 = sea level,
+// centred at the origin. physR_px is deliberately NOT baked into the
+// coordinates — callers apply it as a canvas scale() at draw time instead, so
+// the exact same Path2D can be reused across every zoom level (see
+// _getUnitTerrainPath). This is the single biggest lever for smooth zoom: it
+// turns "rebuild + re-rasterize an N-vertex path every frame" into "reuse a
+// cached path + cheap affine transform".
+function _buildTerrainPathUnit(ctx_or_p, result, radius_m) {
   const { heights, angles, arcCulled, arcStart, arcEnd } = result;
   const N = angles.length;
 
   if (!arcCulled) {
-    // Full circle — emit all vertices
-    const r0 = physR_px * (1 + heights[0] / radius_m);
-    ctx_or_p.moveTo(sp.x + Math.cos(angles[0]) * r0, sp.y - Math.sin(angles[0]) * r0);
+    const r0 = 1 + heights[0] / radius_m;
+    ctx_or_p.moveTo(Math.cos(angles[0]) * r0, -Math.sin(angles[0]) * r0);
     for (let i = 1; i < N; i++) {
-      const rPx = physR_px * (1 + heights[i] / radius_m);
-      ctx_or_p.lineTo(sp.x + Math.cos(angles[i]) * rPx, sp.y - Math.sin(angles[i]) * rPx);
+      const rr = 1 + heights[i] / radius_m;
+      ctx_or_p.lineTo(Math.cos(angles[i]) * rr, -Math.sin(angles[i]) * rr);
     }
   } else {
     if (N === 0) {
-      // No arc vertices — plain disc
-      ctx_or_p.arc(sp.x, sp.y, physR_px, 0, Math.PI * 2);
+      ctx_or_p.arc(0, 0, 1, 0, Math.PI * 2);
       return;
     }
-    // Enter arc at arcStart on the disc
-    ctx_or_p.moveTo(sp.x + Math.cos(arcStart) * physR_px,
-                    sp.y - Math.sin(arcStart) * physR_px);
-    // Emit terrain vertices for the visible arc
-    for (let i = 0; i < N; i++) {
-      const rPx = physR_px * (1 + heights[i] / radius_m);
-      ctx_or_p.lineTo(sp.x + Math.cos(angles[i]) * rPx,
-                      sp.y - Math.sin(angles[i]) * rPx);
+    // angles[0] === arcStart and angles[N-1] === arcEnd exactly now (see
+    // _getTerrainSamples — sampling is inclusive of both arc boundaries),
+    // so the loop itself already starts/ends precisely at the arc edges
+    // with real terrain heights. (Previously the boundary points were
+    // plotted separately at a flat radius=1 with no height offset, before
+    // jumping to the first/last real sample — at wide arcs that was a
+    // negligible sliver, but at the narrow sub-1° arcs close-zoom arc
+    // culling now correctly produces, it was a large fraction of the
+    // visible silhouette, causing a sharp visible kink where the fake flat
+    // edge met real terrain. Sampling through the true endpoints removes
+    // the synthetic segments entirely instead of just special-casing them.)
+    const r0 = 1 + heights[0] / radius_m;
+    ctx_or_p.moveTo(Math.cos(angles[0]) * r0, -Math.sin(angles[0]) * r0);
+    for (let i = 1; i < N; i++) {
+      const rr = 1 + heights[i] / radius_m;
+      ctx_or_p.lineTo(Math.cos(angles[i]) * rr, -Math.sin(angles[i]) * rr);
     }
-    // Return to disc edge at arcEnd
-    ctx_or_p.lineTo(sp.x + Math.cos(arcEnd) * physR_px,
-                    sp.y - Math.sin(arcEnd) * physR_px);
     // Close through the interior (hidden back of planet) via anticlockwise arc.
     // canvas arc angle = -trig angle.
-    // We want to sweep from arcEnd back to arcStart going the short hidden way.
-    // In canvas coords: from -arcEnd to -arcStart, anticlockwise=true.
-    ctx_or_p.arc(sp.x, sp.y, physR_px, -arcEnd, -arcStart, true);
+    ctx_or_p.arc(0, 0, 1, -arcEnd, -arcStart, true);
   }
 }
 
@@ -4359,15 +5144,24 @@ function drawTerrainBody(ctx, b, bodyName, sp, physR_px, radius_m, mapColor, N, 
   if (!b.data.TERRAIN_DATA) return false;
   if (!N) N = physR_px < 10 ? 90 : physR_px < 40 ? 180 : 360;
 
-  // Always kick off a full-circle N=360 request so it's cached by next frame.
-  // This ensures _terrainClipPath always has a non-arc-culled result available.
-  _getTerrainSamples(bodyName, b, radius_m, 360, null);
+  // Kick off a full-circle N=360 request so it's cached for _terrainClipPath's
+  // fallback path — but only when we don't already have one. Previously this
+  // called _getTerrainSamples(...,360,...) unconditionally every frame, which
+  // meant a full O(360) formula evaluation (heightmaps, curves, flat zones,
+  // water depression) was paid for on top of the real N every single frame
+  // during a zoom, regardless of the terrain-detail/LOD setting.
+  const _baselineKey = `${bodyName}|${radius_m.toFixed(0)}|${viewDiffKey}|360|`;
+  let _haveBaseline = false;
+  for (const k in _terrainSampleCache) {
+    if (k.startsWith(_baselineKey)) { _haveBaseline = true; break; }
+  }
+  if (!_haveBaseline) _getTerrainSamples(bodyName, b, radius_m, 360, null);
 
   const result = _getTerrainSamples(bodyName, b, radius_m, N, arcInfo);
   if (!result) return false;
 
   // Track the max terrain radius in screen pixels for hit-testing.
-  // Peak formula mirrors _buildTerrainPath: physR_px * (1 + h / radius_m).
+  // Peak formula mirrors _buildTerrainPathUnit: physR_px * (1 + h / radius_m).
   {
     let _peakH = 0;
     for (let _i = 0; _i < result.heights.length; _i++) {
@@ -4375,6 +5169,10 @@ function drawTerrainBody(ctx, b, bodyName, sp, physR_px, radius_m, mapColor, N, 
     }
     bodyTerrainPeakPx[bodyName] = physR_px * (1 + _peakH / radius_m);
   }
+
+  // Unit-space silhouette path — shared by the edge-disk clip below and the
+  // flat-colour fallback fill, and reused verbatim by _terrainClipPath.
+  const _terrPath = _getUnitTerrainPath(bodyName, result, result.N, radius_m);
 
   // ── Edge-disk fill ───────────────────────────────────────────────────────
   // Sample the outermost few rows of the planet texture once and cache the
@@ -4464,14 +5262,6 @@ function drawTerrainBody(ctx, b, bodyName, sp, physR_px, radius_m, mapColor, N, 
     // which are sub-pixel when the body exceeds ~4× the viewport diagonal.
     const _diagPx2 = Math.sqrt(ctx.canvas.width * ctx.canvas.width + ctx.canvas.height * ctx.canvas.height);
     if (physR_px <= _diagPx2 * 4) {
-      const _arcKey = result.arcCulled ? `a${(result.arcStart*10)|0}_${(result.arcEnd*10)|0}` : 'full';
-      const _cacheKey = `${bodyName}|${N}|${sp.x|0}|${sp.y|0}|${physR_px|0}|${_arcKey}`;
-      let _terrPath = _terrainClipCache[_cacheKey];
-      if (!_terrPath) {
-        _terrPath = new Path2D();
-        _buildTerrainPath(_terrPath, result, sp, physR_px, radius_m);
-        _terrainClipCache[_cacheKey] = _terrPath;
-      }
       // Clamp destination rect to viewport so the GPU only blits visible pixels.
       const fullL = sp.x - physR_px, fullT = sp.y - physR_px, fullS = physR_px * 2;
       const dstX = Math.max(0, fullL), dstY = Math.max(0, fullT);
@@ -4484,21 +5274,13 @@ function drawTerrainBody(ctx, b, bodyName, sp, physR_px, radius_m, mapColor, N, 
         const srcX = (dstX - fullL) * scale, srcY = (dstY - fullT) * scale;
         const srcW = dstW * scale,            srcH = dstH * scale;
         ctx.save();
-        ctx.clip(_terrPath);
+        _applyTerrainClip(ctx, _terrPath, sp, physR_px);
         ctx.drawImage(texImg._edgePat, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
         ctx.restore();
       }
-    } else {
-      // Planet fills screen — just write the cache key with a plain disc clip
-      // so downstream _terrainClipPath calls still get a cached Path2D.
-      const _arcKey = result.arcCulled ? `a${(result.arcStart*10)|0}_${(result.arcEnd*10)|0}` : 'full';
-      const _cacheKey = `${bodyName}|${N}|${sp.x|0}|${sp.y|0}|${physR_px|0}|${_arcKey}`;
-      if (!_terrainClipCache[_cacheKey]) {
-        const _terrPath = new Path2D();
-        _buildTerrainPath(_terrPath, result, sp, physR_px, radius_m);
-        _terrainClipCache[_cacheKey] = _terrPath;
-      }
     }
+    // else: planet fills the whole screen — edge-disk isn't visible anyway,
+    // and _terrPath is already cached above for downstream reuse.
   } else {
     // Fallback: flat mapColor disc (no texture loaded)
     const mc = mapColor;
@@ -4507,11 +5289,10 @@ function drawTerrainBody(ctx, b, bodyName, sp, physR_px, radius_m, mapColor, N, 
     const mb = mc ? Math.min(255, Math.round(mc.b * 255)) : 120;
 
     ctx.save();
-    ctx.beginPath();
-    _buildTerrainPath(ctx, result, sp, physR_px, radius_m);
-    ctx.closePath();
+    ctx.translate(sp.x, sp.y);
+    ctx.scale(physR_px, physR_px);
     ctx.fillStyle = `rgb(${mr},${mg},${mb})`;
-    ctx.fill();
+    ctx.fill(_terrPath);
     ctx.restore();
   }
 
@@ -4566,17 +5347,26 @@ function _terrainClipPath(b, bodyName, sp, physR_px, radius_m, N, arcInfo) {
   }
   if (!result) return null;
 
-  const _arcKey = result.arcCulled ? `a${(result.arcStart*10)|0}_${(result.arcEnd*10)|0}` : 'full';
-  const _cacheKey = `${bodyName}|${N}|${sp.x|0}|${sp.y|0}|${physR_px|0}|${_arcKey}`;
-  if (_terrainClipCache[_cacheKey]) return _terrainClipCache[_cacheKey];
-
-  const p = new Path2D();
-  _buildTerrainPath(p, result, sp, physR_px, radius_m);
-  _terrainClipCache[_cacheKey] = p;
-  return p;
+  // Cache key intentionally excludes sp.x/sp.y AND physR_px — the path is
+  // built in UNIT-RADIUS space (see _buildTerrainPathUnit) and placed with a
+  // translate+scale at clip time (_applyTerrainClip), so the same cached
+  // Path2D is valid at ANY screen position and ANY zoom level. Screen
+  // position/zoom change on essentially every frame during panning or
+  // zooming; excluding both from the key is what keeps zoom smooth on large
+  // planets — geometry is only rebuilt when N (LOD-driven vertex count) or
+  // the visible arc actually changes, not on every camera movement.
+  return _getUnitTerrainPath(bodyName, result, result.N, radius_m);
 }
 
-// Apply a screen-space terrain clip path (already in screen coordinates).
-function _applyTerrainClip(ctx, path, sp) {
+// Apply a UNIT-RADIUS terrain clip path by translating to the body's current
+// screen position and scaling by its current on-screen radius. Neither the
+// path traversal cost nor a rebuild happens on pan/zoom — only this cheap
+// transform changes — which is what keeps large, fully-zoomed planets
+// smooth instead of rebuilding a many-thousand-vertex path every frame.
+function _applyTerrainClip(ctx, path, sp, physR_px) {
+  ctx.translate(sp.x, sp.y);
+  ctx.scale(physR_px, physR_px);
   ctx.clip(path);
+  ctx.scale(1 / physR_px, 1 / physR_px);
+  ctx.translate(-sp.x, -sp.y);
 }

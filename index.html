@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>SFS System Editor</title>
-<link rel="stylesheet" href="style.css?v=5.13">
+<link rel="stylesheet" href="style.css?v=5.14">
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
@@ -434,7 +434,7 @@
       <span class="arr">›</span>
     </button>
     <button class="menu-btn menu-btn-create-tex" onclick="goCreateTextures()">
-      <span class="mico"><svg class="icon"><use href="#icon-palette"></use></svg></span>CREATE TEXTURES
+      <span class="mico"><svg class="icon"><use href="#icon-palette"></use></svg></span>CREATE TEXTURES<span class="menu-new-badge" id="menu-tex-new-badge" title="New tools added">!</span>
       <span class="arr">›</span>
     </button>
     <button class="menu-btn" onclick="goFeatured()">
@@ -460,30 +460,83 @@
       <button class="menu-back-mini" onclick="goCreateTexturesBack()">‹ BACK</button>
       <span class="menu-create-title">CREATE TEXTURES</span>
     </div>
-    <button class="menu-btn primary" onclick="TC.open()">
-      <span class="mico"><svg class="icon"><use href="#icon-haze"></use></svg></span>CREATE ATMOSPHERE TEXTURE
-      <span class="arr">›</span>
-    </button>
-    <button class="menu-btn" onclick="DC.open()">
-      <span class="mico"><svg class="icon"><use href="#icon-sun"></use></svg></span>CREATE DAY/NIGHT TEXTURE
-      <span class="arr">›</span>
-    </button>
-    <button class="menu-btn menu-btn-soon" disabled title="Coming soon">
-      <span class="mico"><svg class="icon"><use href="#icon-waves"></use></svg></span>CREATE OCEAN TEXTURE
-      <span class="coming-soon-badge">COMING SOON™</span>
-    </button>
-    <button class="menu-btn menu-btn-soon" disabled title="Coming soon">
-      <span class="mico"><svg class="icon"><use href="#icon-cloud"></use></svg></span>CREATE CLOUD TEXTURE
-      <span class="coming-soon-badge">COMING SOON™</span>
-    </button>
-    <button class="menu-btn menu-btn-soon" disabled title="Coming soon">
-      <span class="mico"><svg class="icon"><use href="#icon-sparkle"></use></svg></span>CREATE RING TEXTURE
-      <span class="coming-soon-badge">COMING SOON™</span>
-    </button>
-    <button class="menu-btn" onclick="PT.open()">
-      <span class="mico"><svg class="icon"><use href="#icon-mountain-snow"></use></svg></span>CREATE PLANET TEXTURE
-      <span class="arr">›</span>
-    </button>
+    <div class="tex-grid">
+
+      <button class="tex-card" onclick="TC.open()">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Atmosphere%20gen.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-haze"></use></svg></span>Atmosphere</span>
+        </div>
+      </button>
+
+      <button class="tex-card" onclick="DC.open()">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Atmo%20Daynight.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-sun"></use></svg></span>Day / Night</span>
+        </div>
+      </button>
+
+      <button class="tex-card" onclick="ET.open('tools/cloud-texture-generator.html','CLOUD TEXTURE GENERATOR')">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Front%20clouds%20Gen.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-cloud"></use></svg></span>Cloud</span>
+        </div>
+      </button>
+
+      <button class="tex-card" onclick="ET.open('tools/ring-texture-generator.html','RING TEXTURE GENERATOR')">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Rings%20gen.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-sparkle"></use></svg></span>Ring</span>
+        </div>
+      </button>
+
+      <button class="tex-card" onclick="ET.open('tools/gas-giant-generator.html','GAS GIANT TEXTURE GENERATOR')">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Gas%20giant%20Gen.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-circle"></use></svg></span>Gas Giant</span>
+        </div>
+      </button>
+
+      <button class="tex-card" onclick="PT.open()">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Planet%20Gen.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-mountain-snow"></use></svg></span>Planet</span>
+        </div>
+      </button>
+
+      <button class="tex-card" onclick="openHeightmapTools()">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Texture%20Converters.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-map"></use></svg></span>Texture Converters</span>
+          <span class="tex-card-sub">Bump&rarr;heightmap &middot; texture&rarr;SFS &middot; watermask</span>
+        </div>
+      </button>
+
+      <button class="tex-card" onclick="ET.open('tools/polar-transformer.html','POLAR TRANSFORMER')">
+        <div class="tex-card-thumb">
+          <img src="https://cdn.jsdelivr.net/gh/Tserieskinda/Sfs-System-Editor@main/assets/Polar.jpg" alt="" loading="lazy">
+        </div>
+        <div class="tex-card-body">
+          <span class="tex-card-title"><span class="mico"><svg class="icon"><use href="#icon-disc"></use></svg></span>Polar Transformer</span>
+          <span class="tex-card-sub">Rectangular &#8646; polar conversion for ring/pole art</span>
+        </div>
+      </button>
+
+    </div>
   </nav>
 
   <input type="file" id="fi-sfs-assets" accept=".zip" multiple style="display:none" onchange="loadSFSAssetZips(this.files);this.value=''">
@@ -511,15 +564,12 @@
       </div>
       <div style="position:relative;display:inline-flex;align-items:stretch">
         <button class="tb-btn env-off" id="env-btn-heightmaps" onclick="toggleEnvFlag('heightmaps')" title="Toggle terrain heightmap rendering"
-          style="font-size:.78rem;letter-spacing:.06em;padding:7px 10px;border-right:none;border-radius:4px 0 0 4px">▲ LAND</button>
-        <button id="btn-terrain-detail" onclick="toggleTerrainDetailDrop()" title="Terrain detail level"
-          style="border:1px solid var(--ac25);border-left:1px solid var(--ac15);color:var(--sky2);background:var(--ac08);cursor:pointer;padding:0 7px;border-radius:0 4px 4px 0;font-family:'JetBrains Mono',monospace;font-size:.58rem;letter-spacing:.04em;display:flex;align-items:center;gap:4px;white-space:nowrap">
-          <span id="terrain-detail-label">30%</span><span style="font-size:.6rem;opacity:.6">&#9662;</span>
-        </button>
+          style="font-size:.78rem;letter-spacing:.06em;padding:7px 10px;border-radius:4px">▲ LAND</button>
       </div>
       <button class="tb-btn" onclick="openBodySearch()" title="Search bodies in system" style="font-size:.85rem;padding:7px 10px"><svg class="icon"><use href="#icon-search"></use></svg></button>
       <button class="tb-btn" id="btn-difficulty" onclick="cycleDifficulty()" title="Switch orbit display difficulty" style="min-width:96px"><svg class="icon"><use href="#icon-scale"></use></svg> NORMAL</button>
       <button class="tb-btn" id="btn-dist-rings" onclick="toggleDistRings()" title="Toggle AU distance rings around selected body" style="font-size:.75rem;letter-spacing:.05em;padding:7px 10px">⊙ AU</button><button class="tb-btn" onclick="openDistRingsMenu()" title="Configure ring distances" style="font-size:.7rem;padding:7px 7px;margin-left:-6px;border-left:none;border-radius:0 5px 5px 0"><svg class="icon"><use href="#icon-settings"></use></svg></button>
+      <button class="tb-btn" id="btn-hz-band" onclick="toggleHZBand()" title="Toggle habitable-zone gradient around the selected star" style="font-size:.75rem;letter-spacing:.05em;padding:7px 10px;margin-left:4px">☀ HZ</button>
       <button class="tb-btn" id="btn-add-body" onclick="addBodyPrompt()" title="Add a body to the system (requires a system center first)" style="font-weight:700;letter-spacing:.08em">＋ ADD</button>
       <!-- ── Tag dropdown ── -->
       <div id="tag-dropdown-wrap" style="position:relative;display:inline-block">
@@ -701,7 +751,6 @@
 
       <!-- ── YOUNG SOLAR SYSTEM ── -->
       <div class="fs-card">
-        <span class="fs-card-new-badge">NEW</span>
         <div class="fs-card-header">
           <span class="fs-card-title">YOUNG SOLAR SYSTEM</span>
           <span class="fs-card-author">by J3 Mângo</span>
@@ -725,7 +774,6 @@
 
       <!-- ── CELESTIAL HORIZONS ── -->
       <div class="fs-card">
-        <span class="fs-card-new-badge">NEW</span>
         <div class="fs-card-header">
           <span class="fs-card-title">CELESTIAL HORIZONS</span>
           <span class="fs-card-author">by CynTheSilly87</span>
@@ -756,7 +804,6 @@
 
       <!-- ── RUVAN SYSTEM ── -->
       <div class="fs-card">
-        <span class="fs-card-new-badge">NEW</span>
         <div class="fs-card-header">
           <span class="fs-card-title">RUVAN SYSTEM</span>
           <span class="fs-card-author">by ssdcat</span>
@@ -801,7 +848,29 @@
           <span class="fs-stat fs-stat-size"><svg class="icon"><use href="#icon-package"></use></svg> <span class="fs-stat-num fs-stat-loading" id="fssz-pg">…</span> MB</span>
         </div>
       </div>
-
+<!-- ── CENTAURI ODYSSEY ── -->
+      <div class="fs-card">
+        <span class="fs-card-new-badge">NEW</span>
+        <div class="fs-card-header">
+          <span class="fs-card-title">CENTAURI ODYSSEY</span>
+          <span class="fs-card-author">by TG15 GAMING YT</span>
+        </div>
+        <div class="fs-card-preview" style="padding:0;overflow:hidden;border-radius:6px">
+          <img src="featured/CO.png" alt="Centauri Odyssey Preview" style="width:100%;height:auto;display:block">
+        </div>
+        <div class="fs-card-desc">
+          Alpha Centauri system and neighbouring stars like you’ve never seen before in Spaceflight Simulator. 🌌
+        </div>
+        <div class="fs-card-actions">
+          <button class="fs-btn fs-btn-dl" onclick="trackFeatured('co','import');importFeatured('featured/CO.zip','CO.zip')">⬇ IMPORT</button>
+          <button class="fs-btn fs-btn-open" onclick="trackFeatured('co','open');loadZipFromUrl('featured/CO.zip','CO.zip')">▶ OPEN IN EDITOR</button>
+        </div>
+        <div class="fs-card-stats" id="fsstats-co">
+          <span class="fs-stat">⬇ <span class="fs-stat-num fs-stat-loading" id="fsn-co-import">…</span> imports</span>
+          <span class="fs-stat">▶ <span class="fs-stat-num fs-stat-loading" id="fsn-co-open">…</span> opens</span>
+          <span class="fs-stat fs-stat-size"><svg class="icon"><use href="#icon-package"></use></svg> <span class="fs-stat-num fs-stat-loading" id="fssz-co">…</span> MB</span>
+        </div>
+      </div>
       <!-- ── BLANK CARD slot ── -->
       <div class="fs-card fs-card-empty">
         <div class="fs-empty-icon">＋</div>
@@ -1664,8 +1733,16 @@
             <input class="fslider" id="or-ecc-sl" type="range" min="0" max="0.999" step="0.001" oninput="syncFromSlider('or-ecc',0,0.999,3)">
           </div>
           <div class="frow-s">
-            <div class="frow-s-top"><span class="flabel">Arg. of Periapsis</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="or-aop-val">—</span><input class="finput" id="or-aop" type="text" inputmode="decimal" step="0.1" min="-360" max="360" style="flex:0 0 56px;width:56px;min-width:0" oninput="syncSlider('or-aop',-360,360)"></div>
-            <input class="fslider" id="or-aop-sl" type="range" min="-360" max="360" step="0.1" oninput="syncFromSlider('or-aop',-360,360,1)">
+            <div class="frow-s-top"><span class="flabel">Arg. of Periapsis</span><span style="font-size:.6rem;color:var(--ink4);margin-left:2px">°</span><span class="fval" id="or-aop-val">—</span><input class="finput" id="or-aop" type="text" inputmode="decimal" step="0.1" min="-360" max="360" style="flex:0 0 56px;width:56px;min-width:0" oninput="syncSlider('or-aop',-360,360); syncAopToRA();"></div>
+            <input class="fslider" id="or-aop-sl" type="range" min="-360" max="360" step="0.1" oninput="syncFromSlider('or-aop',-360,360,1); syncAopToRA();">
+          </div>
+          <div class="frow-s">
+            <div class="frow-s-top"><span class="flabel">Right Ascension</span><span class="fval" id="or-ra-val" style="font-size:.6rem;color:var(--ink4)"></span></div>
+            <div style="display:flex;gap:4px;align-items:center">
+              <input class="finput" id="or-ra-h" type="text" inputmode="decimal" step="1" min="0" max="23" placeholder="00" style="flex:0 0 40px;width:40px;text-align:center" oninput="syncRaToAop()"><span style="font-size:.6rem;color:var(--ink4)">h</span>
+              <input class="finput" id="or-ra-m" type="text" inputmode="decimal" step="1" min="0" max="59" placeholder="00" style="flex:0 0 40px;width:40px;text-align:center" oninput="syncRaToAop()"><span style="font-size:.6rem;color:var(--ink4)">m</span>
+              <input class="finput" id="or-ra-s" type="text" inputmode="decimal" step="0.1" min="0" max="59.999" placeholder="00" style="flex:0 0 48px;width:48px;text-align:center" oninput="syncRaToAop()"><span style="font-size:.6rem;color:var(--ink4)">s</span>
+            </div>
           </div>
           <div class="frow"><span class="flabel">Direction</span>
             <select class="fselect" id="or-dir">
@@ -1896,14 +1973,14 @@
 
         <div style="margin-bottom:14px">
           <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">INITIAL BETA TESTERS · FEATURE SUGGESTIONS</div>
-          <div>Krameter.Jr</div>
-          <div>Hexastream</div>
-          <div>Cyn</div>
-          <div>Mistiy</div>
-          <div>Reoreyboi</div>
-          <div>Cresign</div>
-          <div>Akselajin</div>
-          <div>and everyone on SFS forums!</div>
+          <div>Krameter.Jr -- (Inital tester)</div>
+          <div>Hexastream -- (Testing,fixes,suggestions and assets)</div>
+          <div>Cyn               -- (Suggestions and optimization fixes)</div>
+          <div>Mistiy           -- (Original idea)</div>
+          <div>Reoreyboi    -- (Intial mobile test)</div>
+          <div>Cresign        -- (Advanced suggestions)</div>
+          <div>Akselajin     --  (Qol suggestions and fixes)</div>
+          <div>and everyone on SFS forums/discord!</div>
         </div>
 
         <div style="margin-bottom:18px">
@@ -1912,8 +1989,8 @@
         </div>
 
         <div style="margin-bottom:14px">
-          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">TOOLS & LIBRARIES</div>
-          <div>Claude AI · Gemini AI</div>
+          <div style="color:var(--sky2);font-size:.58rem;letter-spacing:.12em;margin-bottom:6px">CODERS & LIBRARIES</div>
+          <div>Claude AI (Main) · Gemini AI (Secondary) · Tkinda (Barely "coded" anything But yea-) </div>
           <div>Lucide Icons (SVG)</div>
         </div>
 
@@ -2132,6 +2209,21 @@
 
     <div class="modal-footer" style="justify-content:center">
       <button class="mf-btn ok" onclick="closeAppSettings()" ontouchend="event.stopPropagation();closeAppSettings()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ HELP MODAL ══════════════ -->
+<div id="modal-help">
+  <div class="mpanel" style="width:min(90vw,540px);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">
+    <h2><svg class="icon" style="width:1.2em;height:1.2em;margin-right:8px"><use href="#icon-help"></use></svg>HELP</h2>
+    
+    <div id="help-content" style="flex:1;overflow-y:auto;font-size:.7rem;line-height:1.6;color:var(--ink3);font-family:'JetBrains Mono',monospace">
+      <!-- Help content will be populated by JavaScript -->
+    </div>
+
+    <div class="modal-footer" style="justify-content:center;margin-top:16px">
+      <button class="mf-btn ok" onclick="closeHelpModal()" ontouchend="event.stopPropagation();closeHelpModal()">CLOSE</button>
     </div>
   </div>
 </div>
@@ -2363,7 +2455,7 @@
 <script src="js/idb-cache.js?v=5.13"></script>
 <script src="js/assets.js?v=5.13"></script>
 <script src="js/io.js?v=5.14"></script>
-<script src="js/presets.js?v=5.14"></script>
+<script src="js/presets.js?v=5.13"></script>
 <script src="js/state.js?v=5.13"></script>
 <script src="js/collab.js?v=1.0"></script>
 <script src="js/collab-ui.js?v=1.0"></script>
@@ -2372,8 +2464,7 @@
 <script src="js/autosave.js?v=5.13"></script>
 <script src="js/settings.js?v=5.13"></script>
 <script src="js/preset-modal.js?v=5.13"></script>
-<script src="js/viewport.js?v=5.19"></script>
-<script src="js/help-modal.js?v=1.0"></script>
+<script src="js/viewport.js?v=5.17"></script>
 <script src="js/tools.js?v=5.13"></script>
 <script src="js/units.js?v=5.13"></script>
 <script src="js/sidebar.js?v=5.15"></script>
@@ -2384,38 +2475,14 @@
 <script src="js/tex-creator.js?v=5.13"></script>
 <script src="js/planet-tex-creator.js?v=1.0"></script>
 <script src="js/daycycle-tex-creator.js?v=1.0"></script>
+<script src="js/external-tools.js?v=1.0"></script>
 <script src="js/sfx.js?v=5.13"></script>
-<script src="js/utils.js?v=5.16"></script>
+<script src="js/utils.js?v=5.17"></script>
 <script src="js/images.js?v=5.13"></script>
 <script src="js/placer.js?v=1.0"></script>
 <script src="js/procgen.js?v=1.0"></script>
 <script src="js/landmark-features.js?v=1.1"></script>
-<script src="js/habitability-visualizer.js?v=1.1"></script>
-<!-- ══ TERRAIN DETAIL DROPDOWN (body-level to escape topbar stacking context) ══ -->
-<div id="terrain-detail-dropdown" style="display:none;position:fixed;
-  min-width:200px;background:rgba(6,10,22,.97);border:1px solid rgba(180,140,255,.25);
-  border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,.7);z-index:99999;overflow:hidden">
-  <div style="padding:5px 10px 4px;font-family:'Orbitron',sans-serif;font-size:.5rem;
-    color:rgba(180,140,255,.5);letter-spacing:.12em;border-bottom:1px solid rgba(180,140,255,.1)">TERRAIN DETAIL</div>
-  <div style="padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(180,140,255,.85);letter-spacing:.05em">VERTEX DENSITY</span>
-      <span id="terrain-detail-val" style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:rgba(150,200,255,.9);min-width:36px;text-align:right">30%</span>
-    </div>
-    <input type="range" id="terrain-detail-slider" min="0" max="100" step="5" value="30"
-      style="width:100%;accent-color:rgba(180,140,255,.85);cursor:pointer"
-      oninput="setTerrainDetail(parseInt(this.value))">
-    <div style="display:flex;justify-content:space-between">
-      <span style="font-size:.5rem;color:rgba(150,150,180,.5);letter-spacing:.04em">Low (fast)</span>
-      <span style="font-size:.5rem;color:rgba(150,150,180,.5);letter-spacing:.04em">Full (slow)</span>
-    </div>
-    <div id="terrain-detail-warn" style="display:none;padding:5px 8px;background:rgba(255,160,40,.1);border:1px solid rgba(255,160,40,.35);border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:.52rem;color:rgba(255,180,60,.9);letter-spacing:.03em;line-height:1.5">
-      ⚠ High detail may lag<br><span style="color:rgba(255,180,60,.6)">Recommended: keep below 70%</span>
-    </div>
-    <span style="font-size:.5rem;color:rgba(150,150,180,.45);letter-spacing:.03em;line-height:1.4">Scales vertices per frame.<br>Lower = smoother performance.</span>
-  </div>
-</div>
-
+<script src="js/help-modal.js?v=1.0"></script>
 <!-- ══ ENV DROPDOWN (body-level to escape topbar stacking context) ══ -->
 <div id="env-dropdown" style="display:none;position:fixed;
   min-width:210px;background:rgba(6,10,22,.97);border:1px solid rgba(64,200,255,.22);
@@ -4488,15 +4555,6 @@ document.addEventListener('keydown', function(e){
     <span><span style="display:block;color:var(--sky2)">IMAGE OVERLAY</span>
     <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Place reference images on the viewport</span></span>
   </button>
-  <button onclick="openHeightmapTools()" style="display:flex;align-items:center;gap:10px;
-    width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
-    font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
-    letter-spacing:.05em;transition:background .12s;text-align:left"
-    onmouseover="this.style.background='var(--ac12)'" onmouseout="this.style.background='none'">
-    <span style="font-size:1rem"><svg class="icon"><use href="#icon-map"></use></svg></span>
-    <span><span style="display:block;color:var(--sky2)">HEIGHTMAP TOOLS</span>
-    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Bump map → heightmap converter &amp; more</span></span>
-  </button>
   <button onclick="openProceduralGen()" style="display:flex;align-items:center;gap:10px;
     width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
     font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
@@ -4515,102 +4573,16 @@ document.addEventListener('keydown', function(e){
     <span><span style="display:block;color:var(--sky2)">PRECISE OBJECT PLACER</span>
     <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Click viewport to place bodies at exact positions</span></span>
   </button>
-  <button onclick="openHabitabilityVisualizer()" style="display:flex;align-items:center;gap:10px;
+  <button onclick="openHabZone()" style="display:flex;align-items:center;gap:10px;
     width:100%;padding:9px 14px;background:none;border:none;cursor:pointer;
     font-family:'JetBrains Mono',monospace;font-size:.62rem;color:rgba(220,220,255,.85);
     letter-spacing:.05em;transition:background .12s;text-align:left"
     onmouseover="this.style.background='var(--ac12)'" onmouseout="this.style.background='none'">
-    <span style="font-size:1rem"><svg class="icon"><use href="#icon-globe"></use></svg></span>
+    <span style="font-size:1rem"><svg class="icon"><use href="#icon-sun"></use></svg></span>
     <span><span style="display:block;color:var(--sky2)">HABITABILITY VISUALIZER</span>
-    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Calculate habitable zones for any star type</span></span>
+    <span style="display:block;font-size:.54rem;color:rgba(150,150,180,.6);margin-top:1px">Habitable zone by spectral type, plotted against your planets</span></span>
   </button>
 </div>
-
-<!-- ══════════════ HELP MODAL ══════════════ -->
-<div id="modal-help">
-  <div class="mpanel" style="width:min(90vw,540px);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">
-    <h2><svg class="icon" style="width:1.2em;height:1.2em;margin-right:8px"><use href="#icon-help"></use></svg>HELP</h2>
-    
-    <div id="help-content" style="flex:1;overflow-y:auto;font-size:.7rem;line-height:1.6;color:var(--ink3);font-family:'JetBrains Mono',monospace">
-      <!-- Help content will be populated by JavaScript -->
-    </div>
-
-    <div class="modal-footer" style="justify-content:center;margin-top:16px">
-      <button class="mf-btn ok" onclick="closeHelpModal()" ontouchend="event.stopPropagation();closeHelpModal()">CLOSE</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════ HABITABILITY VISUALIZER MODAL ══════════════ -->
-<div id="modal-habitability" style="
-  position: fixed; inset: 0; z-index: 300;
-  background: rgba(10,10,12,.88); backdrop-filter: blur(12px);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; pointer-events: none; transition: opacity .25s; padding: 16px;
-">
-  <div class="mpanel" style="width:min(90vw,620px);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2 style="margin:0;font-size:1.3rem">Habitability Visualizer</h2>
-      <button id="hab-close-btn" onclick="closeHabitabilityVisualizer()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--ink3)">✕</button>
-    </div>
-    <div id="hab-step-body">
-      <div style="color:var(--sky2);font-size:.85rem;margin-bottom:8px">STEP 1: Select a Star or Body</div>
-      <div id="hab-body-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;max-height:200px;overflow-y:auto;padding:8px;background:rgba(0,0,0,.15);border-radius:6px;border:1px solid var(--rim2)"></div>
-    </div>
-    <div id="hab-step-type" style="display:none;gap:12px;flex-direction:column">
-      <div>
-        <div style="color:var(--sky2);font-size:.85rem;margin-bottom:8px">STEP 2: Select Star Type for <span id="hab-selected-body" style="color:var(--ac1)"></span></div>
-        <div id="hab-type-list" style="display:flex;flex-direction:column;gap:1px;max-height:280px;overflow-y:auto;background:rgba(0,0,0,.15);border-radius:6px;border:1px solid var(--rim2)"></div>
-      </div>
-      <button onclick="document.getElementById('hab-step-type').style.display='none';document.getElementById('hab-step-body').style.display='block'" style="padding:8px;background:var(--panel2);border:1px solid var(--rim2);border-radius:4px;cursor:pointer;color:var(--ink2);transition:all .15s">← Back to Body Selection</button>
-    </div>
-    <div id="hab-step-results" style="display:none;gap:12px;flex-direction:column">
-      <div style="background:rgba(0,0,0,.15);border-radius:6px;padding:12px;border-left:3px solid var(--ac1)">
-        <div style="font-size:.85rem;color:var(--sky2);margin-bottom:6px">STAR</div>
-        <div id="hab-star-type" style="font-weight:bold;margin-bottom:4px"></div>
-        <div style="font-size:.9rem;display:flex;justify-content:space-between;gap:16px;margin:8px 0">
-          <div>Temp: <span id="hab-star-temp" style="color:var(--ac1)"></span></div>
-          <div>Luminosity: <span id="hab-star-lum" style="color:var(--ac1)"></span></div>
-        </div>
-        <div id="hab-star-desc" style="font-size:.85rem;color:var(--ink3);margin-top:6px"></div>
-        <div id="hab-difficulty-note" style="font-size:.8rem;color:var(--sky2);margin-top:8px;font-style:italic;display:none"></div>
-      </div>
-      <div style="background:rgba(100,200,100,.1);border-radius:6px;padding:12px;border-left:3px solid #66ff66">
-        <div style="font-size:.85rem;color:var(--sky2);margin-bottom:8px">HABITABLE ZONE</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:.9rem">
-          <div><div style="color:var(--ink4);font-size:.8rem;margin-bottom:2px">Inner Edge</div><div style="color:var(--ac1);font-weight:bold" id="hab-hz-inner"></div></div>
-          <div><div style="color:var(--ink4);font-size:.8rem;margin-bottom:2px">Center</div><div style="color:var(--sky);font-weight:bold" id="hab-hz-center"></div></div>
-          <div><div style="color:var(--ink4);font-size:.8rem;margin-bottom:2px">Outer Edge</div><div style="color:var(--ac1);font-weight:bold" id="hab-hz-outer"></div></div>
-        </div>
-      </div>
-      <div style="background:rgba(0,0,0,.15);border-radius:6px;padding:12px;border-left:3px solid var(--sky)">
-        <div style="font-size:.85rem;color:var(--sky2);margin-bottom:6px">BODY</div>
-        <div style="font-weight:bold;margin-bottom:4px"><span id="hab-body-name"></span></div>
-        <div style="font-size:.9rem">Semi-Major Axis: <span id="hab-body-sma" style="color:var(--sky)"></span></div>
-      </div>
-      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:16px;text-align:center;border:1px solid var(--rim2)">
-        <div style="font-size:.85rem;color:var(--ink4);margin-bottom:8px">HABITABILITY ASSESSMENT</div>
-        <div id="hab-assessment" style="font-size:1.1rem;font-weight:bold;padding:8px;border-radius:4px;background:rgba(100,100,100,.2)"></div>
-      </div>
-      <div style="background:rgba(0,0,0,.15);border-radius:6px;padding:8px;border:1px solid var(--rim2);text-align:center">
-        <canvas id="hab-canvas" width="500" height="300" style="max-width:100%;border-radius:4px;background:rgba(0,0,0,.3)"></canvas>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button onclick="document.getElementById('hab-step-results').style.display='none';document.getElementById('hab-step-type').style.display='block'" style="flex:1;padding:10px;background:var(--panel2);border:1px solid var(--rim2);border-radius:4px;cursor:pointer;color:var(--ink2);transition:all .15s">← Back to Star Selection</button>
-        <button onclick="closeHabitabilityVisualizer()" style="flex:1;padding:10px;background:var(--ac15);border:1px solid var(--ac1);border-radius:4px;cursor:pointer;color:var(--ac1);font-weight:bold;transition:all .15s">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<style>
-#modal-habitability.open { opacity: 1; pointer-events: all; }
-.hab-body-btn { padding:8px 12px; background:var(--panel3); border:1px solid var(--rim2); border-radius:4px; color:var(--ink2); cursor:pointer; transition:all 0.15s; font-size:0.9rem; }
-.hab-body-btn:hover { background:var(--ac15); border-color:var(--ac1); color:var(--ac1); transform:scale(1.02); }
-.hab-type-btn { padding:10px 12px; background:var(--panel3); border:1px solid var(--rim2); border-left:3px solid; color:var(--ink2); cursor:pointer; transition:all 0.15s; text-align:left; font-size:0.95rem; width:100%; }
-.hab-type-btn:hover { background:var(--ac15); border-color:var(--ac1); color:var(--ac1); transform:translateX(4px); }
-</style>
-
 <input type="file" id="img-file-input" accept="image/*" multiple style="display:none">
 
 <!-- ══════════════ IMAGE OVERLAY PANEL ══════════════ -->
@@ -4945,8 +4917,104 @@ document.addEventListener('keydown', function(e){
           </div>
         </div>
 
+        <div class="calc-tool-item" id="calc-tool-polar">
+          <div class="calc-tool-header" onclick="calcToggleTool('polar')" style="cursor:pointer">
+            <div>
+              <div class="calc-tool-name">Degrees → Polar</div>
+              <div class="calc-tool-formula">x = cos θ, y = sin θ</div>
+            </div>
+            <div class="calc-tool-arrow" id="calc-arrow-polar">▶</div>
+          </div>
+          <div class="calc-tool-panel" id="calc-panel-polar" style="display:none" onclick="event.stopPropagation()">
+            <div class="calc-desc">Converts a degree angle into a unit-circle position. 0° = right, increasing counter-clockwise — same convention as Arg. of Periapsis.</div>
+            <div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px">
+              <label style="font-size:.58rem;color:var(--sky2);opacity:.75;letter-spacing:.08em;white-space:nowrap">ANGLE (°)</label>
+              <input id="calc-polar-deg" type="range" min="-360" max="360" step="0.5" value="0" oninput="calcPolarUpdate()"
+                style="flex:1" class="tc-range">
+              <input id="calc-polar-deg-num" type="text" inputmode="decimal" step="0.1" value="0" oninput="calcPolarSyncFromNum()"
+                style="width:64px;background:rgba(12,18,38,.95);border:1px solid var(--ac18);
+                border-radius:4px;color:var(--ink2);font-family:'JetBrains Mono',monospace;
+                font-size:.66rem;padding:6px 8px;outline:none;text-align:center">
+            </div>
+            <div style="background:rgba(4,8,18,.95);border:1px solid var(--ac20);border-radius:6px;
+              padding:8px;margin:8px 0">
+              <canvas id="calc-polar-canvas" width="240" height="240" style="width:100%;max-width:220px;height:auto;display:block;margin:0 auto"></canvas>
+            </div>
+            <div class="calc-result-wrap">
+              <div class="calc-result-label">UNIT VECTOR (x, y)</div>
+              <div id="calc-res-polar" class="calc-result">—</div>
+            </div>
+          </div>
+        </div>
+
       </div><!-- end tool list -->
     </div><!-- end scrollable body -->
+  </div>
+</div>
+
+<!-- ══════════════ HABITABILITY VISUALIZER MODAL ══════════════ -->
+<div id="hz-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100000;
+  align-items:center;justify-content:center;padding:12px;backdrop-filter:blur(2px)">
+  <div id="hz-modal" style="background:rgba(6,10,22,.99);border:1px solid var(--ac22);
+    border-radius:10px;box-shadow:0 24px 64px rgba(0,0,0,.9),0 0 0 1px var(--ac08);
+    width:100%;max-width:560px;max-height:92vh;display:flex;flex-direction:column;
+    font-family:'JetBrains Mono',monospace;overflow:hidden">
+
+    <!-- ── Header ── -->
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      padding:13px 16px;border-bottom:1px solid var(--ac13);flex-shrink:0">
+      <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.13em;
+        color:var(--sky2)"><svg class="icon"><use href="#icon-sun"></use></svg> HABITABILITY VISUALIZER</span>
+      <button onclick="closeHabZone()" style="background:none;border:none;cursor:pointer;
+        color:rgba(180,180,210,.45);font-size:1.15rem;padding:2px 6px;line-height:1;
+        border-radius:4px;transition:color .15s" title="Close (Esc)"
+        onmouseover="this.style.color='rgba(220,100,100,.8)'"
+        onmouseout="this.style.color='rgba(180,180,210,.45)'">✕</button>
+    </div>
+
+    <!-- ── Scrollable body ── -->
+    <div style="overflow-y:auto;flex:1;overscroll-behavior:contain;padding:14px 16px">
+
+      <div class="frow"><span class="flabel">Star</span>
+        <select class="fselect" id="hz-star-sel" onchange="hzStarChanged()"></select>
+      </div>
+
+      <div class="frow"><span class="flabel">Spectral Type</span>
+        <select class="fselect" id="hz-spectral-sel" onchange="hzUpdate()">
+          <option value="O">O — Blue Supergiant</option>
+          <option value="B">B — Blue-White Giant</option>
+          <option value="A">A — White</option>
+          <option value="F">F — Yellow-White</option>
+          <option value="G" selected>G — Yellow (Sun-like)</option>
+          <option value="K">K — Orange Dwarf</option>
+          <option value="M">M — Red Dwarf</option>
+        </select>
+      </div>
+      <p style="font-size:.58rem;color:rgba(150,150,180,.6);margin:-4px 0 8px;letter-spacing:.03em">
+        Auto-selected from the star's tag when available (e.g. "G-type") — override here if you want to test a different class.
+      </p>
+
+      <div class="frow"><span class="flabel">Luminosity Override</span>
+        <input class="finput" id="hz-lum-override" type="text" inputmode="decimal" step="0.01"
+          placeholder="auto" style="flex:0 0 90px;width:90px" oninput="hzUpdate()">
+        <span style="font-size:.6rem;color:var(--ink4);margin-left:4px">× L☉</span>
+      </div>
+
+      <div class="fsec-title" style="margin-top:8px">Habitable Zone (AU / km)</div>
+      <div id="hz-readout" style="font-family:'JetBrains Mono',monospace;font-size:.68rem;
+        color:var(--jade);background:var(--ac08);border:1px solid var(--ac13);border-radius:6px;
+        padding:8px 10px;margin-bottom:10px;line-height:1.6"></div>
+
+      <div class="fsec-title">System Plot</div>
+      <div style="background:rgba(4,8,18,.95);border:1px solid var(--ac20);border-radius:6px;
+        padding:8px;margin-bottom:6px">
+        <canvas id="hz-canvas" width="900" height="220" style="width:100%;height:auto;display:block"></canvas>
+      </div>
+      <div id="hz-legend" style="font-size:.58rem;color:rgba(150,150,180,.75);line-height:1.7"></div>
+
+      <div id="hz-planet-list" style="margin-top:10px"></div>
+
+    </div>
   </div>
 </div>
 
@@ -5327,7 +5395,7 @@ document.addEventListener('keydown', function(e){
   <button class="bctx-btn bctx-group" id="bctx-group" onclick="bctxGroupSelect()">◉ Group Select</button>
 </div>
 
-<!-- ══════════════ HEIGHTMAP TOOLS MODAL ══════════════ -->
+<!-- ══════════════ TEXTURE CONVERTERS MODAL ══════════════ -->
 <div id="hmt-modal" style="display:none;position:fixed;inset:0;z-index:210000;
   background:rgba(2,5,14,.92);backdrop-filter:blur(4px);
   flex-direction:column;align-items:center;justify-content:flex-start;
@@ -5338,7 +5406,7 @@ document.addEventListener('keydown', function(e){
     padding:10px 14px;background:rgba(6,10,22,.97);
     border:1px solid rgba(100,220,180,.2);border-bottom:none;
     border-radius:6px 6px 0 0;flex-shrink:0;margin-top:auto">
-    <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;color:rgba(100,220,180,.9);letter-spacing:.14em;flex:1"><svg class="icon"><use href="#icon-map"></use></svg> HEIGHTMAP TOOLS</span>
+    <span style="font-family:'Orbitron',sans-serif;font-size:.65rem;color:rgba(100,220,180,.9);letter-spacing:.14em;flex:1"><svg class="icon"><use href="#icon-map"></use></svg> TEXTURE CONVERTERS<span style="display:block;margin-top:5px;font-family:'JetBrains Mono',monospace;font-size:.5rem;letter-spacing:.06em;font-weight:400;color:rgba(140,180,170,.65)">3 separate tools in one window: bump map &rarr; heightmap &middot; texture map &rarr; SFS texture &middot; watermask generator</span></span>
     <button onclick="closeHeightmapTools()" style="background:none;border:1px solid rgba(255,80,80,.3);border-radius:3px;color:rgba(255,100,100,.7);font-size:.75rem;padding:3px 8px;cursor:pointer">✕</button>
   </div>
 
@@ -5972,9 +6040,20 @@ document.addEventListener('keydown', function(e){
             </label>
             <label style="font-family:'JetBrains Mono',monospace;font-size:.45rem;color:rgba(120,140,180,.6);
               letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px">
-              <input type="checkbox" id="wmk-terrain-circle" onchange="wmkRenderFinal()" style="accent-color:rgba(100,160,255,.8);width:14px;height:14px">
-              TERRAIN CIRCLE
+              <input type="checkbox" id="wmk-circle-clip" checked onchange="wmkOnClipToggle()" style="accent-color:rgba(100,160,255,.8);width:14px;height:14px">
+              CLIP TO CIRCLE
             </label>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.44rem;color:rgba(120,140,180,.45);
+              letter-spacing:.03em;margin:-2px 0 2px 22px">Only the circle inscribed in this square is ever visible on the
+              sphere — the corners outside it get forced to black.</div>
+            <label style="font-family:'JetBrains Mono',monospace;font-size:.45rem;color:rgba(120,140,180,.6);
+              letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" id="wmk-circle-as-land" checked onchange="wmkQueueApply()" style="accent-color:rgba(100,160,255,.8);width:14px;height:14px">
+              OUTSIDE CIRCLE ACTS AS LAND
+            </label>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.44rem;color:rgba(120,140,180,.45);
+              letter-spacing:.03em;margin:-2px 0 2px 22px">Lets the shore falloff spread inward from the circle's edge too,
+              not just from actual land — stops open ocean near the corners from reading as flat, unbroken deep water.</div>
           </div>
         </div>
 
@@ -7005,7 +7084,7 @@ document.addEventListener('DOMContentLoaded', () => {
 (function(){
   // State
   let wmkBaseImage = null, wmkGenerated = null, wmkContrastBase = null;
-  let wmkEditLayer = null, wmkSeaField = null, wmkSeaMask = null, wmkCoastDist = null;
+  let wmkEditLayer = null, wmkSeaField = null, wmkSeaMask = null, wmkCoastDist = null, wmkLandDist = null;
   let wmkLiqSamples = [], wmkLandSamples = [], wmkMode = 'liq';
   let wmkDrawing = false, wmkPenMode = false, wmkEraseMode = false, wmkPenColor = 0;
   let wmkPending = null;
@@ -7218,10 +7297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wh.style.color = c===255 ? 'rgba(255,255,255,.85)' : 'rgba(120,140,180,.6)';
   };
 
-  function wmkComputeCoastDist() {
-    const cv = wmkGetCanvas(), w=cv.width, h=cv.height;
-    wmkCoastDist = new Float32Array(w*h);
-    for(let i=0;i<w*h;i++) wmkCoastDist[i] = wmkSeaMask[i] ? Infinity : 0;
+  function wmkChamferDist(isSeed, w, h) {
     // 8-connected chamfer distance transform: orthogonal neighbours weight 1,
     // diagonal neighbours weight sqrt(2). A 4-connected (orthogonal-only)
     // transform's distance contours are diamond-shaped, which is why the
@@ -7229,23 +7305,77 @@ document.addEventListener('DOMContentLoaded', () => {
     // smoothly outward — adding weighted diagonals gives a much closer
     // approximation of true Euclidean distance (octagonal, near-circular
     // contours) at the same O(w*h) cost, just 4 neighbours per pass instead of 2.
+    const dist = new Float32Array(w*h);
+    for(let i=0;i<w*h;i++) dist[i] = isSeed(i) ? 0 : Infinity;
     const SQRT2 = Math.SQRT2;
     for(let y=0;y<h;y++) for(let x=0;x<w;x++){
       const i=y*w+x;
-      const left  = x>0        ? wmkCoastDist[i-1]   + 1     : Infinity;
-      const up    = y>0        ? wmkCoastDist[i-w]   + 1     : Infinity;
-      const ul    = (x>0&&y>0) ? wmkCoastDist[i-w-1] + SQRT2 : Infinity;
-      const ur    = (x<w-1&&y>0)?wmkCoastDist[i-w+1] + SQRT2 : Infinity;
-      wmkCoastDist[i]=Math.min(wmkCoastDist[i],left,up,ul,ur);
+      const left  = x>0        ? dist[i-1]   + 1     : Infinity;
+      const up    = y>0        ? dist[i-w]   + 1     : Infinity;
+      const ul    = (x>0&&y>0) ? dist[i-w-1] + SQRT2 : Infinity;
+      const ur    = (x<w-1&&y>0)?dist[i-w+1] + SQRT2 : Infinity;
+      dist[i]=Math.min(dist[i],left,up,ul,ur);
     }
     for(let y=h-1;y>=0;y--) for(let x=w-1;x>=0;x--){
       const i=y*w+x;
-      const right = x<w-1        ? wmkCoastDist[i+1]   + 1     : Infinity;
-      const down  = y<h-1        ? wmkCoastDist[i+w]   + 1     : Infinity;
-      const dr    = (x<w-1&&y<h-1)?wmkCoastDist[i+w+1] + SQRT2 : Infinity;
-      const dl    = (x>0&&y<h-1)  ?wmkCoastDist[i+w-1] + SQRT2 : Infinity;
-      wmkCoastDist[i]=Math.min(wmkCoastDist[i],right,down,dr,dl);
+      const right = x<w-1        ? dist[i+1]   + 1     : Infinity;
+      const down  = y<h-1        ? dist[i+w]   + 1     : Infinity;
+      const dr    = (x<w-1&&y<h-1)?dist[i+w+1] + SQRT2 : Infinity;
+      const dl    = (x>0&&y<h-1)  ?dist[i+w-1] + SQRT2 : Infinity;
+      dist[i]=Math.min(dist[i],right,down,dr,dl);
     }
+    return dist;
+  }
+
+  // Precomputed per-canvas-size: true for every pixel outside the circle
+  // inscribed in the square canvas (the part of the texture that never
+  // actually appears on the sphere). Cached because it only depends on
+  // canvas dimensions, not on the sea/land classification.
+  let wmkOutsideCircle = null, wmkOutsideCircleW = 0, wmkOutsideCircleH = 0;
+  function wmkGetOutsideCircle(w, h) {
+    if (wmkOutsideCircle && wmkOutsideCircleW === w && wmkOutsideCircleH === h) return wmkOutsideCircle;
+    const mask = new Uint8Array(w * h);
+    const cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2;
+    const r2 = r * r;
+    for (let y = 0; y < h; y++) {
+      const dy = y + 0.5 - cy;
+      for (let x = 0; x < w; x++) {
+        const dx = x + 0.5 - cx;
+        mask[y * w + x] = (dx * dx + dy * dy > r2) ? 1 : 0;
+      }
+    }
+    wmkOutsideCircle = mask; wmkOutsideCircleW = w; wmkOutsideCircleH = h;
+    return mask;
+  }
+
+  function wmkComputeCoastDist() {
+    const cv = wmkGetCanvas(), w=cv.width, h=cv.height;
+    // Two distance fields, one per side of the coastline:
+    //  - wmkCoastDist: for each WATER pixel, distance to the nearest land
+    //  - wmkLandDist:  for each LAND pixel, distance to the nearest water
+    // Both are needed so the shore can be softened symmetrically on both
+    // sides of the border (see wmkApplyDepth) instead of only on the water
+    // side, which was leaving land pixels a hard flat white all the way up
+    // to the coastline and producing the "stretched shore" mismatch reported
+    // against vanilla SFS textures (#planet-editing, land texture + water
+    // mask both soften toward the same #7F7F7F boundary shade in-game).
+    //
+    // When "outside circle acts as land" is on, the corner region outside
+    // the inscribed circle is folded into the land side of both distance
+    // fields as if it were solid land — this lets the shore falloff spread
+    // inward from the circle's edge as well as from real land, so open
+    // ocean sitting close to a corner doesn't get treated as though it were
+    // far from any coast and read as flat, unbroken deep water.
+    const treatOutsideAsLand = $('wmk-circle-as-land').checked;
+    const outside = treatOutsideAsLand ? wmkGetOutsideCircle(w, h) : null;
+    const isLand = outside
+      ? (i => !wmkSeaMask[i] || outside[i])
+      : (i => !wmkSeaMask[i]);
+    const isSea = outside
+      ? (i => !!wmkSeaMask[i] && !outside[i])
+      : (i => !!wmkSeaMask[i]);
+    wmkCoastDist = wmkChamferDist(isLand, w, h);
+    wmkLandDist  = wmkChamferDist(isSea, w, h);
   }
 
   window.wmkGenerate = function() {
@@ -7292,12 +7422,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const cw=+$('wmk-coast').value, sp=+$('wmk-spread').value;
     const shallowV=+$('wmk-shallow').value, deepV=+$('wmk-deep').value;
     const texAmt=+$('wmk-texture').value/100;
+    // #7F7F7F (127) — per Ludwig's spec, this is the exact shade the game
+    // reads as "water meets land". Both sides of the coastline must land on
+    // this value right at the border and soften away from it symmetrically —
+    // that's what vanilla SFS land textures + water masks do (they cancel
+    // out cleanly when overlaid), and what this tool was previously missing:
+    // land pixels were always a hard flat 255 with no falloff at all, and
+    // water pixels jumped straight to the shallow-water slider value instead
+    // of passing through 127 at the boundary.
+    const COAST_MID = 127;
     for(let i=0,p=0;i<wmkGenerated.data.length;i+=4,p++){
-      if(!wmkSeaMask[p]){wmkGenerated.data[i]=wmkGenerated.data[i+1]=wmkGenerated.data[i+2]=255;}
+      if(!wmkSeaMask[p]){
+        // LAND: fade from the boundary shade (127) up to full white the
+        // further inland a pixel sits, mirroring the water-side falloff.
+        let t=Math.min(1,wmkLandDist[p]/cw);
+        t=Math.pow(t,sp); t=t*t*(3-2*t);
+        const v = COAST_MID + (255-COAST_MID)*t;
+        wmkGenerated.data[i]=wmkGenerated.data[i+1]=wmkGenerated.data[i+2]=v;
+      }
       else{
         let t=Math.min(1,wmkCoastDist[p]/cw);
         t=Math.pow(t,sp); t=t*t*(3-2*t);
-        const flatV=shallowV*(1-t)+deepV*t;
+        // Two-stage ramp anchored at the coastline: 127 → shallow → deep,
+        // so the pixel immediately at the shore is always exactly 127,
+        // and the shallow/deep sliders still shape everything past that.
+        const flatV = t<=0.5
+          ? COAST_MID + (shallowV-COAST_MID) * (t/0.5)
+          : shallowV  + (deepV-shallowV)     * ((t-0.5)/0.5);
         // Blend the flat coastal-falloff value with the source pixel's own
         // luminance so far-from-shore water keeps ocean-floor texture detail
         // instead of collapsing to a single flat deep-water color. The blend
@@ -7341,18 +7492,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const cv = wmkGetCanvas(), ctx=wmkGetCtx(), w=cv.width, h=cv.height;
     const preview=ctx.createImageData(w,h);
     const t=wmkGenerated.data, ed=wmkEditLayer?wmkEditLayer.data:null, out=preview.data;
-    for(let i=0;i<t.length;i+=4){
+    const clip = $('wmk-circle-clip').checked ? wmkGetOutsideCircle(w,h) : null;
+    for(let i=0,p=0;i<t.length;i+=4,p++){
       let v=t[i];
       if(ed&&ed[i+3]===255) v=ed[i];
+      if(clip && clip[p]) v=0; // outside the inscribed circle → forced black
       out[i]=out[i+1]=out[i+2]=v; out[i+3]=255;
     }
     ctx.putImageData(preview,0,0);
-    if($('wmk-terrain-circle').checked){
-      const cx=w/2,cy=h/2,r=Math.min(w,h)/2-1;
-      ctx.save();ctx.strokeStyle='rgba(0,0,0,.9)';ctx.lineWidth=2;
-      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();ctx.restore();
-    }
   };
+
+  // The clip checkbox only changes the final render (no need to rerun the
+  // distance transform), but the "outside acts as land" checkbox changes
+  // the distance fields themselves, so it re-queues a full wmkApplyDepth
+  // via wmkQueueApply (wired directly on that checkbox's onchange instead).
+  window.wmkOnClipToggle = function() { wmkRenderFinal(); };
 
   // Canvas sampling click
   document.addEventListener('DOMContentLoaded', () => {
@@ -7405,20 +7559,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.wmkSave = function() {
     if (!wmkGenerated) { alert('Generate a watermask first.'); return; }
+    // wmkRenderFinal() has already painted the live canvas with the circle
+    // clip (outside → black) applied when that checkbox is on, so the
+    // exported PNG just needs a straight copy of the current canvas.
     const cv=wmkGetCanvas(), off=document.createElement('canvas');
     off.width=cv.width; off.height=cv.height;
-    const oc=off.getContext('2d');
-    oc.drawImage(cv,0,0);
-    if($('wmk-terrain-circle').checked){
-      const cx=off.width/2,cy=off.height/2,r=Math.min(off.width,off.height)/2-1;
-      const img=oc.getImageData(0,0,off.width,off.height);
-      const d=img.data,w=off.width,h=off.height;
-      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
-        const dx=x-cx,dy=y-cy;
-        if(Math.sqrt(dx*dx+dy*dy)>r){const i=(y*w+x)*4;d[i]=d[i+1]=d[i+2]=255;}
-      }
-      oc.putImageData(img,0,0);
-    }
+    off.getContext('2d').drawImage(cv,0,0);
     off.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='sea-map.png';a.click();});
   };
 })();
@@ -7431,7 +7577,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const SB_KEY = 'sb_publishable_7UarYndVEPrKEg3qFrfevQ_jbMh3dbI';
   const HEADERS = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
 
-  const KEYS = ['sfs-default', 'bgh', 'htss', 'ys', 'ch', 'rs', 'pg'];
+  const KEYS = ['sfs-default', 'bgh', 'htss', 'ys', 'ch', 'rs', 'pg', 'co'];
   const ACTS = ['import', 'open'];
 
   const ZIP_URLS = {
@@ -7442,6 +7588,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'ch':          'featured/CH.zip',
     'rs':          'featured/RS.zip',
     'pg':          'featured/PG.zip',
+    'co':          'featured/CO.zip',
   };
 
   // ── Increment via RPC and update display ──
