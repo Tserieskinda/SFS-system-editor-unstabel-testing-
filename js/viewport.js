@@ -1498,8 +1498,52 @@ function _drawViewportNow(){
     const fcd = bodies[n]?.data?.FRONT_CLOUDS_DATA;
     _bodyFcZ[n] = (fcd && typeof fcd.positionZ === 'number') ? fcd.positionZ : 0;
   });
+  // ── Ground-truth Z model (from decompiled SFS source) ──────────────────
+  // Environment.cs/Atmosphere.cs/FrontClouds.cs/Rings.cs: every body's whole
+  // decorator stack is parented to one "environment holder" positioned by
+  // true solar-system coordinates ONLY (WorldEnvironment.UpdateViewPosition) —
+  // orbit parent/child relationships never enter into it. Within that holder,
+  // each layer is placed at a local Z offset:
+  //   terrain disc   : fixed renderQueue 3010, i.e. Z = 0 (the reference plane)
+  //   atmosphere     : Vector3.forward * ATMOSPHERE_VISUALS_DATA.GRADIENT.positionZ  (default -1)
+  //   front clouds   : Vector3.forward * FRONT_CLOUDS_DATA.positionZ                  (default -5000)
+  //   rings          : Vector3.forward * RINGS_DATA.positionZ                         (default 0; the
+  //                     engine also uses this same field to tilt the ring mesh, but the field's
+  //                     value is the same one number driving BOTH depth and tilt in-game)
+  // More-negative Z = closer to camera = painted last/on top (Vector3.forward is
+  // Unity's +Z axis, which points AWAY from camera). We reuse this same signed
+  // number as this editor's only Z axis (there's no true 3D camera in the 2D
+  // top-down view), so terrain/atmosphere/rings/front-clouds across ALL bodies
+  // paint in one shared, hierarchy-blind order — this is what makes a moon's
+  // huge-positionZ atmosphere sit behind a distant star's disc (parallax) and
+  // stops an unrelated body's pass from ever painting wholesale over another.
+  function _bodyZ(n, layer){
+    const d = bodies[n]?.data;
+    if(!d) return 0;
+    if(layer === 'atmo'){
+      const z = d.ATMOSPHERE_VISUALS_DATA?.GRADIENT?.positionZ;
+      return typeof z === 'number' ? z : -1;
+    }
+    if(layer === 'rings'){
+      const z = d.RINGS_DATA?.positionZ;
+      return typeof z === 'number' ? z : 0;
+    }
+    if(layer === 'fc'){
+      const z = d.FRONT_CLOUDS_DATA?.positionZ;
+      return typeof z === 'number' ? z : -5000;
+    }
+    return 0; // terrain/surface reference plane
+  }
+  // Single global paint-job queue: every Z-relevant visual layer (rings so
+  // far; front-clouds already used its own _fcDeferred, now folded in here)
+  // gets pushed as {z, draw()} instead of painted inline, then the whole
+  // queue is sorted once by z (descending — more positive first/behind) and
+  // flushed back-to-front after the per-body terrain/icon pass below. See
+  // the flush site (search _zQueue.sort) for why terrain itself stays in the
+  // per-body pass instead of also being deferred.
+  const _zQueue = [];
   // This ONLY reorders which body's ICON draws first in this same pass — it
-  // does not touch _bodyFcZ or the separate _fcDeferred front-cloud disc pass
+  // does not touch _bodyFcZ or the separate _zQueue front-cloud/rings pass
   // below, which is what actually renders the day/night terminator effect and
   // must keep sorting purely by positionZ regardless of hierarchy depth.
   // Forcing these bodies to draw_order-first means every other body (their
@@ -1535,7 +1579,7 @@ function _drawViewportNow(){
   // paint back on top of that shadow afterward — matching the game, where
   // FrontClouds.cs gives every layer the same sortingOrder and only
   // positionZ (a flat, global Z) ever decides relative order.
-  const _fcDeferred = [];
+  const _fcDeferred = []; // fc-only entries, kept in parallel with _zQueue purely for the FC_DEBUG overlay
   // Screen-space discs drawn so far this frame, used by the icon-overlap cull
   // below to keep bigger bodies visually on top of smaller ones.
   const _drawnDiscs = [];
@@ -1791,10 +1835,18 @@ function _drawViewportNow(){
       ctx2.restore();
     }
 
-    // ── Rings (RINGS_DATA) — drawn behind planet disc ──
+    // ── Rings (RINGS_DATA) — deferred into the global Z queue ──
     // Texture maps horizontally: left=inner edge, right=outer edge (radial gradient).
     // Black pixels = transparent (same convention as atmo/clouds).
-    // positionZ controls vertical tilt — ignored in 2D top-down view.
+    // RINGS_DATA.positionZ is the SAME field the engine uses to place the ring
+    // mesh in Vector3.forward*positionZ (see Rings.cs) — it is this body's real
+    // world Z for depth purposes, not just a tilt parameter. So rings must not
+    // paint inline here: a ring with very-negative positionZ can sit in front
+    // of an unrelated closer body, and one with very-positive positionZ can
+    // sit behind a farther one, regardless of who's drawn in this per-body
+    // pass first. We snapshot everything the paint needs now (screen pos,
+    // radii, fade) and push a draw() closure keyed by world Z onto _zQueue;
+    // the queue is flushed back-to-front after this whole per-body loop ends.
     // Rings only fade in when physR_px > 4 (visible at system scale).
     if(b.data.RINGS_DATA){
       const RD = b.data.RINGS_DATA;
@@ -1803,7 +1855,6 @@ function _drawViewportNow(){
       if(pxCache){
         const startR_m = RD.startRadius || 0;
         const endR_m   = RD.endRadius   || 0;
-        const mc       = RD.mapColor    || {r:1,g:1,b:1,a:1};
         if(endR_m > startR_m && startR_m > 0){
           // SFS ring radii are from planet CENTER.
           // Use physR_px (true physical scale, unclamped) so rings don't shrink when zoomed.
@@ -1846,15 +1897,26 @@ function _drawViewportNow(){
                 drawViewport._ringStopCache[ringStopKey] = stops;
               }
               const stops = drawViewport._ringStopCache[ringStopKey];
-              const grad = ctx2.createRadialGradient(sp.x, sp.y, safeInner, sp.x, sp.y, safeOuter);
-              for(const [t, col] of stops) grad.addColorStop(t, col);
-              ctx2.save();
-              ctx2.beginPath();
-              ctx2.arc(sp.x, sp.y, safeOuter, 0, Math.PI*2);
-              ctx2.arc(sp.x, sp.y, safeInner, 0, Math.PI*2, true);
-              ctx2.fillStyle = grad;
-              ctx2.fill();
-              ctx2.restore();
+              const _ringSpX = sp.x, _ringSpY = sp.y, _ringBodyFade = bodyFadeA;
+              _zQueue.push({
+                z: _bodyZ(name, 'rings'),
+                draw(){
+                  const grad = ctx2.createRadialGradient(_ringSpX, _ringSpY, safeInner, _ringSpX, _ringSpY, safeOuter);
+                  for(const [t, col] of stops) grad.addColorStop(t, col);
+                  ctx2.save();
+                  // bodyFadeA applied here since this runs outside this body's own
+                  // save/restore scope now (deferred jobs share no ambient alpha) —
+                  // previously implicit via the outer per-body ctx2.save(); this
+                  // must be re-applied explicitly at every deferred draw site.
+                  ctx2.globalAlpha = _ringBodyFade;
+                  ctx2.beginPath();
+                  ctx2.arc(_ringSpX, _ringSpY, safeOuter, 0, Math.PI*2);
+                  ctx2.arc(_ringSpX, _ringSpY, safeInner, 0, Math.PI*2, true);
+                  ctx2.fillStyle = grad;
+                  ctx2.fill();
+                  ctx2.restore();
+                }
+              });
             }
           }
         }
@@ -1955,6 +2017,8 @@ function _drawViewportNow(){
     // bleeds through at the disc limb where the arc clip anti-aliases and where the
     // atmosphere texture bottom row is semi-transparent, producing a 1-2px dark ring.
     // Draw the surface colour as a solid disc here so the limb is always opaque.
+    // Deferred into _zQueue alongside the halo blit below — see the comment
+    // at the top of the atmosphere-halo block for why both moved off ctx2.
     if(atmoFade > 0 && !b.data.TERRAIN_DATA && b.data.ATMOSPHERE_VISUALS_DATA?.GRADIENT){
       const atmoTex0 = b.data.ATMOSPHERE_VISUALS_DATA.GRADIENT.texture;
       if(atmoTex0 && atmoTex0 !== 'None'){
@@ -1963,16 +2027,35 @@ function _drawViewportNow(){
         let fr0 = 255, fg0 = 255, fb0 = 255;
         const apx0 = texPixelCache[atmoTex0 + '_atmos'];
         if(apx0){ fr0 = apx0[63*4]; fg0 = apx0[63*4+1]; fb0 = apx0[63*4+2]; }
-        ctx2.save();
-        ctx2.globalAlpha = atmoFade;
-        ctx2.globalCompositeOperation = 'source-over';
-        ctx2.beginPath(); ctx2.arc(sp.x, sp.y, physR_px, 0, Math.PI*2);
-        ctx2.fillStyle = `rgb(${fr0},${fg0},${fb0})`;
-        ctx2.fill();
-        ctx2.restore();
+        const _sfSpX = sp.x, _sfSpY = sp.y, _sfR = physR_px, _sfFade = atmoFade * bodyFadeA;
+        _zQueue.push({
+          z: _bodyZ(name, 'atmo'),
+          draw(){
+            ctx2.save();
+            ctx2.globalAlpha = _sfFade;
+            ctx2.globalCompositeOperation = 'source-over';
+            ctx2.beginPath(); ctx2.arc(_sfSpX, _sfSpY, _sfR, 0, Math.PI*2);
+            ctx2.fillStyle = `rgb(${fr0},${fg0},${fb0})`;
+            ctx2.fill();
+            ctx2.restore();
+          }
+        });
       }
     }
 
+    // ── Atmosphere halo — deferred into _zQueue ──
+    // Ground truth (Atmosphere.cs): the halo mesh's local Z is
+    // ATMOSPHERE_VISUALS_DATA.GRADIENT.positionZ, parented to the same
+    // per-body holder as terrain/rings/front-clouds — i.e. it lives on the
+    // exact same flat Z axis as everything else in _zQueue, and can sit in
+    // front of OR behind another body's disc regardless of hierarchy. This
+    // is the mechanism behind "parallax" halos (e.g. a distant decoy body's
+    // atmosphere given a huge positive positionZ so it renders behind
+    // everything, mimicking a sun in the background while actually
+    // orbiting the real, much closer planet). Only the final ctx2 blit is
+    // deferred — the expensive polarCanvas build/cache above is unchanged
+    // and still happens inline (it's pure CPU pixel work with no draw-order
+    // dependency, so there's no correctness reason to delay it).
     if(envFlags.atmo && !envFlags.heightmaps && atmoFade > 0 && b.data.ATMOSPHERE_PHYSICS_DATA && b.data.ATMOSPHERE_VISUALS_DATA?.GRADIENT){
       const APD = b.data.ATMOSPHERE_PHYSICS_DATA;
       const GRD = b.data.ATMOSPHERE_VISUALS_DATA.GRADIENT;
@@ -2101,54 +2184,56 @@ function _drawViewportNow(){
               drawViewport._atmoPolarCache[cacheKey] = polarCanvas;
             }
 
-            // ── Draw the polar disc — viewport-cropped ──
+            // ── Draw the polar disc — viewport-cropped, deferred ──
             // When drawR is huge (large star atmosphere zoomed in) the full-disc
             // drawImage scales a 512px canvas to thousands of screen pixels, forcing
             // the GPU to process an enormous blit even though only a small viewport
             // slice is visible. Instead we compute exactly which portion of the polar
             // canvas maps onto the current viewport and only blit that rectangle.
             // The arc clip below then masks it to the correct disc/ring shape.
-            ctx2.save();
-            ctx2.globalAlpha = atmoFade;
-            ctx2.globalCompositeOperation = hasTerrain ? 'source-over' : 'lighter';
+            // The blit itself is pushed to _zQueue (see block comment above) instead
+            // of drawn here, so it composites in true world-Z order against every
+            // other body's rings/front-clouds/atmosphere.
+            const _haloSpX = sp.x, _haloSpY = sp.y, _haloDrawR = drawR, _haloFade = atmoFade * bodyFadeA,
+                  _haloComposite = hasTerrain ? 'source-over' : 'lighter', _haloPolar = polarCanvas;
+            _zQueue.push({
+              z: _bodyZ(name, 'atmo'),
+              draw(){
+                ctx2.save();
+                ctx2.globalAlpha = _haloFade;
+                ctx2.globalCompositeOperation = _haloComposite;
 
-            if(hasTerrain){
-              ctx2.beginPath();
-              ctx2.arc(sp.x, sp.y, drawR, 0, Math.PI*2);
-              ctx2.clip();
-            } else {
-              ctx2.beginPath();
-              ctx2.arc(sp.x, sp.y, drawR, 0, Math.PI*2);
-              ctx2.clip();
-            }
+                ctx2.beginPath();
+                ctx2.arc(_haloSpX, _haloSpY, _haloDrawR, 0, Math.PI*2);
+                ctx2.clip();
 
-            {
-              const SZ = polarCanvas.width; // 512
-              const fullD = drawR * 2;      // full disc diameter in screen px
+                const SZ = _haloPolar.width; // 512
+                const fullD = _haloDrawR * 2;      // full disc diameter in screen px
 
-              // Destination rect: intersection of the full disc bounding box with viewport
-              const discL = sp.x - drawR, discT = sp.y - drawR;
-              const dstX = Math.max(0, discL);
-              const dstY = Math.max(0, discT);
-              const dstR = Math.min(W, discL + fullD);
-              const dstB = Math.min(H, discT + fullD);
-              const dstW = dstR - dstX;
-              const dstH = dstB - dstY;
+                // Destination rect: intersection of the full disc bounding box with viewport
+                const discL = _haloSpX - _haloDrawR, discT = _haloSpY - _haloDrawR;
+                const dstX = Math.max(0, discL);
+                const dstY = Math.max(0, discT);
+                const dstR = Math.min(W, discL + fullD);
+                const dstB = Math.min(H, discT + fullD);
+                const dstW = dstR - dstX;
+                const dstH = dstB - dstY;
 
-              if(dstW > 0 && dstH > 0){
-                // Corresponding source rect in the 512×512 polar canvas
-                const scale = SZ / fullD; // polar-canvas px per screen px
-                const srcX = (dstX - discL) * scale;
-                const srcY = (dstY - discT) * scale;
-                const srcW = dstW * scale;
-                const srcH = dstH * scale;
-                ctx2.imageSmoothingEnabled = true;
-                ctx2.imageSmoothingQuality = 'high';
-                ctx2.drawImage(polarCanvas, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
+                if(dstW > 0 && dstH > 0){
+                  // Corresponding source rect in the 512×512 polar canvas
+                  const scale = SZ / fullD; // polar-canvas px per screen px
+                  const srcX = (dstX - discL) * scale;
+                  const srcY = (dstY - discT) * scale;
+                  const srcW = dstW * scale;
+                  const srcH = dstH * scale;
+                  ctx2.imageSmoothingEnabled = true;
+                  ctx2.imageSmoothingQuality = 'high';
+                  ctx2.drawImage(_haloPolar, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
+                }
+
+                ctx2.restore();
               }
-            }
-
-            ctx2.restore();
+            });
             } // end else (innerFrac < 1.0)
           }
         }
@@ -3132,23 +3217,37 @@ function _drawViewportNow(){
                   wctx.putImageData(od, 0, 0);
                   drawViewport._cloudCache[cacheKey] = wc;
                 }
-                ctx2.save();
-                ctx2.globalAlpha *= baseAlpha;
-                ctx2.imageSmoothingEnabled = true;
-                ctx2.imageSmoothingQuality = 'high';
-                // SFS convention: cloud/ring textures are unlit source art with NO
-                // alpha channel (most are opaque JPGs) — black pixels mean "nothing
-                // here" and blend additively/emissively in-game, same convention
-                // already used for GRADIENT above (see the 'lighter' composite
-                // branch around line 1355). Left at the default 'source-over',
-                // every near-black texel (the vast majority of a ring texture like
-                // Ring_Somber, which is mostly empty space around a thin ring band)
-                // gets painted as an OPAQUE dark-grey disc instead of staying
-                // invisible, producing the muddy, mismatched smear seen over the
-                // planet instead of a clean ring silhouette.
-                ctx2.globalCompositeOperation = 'lighter';
-                ctx2.drawImage(wc, sp.x - outer_px, sp.y - outer_px, outer_px * 2, outer_px * 2);
-                ctx2.restore();
+                // Deferred into _zQueue at the SAME z as this body's atmosphere halo
+                // (_bodyZ(name,'atmo')) — ground truth (Planet.cs CreateAtmosphereMaterial,
+                // ~line 425-430): CLOUDS is not a separate mesh/transform at all, it's
+                // baked as extra shader uniforms (_CloudStartY/_CloudSizeY/_CloudSizeX/
+                // _Alpha) onto the SAME atmosphere material + mesh, which sits at
+                // GRADIENT.positionZ. So the cloud band has no Z of its own — it must
+                // always composite at exactly its parent atmosphere's depth, never
+                // separately ordered against other bodies.
+                const _cldSpX = sp.x, _cldSpY = sp.y, _cldOuter = outer_px, _cldAlpha = baseAlpha * bodyFadeA, _cldImg = wc;
+                _zQueue.push({
+                  z: _bodyZ(name, 'atmo'),
+                  draw(){
+                    ctx2.save();
+                    ctx2.globalAlpha = _cldAlpha;
+                    ctx2.imageSmoothingEnabled = true;
+                    ctx2.imageSmoothingQuality = 'high';
+                    // SFS convention: cloud/ring textures are unlit source art with NO
+                    // alpha channel (most are opaque JPGs) — black pixels mean "nothing
+                    // here" and blend additively/emissively in-game, same convention
+                    // already used for GRADIENT above (see the 'lighter' composite
+                    // branch around line 1355). Left at the default 'source-over',
+                    // every near-black texel (the vast majority of a ring texture like
+                    // Ring_Somber, which is mostly empty space around a thin ring band)
+                    // gets painted as an OPAQUE dark-grey disc instead of staying
+                    // invisible, producing the muddy, mismatched smear seen over the
+                    // planet instead of a clean ring silhouette.
+                    ctx2.globalCompositeOperation = 'lighter';
+                    ctx2.drawImage(_cldImg, _cldSpX - _cldOuter, _cldSpY - _cldOuter, _cldOuter * 2, _cldOuter * 2);
+                    ctx2.restore();
+                  }
+                });
               }
             }
           }
@@ -3473,25 +3572,43 @@ function _drawViewportNow(){
             }
           }
 
-          // Defer the actual paint — see _fcDeferred comment above the loop start.
+          // Defer the actual paint — see the _zQueue comment above the loop start.
           // Everything up to this point (texture cache, scratch composite, fade)
           // is unchanged; only the final blit onto ctx2 moves to a later, globally
           // Z-sorted pass so this layer can correctly darken/light ANY body's
           // surface, not just bodies drawn later than it in hierarchy order.
-          _fcDeferred.push({
-            z: (typeof FCD.positionZ === 'number') ? FCD.positionZ : 0,
+          // NOTE: default corrected to -5000 (matches FrontCloudsModule.cs'
+          // real default) — was previously defaulting to 0 (neutral middle),
+          // which put an unconfigured front-cloud layer at the WRONG depth
+          // relative to every other body's default-Z layers.
+          const _fcEntry = {
+            z: _bodyZ(name, 'fc'),
             scratch: fcScratch,
             x: sp.x - fcR_px,
             y: sp.y - fcR_px,
             size: fcR_px * 2,
-            alpha: fcAlpha,
+            // bodyFadeA folded in here — previously this alpha was only the LOD
+            // fade (fcAlpha) and silently ignored the body's own fade-in/out,
+            // since front-clouds already ran in a deferred pass outside this
+            // body's ctx2.save()/globalAlpha=bodyFadeA scope even before this
+            // refactor. Fixed now alongside the other layers (rings/atmo/clouds)
+            // that have the exact same gap.
+            alpha: fcAlpha * bodyFadeA,
+            draw(){
+              ctx2.save();
+              ctx2.globalAlpha = this.alpha;
+              ctx2.drawImage(this.scratch, this.x, this.y, this.size, this.size);
+              ctx2.restore();
+            },
             // debug-only fields, cheap to always attach
             _dbgName: name,
             _dbgSpX: sp.x, _dbgSpY: sp.y,
             _dbgFcR_px: fcR_px, _dbgScr: scr,
             _dbgFadeOuterR: fadeOuterR, _dbgFadeZoneSc: fadeZone_sc,
             _dbgAaMargin: AA_MARGIN, _dbgFcTexSZ: fcTexSZ
-          });
+          };
+          _fcDeferred.push(_fcEntry); // kept for the FC_DEBUG overlay below, which reads fc-only fields
+          _zQueue.push(_fcEntry);
         }
       }
     }
@@ -3755,27 +3872,27 @@ function _drawViewportNow(){
     } catch(e) { console.error('[SFS|DRAW] Error drawing body "'+name+'": '+e.message, e); }
   });
 
-  // ── Deferred front-cloud pass — globally Z-sorted across ALL bodies ──
-  // Every body's surface/terrain/atmosphere is now fully painted (loop above).
-  // Draw the front-cloud composites collected during that loop here, sorted
-  // purely by positionZ (more-positive first/behind, more-negative last/in
-  // front) with no regard for hierarchy depth or draw order above. This is
-  // what lets a shadow body (near-zero Z) darken a planet's surface even
-  // when that planet's OWN front-cloud layer (e.g. city lights, very
-  // negative Z) was painted in the same per-body pass as its surface — the
-  // shadow now always gets a chance to composite onto that surface here,
-  // and anything with more-negative Z than the shadow still correctly
-  // layers back on top of it afterward, matching FrontClouds.cs where every
-  // layer shares one sortingOrder and only this flat Z ever decides order.
-  _fcDeferred
+  // ── Deferred Z-sorted pass — rings + front-clouds, globally sorted across ALL bodies ──
+  // Every body's surface/terrain/atmosphere is now fully painted (loop above,
+  // which stays hierarchy-ordered — see note by _bodyDepth/drawOrder for why
+  // that's still fine for the surface layer specifically). Rings and front
+  // clouds are the two layers whose positionZ can legitimately place them
+  // in front of OR behind another body's surface regardless of orbit
+  // hierarchy or draw order above — draining one shared queue sorted purely
+  // by z (more-positive first/behind, more-negative last/in front) is what
+  // lets e.g. a shadow body (near-zero Z) darken a planet's surface even
+  // when that planet's OWN front-cloud layer (city lights, very negative Z)
+  // was painted in the same per-body pass as its surface, AND lets a ring
+  // with unusual positionZ correctly slot in front of or behind a farther/
+  // closer body's disc — matching the engine, where rings/front-clouds/
+  // atmosphere are ordinary Z-buffered geometry with no hierarchy influence
+  // at all (WorldEnvironment.UpdateViewPosition positions every body only
+  // by solar-system coordinates, never by orbit parent/child).
+  _zQueue
     .sort((a, b) => b.z - a.z)
     .forEach(entry => {
-      try {
-        ctx2.save();
-        ctx2.globalAlpha = entry.alpha;
-        ctx2.drawImage(entry.scratch, entry.x, entry.y, entry.size, entry.size);
-        ctx2.restore();
-      } catch(e) { console.error('[SFS|DRAW] Error compositing deferred front-clouds: '+e.message, e); }
+      try { entry.draw(); }
+      catch(e) { console.error('[SFS|DRAW] Error compositing deferred Z-layer: '+e.message, e); }
     });
 
   // ── Front-cloud debug overlay ──
