@@ -1528,17 +1528,29 @@ function _drawViewportNow(){
   function _bodyZ(n, layer){
     const d = bodies[n]?.data;
     if(!d) return 0;
+    // Ground truth (Difficulty.cs ScalePlanetData): positionZ is stored at
+    // Normal-difficulty scale in the file, same as radius/height/SMA, and the
+    // game re-scales it live by the SAME multiplier used for height/radius —
+    // atmoMult for atmosphere GRADIENT.positionZ and FRONT_CLOUDS_DATA.positionZ
+    // (frontClouds.positionZ *= atmoMult), radiusMult for RINGS_DATA.positionZ
+    // (rings.positionZ *= radiusMult). Reading positionZ raw (unscaled) was
+    // correct at Normal but silently wrong on Hard/Realistic, since every
+    // OTHER body's height/radius WAS being scaled while this Z axis wasn't —
+    // shifting front-clouds/atmosphere/rings depth relative to each other and
+    // producing exactly the "front clouds sort in front of/behind the wrong
+    // body" symptom once any body in the system uses non-Normal difficulty
+    // scaling.
     if(layer === 'atmo'){
       const z = d.ATMOSPHERE_VISUALS_DATA?.GRADIENT?.positionZ;
-      return typeof z === 'number' ? z : -1;
+      return typeof z === 'number' ? z * getAtmoDifficultyMult(d) : -1;
     }
     if(layer === 'rings'){
       const z = d.RINGS_DATA?.positionZ;
-      return typeof z === 'number' ? z : 0;
+      return typeof z === 'number' ? z * getRadiusDifficultyMult(d.BASE_DATA) : 0;
     }
     if(layer === 'fc'){
       const z = d.FRONT_CLOUDS_DATA?.positionZ;
-      return typeof z === 'number' ? z : -5000;
+      return typeof z === 'number' ? z * getAtmoDifficultyMult(d) : -5000 * getAtmoDifficultyMult(d);
     }
     // 'surface' (terrain/texture/water/fog) and any unrecognised layer both
     // sit at the fixed renderQueue=3010 reference plane — Z=0.
